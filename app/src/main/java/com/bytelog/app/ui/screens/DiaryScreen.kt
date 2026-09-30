@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +39,7 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -78,10 +81,17 @@ fun DiaryScreen(
     val dailySummary by viewModel.dailySummary.collectAsState()
     val entries by viewModel.entriesForDate.collectAsState()
     val mealTypes by viewModel.mealTypes.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(Unit) {
+        viewModel.syncMessage.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
 
     val isToday = remember(selectedDate) {
         selectedDate == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
@@ -143,7 +153,7 @@ fun DiaryScreen(
                     )
                 }
 
-                // Date Switcher Controls
+                // Date Switcher Controls & Actions
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -173,6 +183,24 @@ fun DiaryScreen(
                         Icon(Icons.Default.ChevronRight, contentDescription = "Next Day", tint = ByteCream)
                     }
 
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.manualSync()
+                        },
+                        enabled = !isSyncing
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = ByteTomato
+                            )
+                        } else {
+                            Icon(Icons.Default.Sync, contentDescription = "Sync with Sparky", tint = ByteCreamMuted)
+                        }
+                    }
+
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings", tint = ByteCreamMuted)
                     }
@@ -189,6 +217,32 @@ fun DiaryScreen(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                if (entries.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(ByteSurfaceDark.copy(alpha = 0.5f))
+                                .padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "No foods logged for this date",
+                                color = ByteCream,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Tap + on any meal below to fast-log food, or tap the sync icon above to fetch entries from Sparky Fitness.",
+                                color = ByteCreamMuted,
+                                fontSize = 12.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
                 items(mealTypes, key = { it.id }) { mealType ->
                     val mealEntries = entries.filter { it.mealTypeId == mealType.id }
                     val mealCalories = mealEntries.sumOf { it.calories.toDouble() }.toFloat()

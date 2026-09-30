@@ -8,7 +8,8 @@ import com.bytelog.app.data.repository.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class ByteLogApplication : Application() {
@@ -32,12 +33,20 @@ class ByteLogApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize API client configuration from saved settings
+        // 1. Purge any leftover demo starter foods
+        applicationScope.launch(Dispatchers.IO) {
+            database.foodDao().deleteDemoFoods()
+        }
+
+        // 2. Dynamically keep API client configuration in sync with Settings in real-time
         applicationScope.launch {
-            val url = settingsRepository.serverUrl.first()
-            val token = settingsRepository.authToken.first()
-            val apiKey = settingsRepository.apiKey.first()
-            sparkyApiClient.updateConfig(url, token, apiKey)
+            combine(
+                settingsRepository.serverUrl,
+                settingsRepository.authToken,
+                settingsRepository.apiKey
+            ) { url, token, key ->
+                sparkyApiClient.updateConfig(url, token, key)
+            }.collect()
         }
     }
 }

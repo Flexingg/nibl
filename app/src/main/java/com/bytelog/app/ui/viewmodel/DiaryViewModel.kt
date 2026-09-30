@@ -7,9 +7,12 @@ import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.MealType
 import com.bytelog.app.data.repository.FoodRepository
 import com.bytelog.app.data.repository.SettingsRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
@@ -29,6 +32,12 @@ class DiaryViewModel(
 
     private val _selectedDate = MutableStateFlow(LocalDate.now().format(dateFormatter))
     val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
+
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    private val _syncMessage = MutableSharedFlow<String>()
+    val syncMessage: SharedFlow<String> = _syncMessage.asSharedFlow()
 
     val mealTypes: StateFlow<List<MealType>> = foodRepository.getAllMealTypes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MealType.DEFAULT_MEAL_TYPES)
@@ -97,7 +106,37 @@ class DiaryViewModel(
 
     fun syncSelectedDate() {
         viewModelScope.launch {
-            foodRepository.syncDateWithServer(_selectedDate.value)
+            _isSyncing.value = true
+            try {
+                foodRepository.syncDateWithServer(_selectedDate.value)
+            } catch (_: Exception) {
+            } finally {
+                _isSyncing.value = false
+            }
+        }
+    }
+
+    fun manualSync() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            try {
+                val result = foodRepository.syncDateWithServer(_selectedDate.value)
+                result.fold(
+                    onSuccess = { count ->
+                        _syncMessage.emit(
+                            if (count > 0) "Synced $count entries from Sparky Fitness"
+                            else "Synced with Sparky (0 entries for this date)"
+                        )
+                    },
+                    onFailure = { err ->
+                        _syncMessage.emit("Sync failed: ${err.message ?: "Connection error"}")
+                    }
+                )
+            } catch (e: Exception) {
+                _syncMessage.emit("Sync error: ${e.message ?: "Unknown error"}")
+            } finally {
+                _isSyncing.value = false
+            }
         }
     }
 }

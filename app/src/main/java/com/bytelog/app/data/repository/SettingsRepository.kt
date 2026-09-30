@@ -27,7 +27,7 @@ class SettingsRepository(private val context: Context) {
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_SERVER_URL] ?: "http://10.0.2.2:3000"
+        prefs[KEY_SERVER_URL] ?: "http://10.0.2.2:3010"
     }
 
     val authToken: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -36,6 +36,10 @@ class SettingsRepository(private val context: Context) {
 
     val apiKey: Flow<String?> = context.dataStore.data.map { prefs ->
         prefs[KEY_API_KEY]
+    }
+
+    val userEmail: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[KEY_USER_EMAIL]
     }
 
     val targetCalories: Flow<Float> = context.dataStore.data.map { prefs ->
@@ -54,11 +58,37 @@ class SettingsRepository(private val context: Context) {
         prefs[KEY_TARGET_FAT] ?: 70f
     }
 
-    suspend fun saveServerConfig(url: String, token: String?, apiKey: String?) {
+    suspend fun saveAuthToken(token: String?) {
+        context.dataStore.edit { prefs ->
+            if (token != null) prefs[KEY_AUTH_TOKEN] = token else prefs.remove(KEY_AUTH_TOKEN)
+        }
+    }
+
+    suspend fun saveAuthTokenAndEmail(token: String?, email: String?) {
+        context.dataStore.edit { prefs ->
+            if (token != null) prefs[KEY_AUTH_TOKEN] = token else prefs.remove(KEY_AUTH_TOKEN)
+            if (email != null) prefs[KEY_USER_EMAIL] = email else prefs.remove(KEY_USER_EMAIL)
+        }
+    }
+
+    suspend fun saveServerConfig(
+        url: String,
+        token: String? = null,
+        apiKey: String? = null,
+        preserveExistingTokenIfNull: Boolean = true
+    ) {
         context.dataStore.edit { prefs ->
             prefs[KEY_SERVER_URL] = url
-            if (token != null) prefs[KEY_AUTH_TOKEN] = token else prefs.remove(KEY_AUTH_TOKEN)
-            if (apiKey != null) prefs[KEY_API_KEY] = apiKey else prefs.remove(KEY_API_KEY)
+            if (token != null) {
+                prefs[KEY_AUTH_TOKEN] = token
+            } else if (!preserveExistingTokenIfNull) {
+                prefs.remove(KEY_AUTH_TOKEN)
+            }
+            if (!apiKey.isNullOrBlank()) {
+                prefs[KEY_API_KEY] = apiKey
+            } else {
+                prefs.remove(KEY_API_KEY)
+            }
         }
     }
 

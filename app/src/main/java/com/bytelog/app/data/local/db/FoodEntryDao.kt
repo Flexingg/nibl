@@ -36,4 +36,10 @@ interface FoodEntryDao {
 
     @Query("DELETE FROM food_entries WHERE entryDate = :date")
     suspend fun deleteEntriesForDate(date: String)
+
+    @Query("DELETE FROM food_entries WHERE entryDate = :date AND syncStatus = 'synced'")
+    suspend fun deleteSyncedEntriesForDate(date: String)
+
+    @Query("DELETE FROM food_entries")
+    suspend fun clearAllEntries()
 }

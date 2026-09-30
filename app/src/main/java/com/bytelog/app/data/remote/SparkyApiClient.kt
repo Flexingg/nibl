@@ -6,9 +6,7 @@ import com.bytelog.app.data.local.model.MealType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -20,10 +18,18 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import java.io.IOException
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
+data class ConnectionTestResult(
+    val isSuccess: Boolean,
+    val serverVersion: String? = null,
+    val isAuthenticated: Boolean = false,
+    val message: String
+)
+
 class SparkyApiClient(
-    private var baseUrl: String = "http://10.0.2.2:3000",
+    private var baseUrl: String = "http://10.0.2.2:3010",
     private var authToken: String? = null,
     private var apiKey: String? = null
 ) {
@@ -34,30 +40,157 @@ class SparkyApiClient(
     }
 
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .writeTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         })
         .addInterceptor { chain ->
             val original = chain.request()
             val builder = original.newBuilder()
-            authToken?.let {
-                builder.header("Authorization", "Bearer $it")
-            }
-            apiKey?.let {
-                builder.header("X-API-Key", it)
-            }
+
+            // Better Auth and Express CORS compatibility
+            builder.header("Origin", baseUrl)
             builder.header("Accept", "application/json")
+            builder.header("X-Meal-Model-Version", "2")
+
+            // Session token authentication
+            authToken?.let { token ->
+                val cleanToken = if (token.startsWith("better-auth.session_token=")) {
+                    token.substringAfter("better-auth.session_token=")
+                } else token
+
+                builder.header("Authorization", "Bearer $cleanToken")
+                builder.header("Cookie", "better-auth.session_token=$cleanToken")
+            }
+
+            // API key authentication
+            apiKey?.takeIf { it.isNotBlank() }?.let { key ->
+                builder.header("X-API-Key", key.trim())
+                if (authToken == null) {
+                    builder.header("Authorization", "Bearer ${key.trim()}")
+                }
+            }
+
             chain.proceed(builder.build())
         }
         .build()
 
     fun updateConfig(url: String, token: String?, key: String?) {
-        this.baseUrl = url.trimEnd('/')
-        this.authToken = token
-        this.apiKey = key
+        this.baseUrl = url.trim().trimEnd('/')
+        this.authToken = token?.takeIf { it.isNotBlank() }
+        this.apiKey = key?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Diagnostic connection test that validates reachability and authentication.
+     */
+    suspend fun testConnection(): ConnectionTestResult = withContext(Dispatchers.IO) {
+        val cleanUrl = baseUrl.trim().trimEnd('/')
+        var detectedVersion: String? = null
+
+        // Step 1: Check server reachability via version endpoints
+        try {
+            val versionReq = Request.Builder()
+                .url("$cleanUrl/api/version/current")
+                .get()
+                .build()
+
+            client.newCall(versionReq).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string().orEmpty()
+                    try {
+                        val parsed = json.parseToJsonElement(body).jsonObject
+                        detectedVersion = parsed["version"]?.jsonPrimitive?.content
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (e: Exception) {
+            // Try fallback endpoint
+            try {
+                val fallbackReq = Request.Builder()
+                    .url("$cleanUrl/api/version")
+                    .get()
+                    .build()
+                client.newCall(fallbackReq).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string().orEmpty()
+                        val parsed = json.parseToJsonElement(body).jsonObject
+                        detectedVersion = parsed["version"]?.jsonPrimitive?.content
+                    }
+                }
+            } catch (e2: Exception) {
+                return@withContext ConnectionTestResult(
+                    isSuccess = false,
+                    serverVersion = null,
+                    isAuthenticated = false,
+                    message = "Cannot reach server at $cleanUrl (${e2.message ?: e2.javaClass.simpleName}). Please check the IP, port, and network connection."
+                )
+            }
+        }
+
+        // Step 2: Validate Authentication via protected endpoint
+        val hasCredentials = !authToken.isNullOrBlank() || !apiKey.isNullOrBlank()
+        if (!hasCredentials) {
+            return@withContext ConnectionTestResult(
+                isSuccess = true,
+                serverVersion = detectedVersion,
+                isAuthenticated = false,
+                message = "Server reached (v${detectedVersion ?: "unknown"}), but no API key or session token is set."
+            )
+        }
+
+        try {
+            val authCheckReq = Request.Builder()
+                .url("$cleanUrl/api/meal-types")
+                .get()
+                .build()
+
+            client.newCall(authCheckReq).execute().use { response ->
+                when (response.code) {
+                    200 -> {
+                        ConnectionTestResult(
+                            isSuccess = true,
+                            serverVersion = detectedVersion,
+                            isAuthenticated = true,
+                            message = "Connected to Sparky Fitness v${detectedVersion ?: "1.x"}! Authentication verified."
+                        )
+                    }
+                    401 -> {
+                        ConnectionTestResult(
+                            isSuccess = false,
+                            serverVersion = detectedVersion,
+                            isAuthenticated = false,
+                            message = "Server reached, but authentication failed (HTTP 401). Please verify your API Key or sign in with your email & password."
+                        )
+                    }
+                    403 -> {
+                        ConnectionTestResult(
+                            isSuccess = false,
+                            serverVersion = detectedVersion,
+                            isAuthenticated = false,
+                            message = "Server reached, but access was forbidden (HTTP 403)."
+                        )
+                    }
+                    else -> {
+                        ConnectionTestResult(
+                            isSuccess = false,
+                            serverVersion = detectedVersion,
+                            isAuthenticated = false,
+                            message = "Server returned unexpected HTTP ${response.code}."
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            ConnectionTestResult(
+                isSuccess = false,
+                serverVersion = detectedVersion,
+                isAuthenticated = false,
+                message = "Auth check failed: ${e.message ?: "Connection error"}"
+            )
+        }
     }
 
     /**
@@ -65,23 +198,40 @@ class SparkyApiClient(
      */
     suspend fun signInEmail(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val payload = """{"email":"$email","password":"$password"}"""
+            val payload = """{"email":"${email.trim()}","password":"$password"}"""
             val body = payload.toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url("$baseUrl/api/auth/sign-in/email")
+                .header("Origin", baseUrl)
                 .post(body)
                 .build()
 
             client.newCall(request).execute().use { response ->
+                val respBody = response.body?.string().orEmpty()
                 if (response.isSuccessful) {
-                    val respBody = response.body?.string().orEmpty()
-                    // Extract token or session cookie
-                    val setCookie = response.header("set-cookie")
-                    val token = setCookie?.split(";")?.firstOrNull() ?: "session_active"
-                    authToken = token
-                    Result.success(token)
+                    var token: String? = null
+                    try {
+                        val parsed = json.parseToJsonElement(respBody).jsonObject
+                        token = parsed["token"]?.jsonPrimitive?.content
+                    } catch (_: Exception) {}
+
+                    if (token.isNullOrBlank()) {
+                        val cookieHeader = response.header("set-cookie").orEmpty()
+                        val match = Regex("""better-auth\.session_token=([^;]+)""").find(cookieHeader)
+                        token = match?.groupValues?.get(1)
+                    }
+
+                    val finalToken = token ?: "session_active"
+                    authToken = finalToken
+                    Result.success(finalToken)
                 } else {
-                    Result.failure(IOException("Sign-in failed with HTTP ${response.code}"))
+                    var errorMsg = "Sign-in failed (HTTP ${response.code})"
+                    try {
+                        val parsed = json.parseToJsonElement(respBody).jsonObject
+                        val msg = parsed["message"]?.jsonPrimitive?.content ?: parsed["error"]?.jsonPrimitive?.content
+                        if (!msg.isNullOrBlank()) errorMsg = msg
+                    } catch (_: Exception) {}
+                    Result.failure(IOException(errorMsg))
                 }
             }
         } catch (e: Exception) {
@@ -126,21 +276,28 @@ class SparkyApiClient(
      */
     suspend fun searchFoods(query: String): Result<List<FoodItem>> = withContext(Dispatchers.IO) {
         try {
-            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+            val encodedQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
             val request = Request.Builder()
-                .url("$baseUrl/api/foods/foods-paginated?searchTerm=$encodedQuery&currentPage=1&itemsPerPage=25")
+                .url("$baseUrl/api/foods/foods-paginated?searchTerm=$encodedQuery&currentPage=1&itemsPerPage=30")
                 .get()
                 .build()
 
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val content = response.body?.string().orEmpty()
-                    val root = json.parseToJsonElement(content).jsonObject
-                    val foodsArray = root["foods"]?.jsonArray ?: json.parseToJsonElement(content).jsonArray
+                    val root = json.parseToJsonElement(content)
+                    val foodsArray = if (root is kotlinx.serialization.json.JsonObject) {
+                        root["foods"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+                    } else if (root is kotlinx.serialization.json.JsonArray) {
+                        root
+                    } else {
+                        kotlinx.serialization.json.JsonArray(emptyList())
+                    }
+
                     val items = foodsArray.map { el ->
                         val obj = el.jsonObject
                         FoodItem(
-                            id = obj["id"]?.jsonPrimitive?.content ?: java.util.UUID.randomUUID().toString(),
+                            id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
                             name = obj["name"]?.jsonPrimitive?.content ?: "Unknown Food",
                             brand = obj["brand"]?.jsonPrimitive?.content,
                             barcode = obj["barcode"]?.jsonPrimitive?.content,
@@ -179,7 +336,7 @@ class SparkyApiClient(
                     val content = response.body?.string().orEmpty()
                     val obj = json.parseToJsonElement(content).jsonObject
                     val item = FoodItem(
-                        id = obj["id"]?.jsonPrimitive?.content ?: java.util.UUID.randomUUID().toString(),
+                        id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
                         name = obj["name"]?.jsonPrimitive?.content ?: "Scanned Product",
                         brand = obj["brand"]?.jsonPrimitive?.content,
                         barcode = barcode,
@@ -204,12 +361,13 @@ class SparkyApiClient(
     }
 
     /**
-     * Fetch diary entries for date (YYYY-MM-DD).
+     * Fetch diary entries for date (YYYY-MM-DD) from /api/food-entries/by-date/:date.
      */
     suspend fun fetchEntriesForDate(date: String): Result<List<FoodEntry>> = withContext(Dispatchers.IO) {
         try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
             val request = Request.Builder()
-                .url("$baseUrl/api/foods/food-entries/$date")
+                .url("$baseUrl/api/food-entries/by-date/$cleanDate")
                 .get()
                 .build()
 
@@ -219,12 +377,15 @@ class SparkyApiClient(
                     val array = json.parseToJsonElement(content).jsonArray
                     val entries = array.map { el ->
                         val obj = el.jsonObject
+                        val rawEntryDate = obj["entry_date"]?.jsonPrimitive?.content ?: cleanDate
+                        val normalizedDate = if (rawEntryDate.contains("T")) rawEntryDate.substringBefore("T") else rawEntryDate
+
                         FoodEntry(
-                            id = obj["id"]?.jsonPrimitive?.content ?: java.util.UUID.randomUUID().toString(),
+                            id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
                             foodId = obj["food_id"]?.jsonPrimitive?.content,
                             foodName = obj["food_name"]?.jsonPrimitive?.content ?: "Food Item",
                             brandName = obj["brand_name"]?.jsonPrimitive?.content,
-                            mealTypeId = obj["meal_type_id"]?.jsonPrimitive?.content ?: "snacks",
+                            mealTypeId = obj["meal_type_id"]?.jsonPrimitive?.content ?: "breakfast",
                             mealName = obj["meal_type"]?.jsonPrimitive?.content ?: "Meal",
                             quantity = obj["quantity"]?.jsonPrimitive?.floatOrNull ?: 1f,
                             unit = obj["unit"]?.jsonPrimitive?.content ?: "g",
@@ -232,7 +393,7 @@ class SparkyApiClient(
                             protein = obj["protein"]?.jsonPrimitive?.floatOrNull ?: 0f,
                             carbs = obj["carbs"]?.jsonPrimitive?.floatOrNull ?: 0f,
                             fat = obj["fat"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                            entryDate = date,
+                            entryDate = normalizedDate,
                             entryTime = obj["entry_time"]?.jsonPrimitive?.content,
                             syncStatus = FoodEntry.SYNC_STATUS_SYNCED
                         )

@@ -159,6 +159,7 @@ fun ByteLogNavHost(
         composable("settings") {
             SettingsScreen(
                 settingsRepository = settingsRepo,
+                foodRepository = foodRepo,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

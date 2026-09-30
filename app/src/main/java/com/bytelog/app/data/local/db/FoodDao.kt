@@ -58,4 +58,16 @@ interface FoodDao {
 
     @Query("SELECT COUNT(*) FROM foods")
     suspend fun getCount(): Int
+
+    @Query("DELETE FROM foods")
+    suspend fun clearAllFoods()
+
+    @Query("""
+        DELETE FROM foods WHERE name IN (
+            'Rolled Oats', 'Greek Yogurt 0%', 'Whole Eggs (Large)', 'Blueberries (Fresh)',
+            'Chicken Breast (Cooked, Boneless)', 'Jasmine White Rice (Cooked)', 'Atlantic Salmon (Baked)',
+            'Extra Virgin Olive Oil', 'Whey Protein Isolate', 'Banana (Medium)', 'Peanut Butter (Creamy)'
+        ) OR barcode IN ('030000010105', '689544082006', '748927028669', '040112', '051500255162')
+    """)
+    suspend fun deleteDemoFoods()
 }

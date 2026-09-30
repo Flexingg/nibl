@@ -148,15 +148,60 @@ class FoodRepository(
     }
 
     /**
-     * Sync daily entries from Sparky Fitness Server.
+     * Fully sync daily entries with Sparky Fitness Server:
+     * 1. Push any local pending un-synced entries.
+     * 2. Pull latest entries from Sparky for this date and reconcile local DB.
+     * 3. Sync meal types.
      */
-    suspend fun syncDateWithServer(date: String) = withContext(Dispatchers.IO) {
-        val result = sparkyApiClient.fetchEntriesForDate(date)
-        if (result.isSuccess) {
-            val serverEntries = result.getOrNull().orEmpty()
+    suspend fun syncDateWithServer(date: String): Result<Int> = withContext(Dispatchers.IO) {
+        val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+
+        // 1. Push local pending entries
+        try {
+            val pendingEntries = foodEntryDao.getPendingSyncEntries().filter { it.entryDate == cleanDate }
+            pendingEntries.forEach { entry ->
+                val pushResult = sparkyApiClient.createFoodEntry(entry)
+                if (pushResult.isSuccess) {
+                    foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. Fetch server entries for date
+        val fetchResult = sparkyApiClient.fetchEntriesForDate(cleanDate)
+        if (fetchResult.isSuccess) {
+            val serverEntries = fetchResult.getOrNull().orEmpty()
+            
+            // Reconcile: delete previously synced entries for this date and insert fresh server entries
+            foodEntryDao.deleteSyncedEntriesForDate(cleanDate)
             if (serverEntries.isNotEmpty()) {
                 foodEntryDao.insertEntries(serverEntries)
             }
+
+            // 3. Update meal types
+            val mealTypesRes = sparkyApiClient.fetchMealTypes()
+            if (mealTypesRes.isSuccess) {
+                val types = mealTypesRes.getOrNull().orEmpty()
+                if (types.isNotEmpty()) {
+                    mealTypeDao.insertMealTypes(types)
+                }
+            }
+
+            Result.success(serverEntries.size)
+        } else {
+            Result.failure(fetchResult.exceptionOrNull() ?: Exception("Failed to sync entries with server"))
         }
+    }
+
+    suspend fun clearLocalFoodCache() = withContext(Dispatchers.IO) {
+        foodDao.clearAllFoods()
+    }
+
+    suspend fun testConnection(): com.bytelog.app.data.remote.ConnectionTestResult {
+        return sparkyApiClient.testConnection()
+    }
+
+    suspend fun loginWithEmail(email: String, password: String): Result<String> {
+        return sparkyApiClient.signInEmail(email, password)
     }
 }
