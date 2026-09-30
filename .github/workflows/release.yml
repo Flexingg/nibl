@@ -59,15 +59,8 @@ jobs:
           mkdir -p dist
           TAG="${{ steps.version.outputs.tag }}"
           cp app/build/outputs/apk/release/app-release.apk "dist/ByteLog-${TAG}.apk"
-          cp app/build/outputs/apk/release/app-release.apk "dist/ByteLog-release.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/ByteLog-debug.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/ByteLog-${TAG}-debug.apk"
           ls -lh dist
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ByteLog-APKs-${{ steps.version.outputs.tag }}
-          path: dist/*.apk
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
@@ -82,10 +75,22 @@ jobs:
             
             *Speed is the feature.*
             
-            Built deterministically with consistent release signing for seamless in-place updates.
+            - Purged all demo foods and starter catalog.
+            - Sparky Fitness sync engine fixes (correct date formatting, /api/food-entries/by-date/ endpoint, reactive settings).
+            - Diagnostic Test Connection button with server reachability and version verification.
+            - Manual sync button in Top App Bar and Settings.
+            - Built deterministically with consistent release signing for seamless in-place updates.
             
             ### 📱 Downloadable APK:
             Download **`ByteLog-${{ steps.version.outputs.tag }}.apk`** below to install or update directly without uninstalling.
           files: dist/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Build Artifacts (CI Run)
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: ByteLog-APKs-${{ steps.version.outputs.tag }}
+          path: dist/*.apk
+          retention-days: 7
