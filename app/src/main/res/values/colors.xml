@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand Palette based on ByteLog Design Spec -->
+    <color name="brand_primary">#F2542D</color>
+    <color name="brand_primary_dark">#D8421C</color>
+    <color name="brand_primary_light">#FF7E5B</color>
+    <color name="brand_cream">#FFF4E6</color>
+    <color name="brand_cream_translucent">#B3FFF4E6</color>
+    <color name="brand_background_dark">#1A1512</color>
+    <color name="brand_surface_dark">#221C18</color>
+    <color name="brand_surface_variant_dark">#2C2420</color>
+
+    <!-- Material Design Theme fallbacks -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

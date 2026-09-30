@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">ByteLog</string>
+    <string name="tagline">Speed is the feature</string>
+    <string name="search_foods_hint">Search foods, brands, or barcode…</string>
+    <string name="log_meal">Log Meal</string>
+    <string name="quick_add">Quick Add</string>
+    <string name="barcode_scan">Scan Barcode</string>
+</resources>

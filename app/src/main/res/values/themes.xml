@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme using Material3 -->
+    <style name="Theme.ByteLog" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/brand_primary</item>
+        <item name="android:navigationBarColor">@color/brand_background_dark</item>
+    </style>
+
+    <!-- Android 12+ SplashScreen API theme matching ByteLog design -->
+    <style name="Theme.ByteLog.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/brand_primary</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.ByteLog</item>
+    </style>
+</resources>
