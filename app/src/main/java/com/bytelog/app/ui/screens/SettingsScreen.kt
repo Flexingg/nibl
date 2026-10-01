@@ -92,7 +92,7 @@ fun SettingsScreen(
     val pPref by settingsRepository.targetProtein.collectAsState(initial = 160f)
     val cPref by settingsRepository.targetCarbs.collectAsState(initial = 220f)
     val fPref by settingsRepository.targetFat.collectAsState(initial = 70f)
-    val wPref by settingsRepository.targetWater.collectAsState(initial = 2000f)
+    val wPref by settingsRepository.targetWaterOz.collectAsState(initial = 64f)
 
     var serverUrl by remember { mutableStateOf(serverUrlPref) }
     var apiKey by remember { mutableStateOf(apiKeyPref ?: authTokenPref ?: "") }
@@ -604,7 +604,7 @@ fun SettingsScreen(
                 OutlinedTextField(
                     value = targetWater,
                     onValueChange = { targetWater = it },
-                    label = { Text("Target Water (ml)", color = MacroProtein) },
+                    label = { Text("Target Water (oz)", color = MacroProtein) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -631,7 +631,7 @@ fun SettingsScreen(
                             protein = targetProtein.toFloatOrNull() ?: 160f,
                             carbs = targetCarbs.toFloatOrNull() ?: 220f,
                             fat = targetFat.toFloatOrNull() ?: 70f,
-                            waterGoal = targetWater.toFloatOrNull() ?: 2000f
+                            waterGoalOz = targetWater.toFloatOrNull() ?: 64f
                         )
                         snackbarHostState.showSnackbar("Configuration saved successfully!")
                     }

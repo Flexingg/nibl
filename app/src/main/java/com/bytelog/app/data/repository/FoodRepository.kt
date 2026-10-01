@@ -268,12 +268,13 @@ class FoodRepository(
                 if (goalsRes.isSuccess) {
                     val goals = goalsRes.getOrNull()
                     if (goals != null && goals.calories > 0f) {
+                        val waterGoalOz = kotlin.math.round(goals.waterGoalMl / 29.5735f)
                         settingsRepository.saveMacroTargets(
                             calories = goals.calories,
                             protein = goals.protein,
                             carbs = goals.carbs,
                             fat = goals.fat,
-                            waterGoal = goals.waterGoalMl
+                            waterGoalOz = waterGoalOz
                         )
                     }
                 }

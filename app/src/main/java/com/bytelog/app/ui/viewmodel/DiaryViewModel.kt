@@ -75,8 +75,8 @@ class DiaryViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DailySummary(date = _selectedDate.value))
 
-    val waterTotalForDate: StateFlow<Float> = _selectedDate
-        .flatMapLatest { date -> waterRepository.getTotalWaterForDate(date) }
+    val waterTotalOz: StateFlow<Float> = _selectedDate
+        .flatMapLatest { date -> waterRepository.getTotalWaterOzForDate(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
 
     val waterLogsForDate: StateFlow<List<WaterLogEntry>> = _selectedDate
@@ -85,8 +85,14 @@ class DiaryViewModel(
 
     val waterContainers: StateFlow<List<WaterContainer>> = waterRepository.containers
 
-    val targetWater: StateFlow<Float> = settingsRepository.targetWater
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2000f)
+    val targetWaterOz: StateFlow<Float> = waterRepository.targetWaterOz
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 64f)
+
+    val defaultContainerOz: StateFlow<Float> = waterRepository.defaultContainerOz
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 8f)
+
+    val defaultContainerName: StateFlow<String> = waterRepository.defaultContainerName
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Glass")
 
     init {
         syncSelectedDate()
@@ -127,19 +133,33 @@ class DiaryViewModel(
         }
     }
 
-    // --- Hydration Actions ---
+    // --- Hydration Actions (Always in oz) ---
 
-    fun quickAddWater(
-        amountMl: Float,
+    fun quickAddWaterOz(
+        amountOz: Float,
         containerId: Int? = null,
         containerName: String? = null
     ) {
-        waterRepository.quickAddWater(
+        waterRepository.quickAddWaterOz(
             date = _selectedDate.value,
-            amountMl = amountMl,
+            amountOz = amountOz,
             containerId = containerId,
             containerName = containerName
         )
+    }
+
+    fun logDefaultDrink() {
+        quickAddWaterOz(
+            amountOz = defaultContainerOz.value,
+            containerId = null,
+            containerName = defaultContainerName.value
+        )
+    }
+
+    fun setDefaultContainer(oz: Float, name: String) {
+        viewModelScope.launch {
+            waterRepository.setDefaultContainer(oz, name)
+        }
     }
 
     fun undoLastDrink() {

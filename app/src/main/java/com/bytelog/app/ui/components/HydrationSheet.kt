@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.WaterDrop
@@ -27,6 +29,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.local.model.WaterLogEntry
 import com.bytelog.app.data.remote.WaterContainer
+import com.bytelog.app.data.repository.ML_PER_FL_OZ
+import com.bytelog.app.data.repository.waterOz
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteSurfaceDark
@@ -60,16 +65,21 @@ private val HydrationCyanSubtle = Color(0x2638BDF8)
 fun HydrationSheet(
     todayLogs: List<WaterLogEntry>,
     containers: List<WaterContainer>,
-    currentTotalMl: Float,
-    targetMl: Float,
-    onLogWater: (amountMl: Float, containerId: Int?, containerName: String?) -> Unit,
+    currentTotalOz: Float,
+    targetOz: Float,
+    defaultContainerOz: Float,
+    defaultContainerName: String,
+    onLogWaterOz: (amountOz: Float, containerId: Int?, containerName: String?) -> Unit,
+    onSetDefaultContainer: (oz: Float, name: String) -> Unit,
     onDeleteLog: (WaterLogEntry) -> Unit,
     onDismiss: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
-    var customAmountText by remember { mutableStateOf("250") }
+    var customAmountText by remember { mutableStateOf(defaultContainerOz.roundToInt().toString()) }
+    var selectedContainerName by remember { mutableStateOf(defaultContainerName) }
+    var selectedContainerId by remember { mutableStateOf<Int?>(null) }
 
-    val amount = customAmountText.toFloatOrNull() ?: 0f
+    val amountOz = customAmountText.toFloatOrNull() ?: 0f
 
     Column(
         modifier = Modifier
@@ -113,7 +123,7 @@ fun HydrationSheet(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${currentTotalMl.roundToInt()} ml consumed of ${targetMl.roundToInt()} ml goal",
+                        text = "${currentTotalOz.roundToInt()} oz consumed of ${targetOz.roundToInt()} oz goal",
                         color = ByteCreamMuted,
                         fontSize = 12.sp
                     )
@@ -141,18 +151,32 @@ fun HydrationSheet(
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(containers) { container ->
+                        val containerOz = if (container.unit.equals("oz", ignoreCase = true)) {
+                            container.volume
+                        } else {
+                            container.volume / ML_PER_FL_OZ
+                        }
+                        val isCurrentDefault = defaultContainerName.equals(container.name, ignoreCase = true)
+
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(ByteSurfaceVariantDark)
+                                .border(
+                                    width = if (isCurrentDefault) 1.dp else 0.dp,
+                                    color = if (isCurrentDefault) HydrationCyan else Color.Transparent,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    customAmountText = container.volume.toInt().toString()
+                                    customAmountText = containerOz.roundToInt().toString()
+                                    selectedContainerName = container.name
+                                    selectedContainerId = container.id
                                 }
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                text = "${container.name} (${container.volume.toInt()} ml)",
+                                text = "${container.name} (${containerOz.roundToInt()} oz)",
                                 color = ByteCream,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -163,7 +187,7 @@ fun HydrationSheet(
             }
         }
 
-        // Custom Amount Display with Quick Increment Pills
+        // Custom Amount Display with Quick Increment Pills in oz
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -185,19 +209,19 @@ fun HydrationSheet(
                 )
 
                 Text(
-                    text = "ml",
+                    text = "fl oz",
                     color = HydrationCyan,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            // Quick Amount Presets
+            // Quick Amount Presets in oz: +4, +8, +12, +16, +24, +32
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf(100f, 250f, 500f, 750f, 1000f).forEach { preset ->
+                listOf(4f, 8f, 12f, 16f, 24f, 32f).forEach { preset ->
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -206,6 +230,8 @@ fun HydrationSheet(
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 customAmountText = preset.toInt().toString()
+                                selectedContainerId = null
+                                selectedContainerName = "${preset.toInt()} oz"
                             }
                             .padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center
@@ -224,51 +250,81 @@ fun HydrationSheet(
         // Custom In-App Numpad
         CustomNumpad(
             currentValue = customAmountText,
-            onValueChange = { customAmountText = it },
+            onValueChange = {
+                customAmountText = it
+                selectedContainerId = null
+                selectedContainerName = "$it oz"
+            },
             onQuickAddGrams = { add ->
                 val q = (customAmountText.toFloatOrNull() ?: 0f) + add
                 customAmountText = q.roundToInt().toString()
             },
             onMultiply = { factor ->
-                val base = customAmountText.toFloatOrNull() ?: 250f
+                val base = customAmountText.toFloatOrNull() ?: 8f
                 val q = base * factor
                 customAmountText = q.roundToInt().toString()
             }
         )
 
-        // Log Water Action Button
-        Button(
-            onClick = {
-                if (amount > 0f) {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    val matched = containers.find { it.volume == amount }
-                    onLogWater(amount, matched?.id, matched?.name)
-                    customAmountText = "250"
-                }
-            },
-            enabled = amount > 0f,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = HydrationCyan,
-                contentColor = ByteSurfaceDark,
-                disabledContainerColor = HydrationCyan.copy(alpha = 0.3f),
-                disabledContentColor = ByteCreamMuted
-            ),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
+        // Action Buttons Row: Set as Default Container & Log Water
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.WaterDrop,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Log ${amount.roundToInt()} ml",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
+            // Set Default Container Button
+            OutlinedButton(
+                onClick = {
+                    if (amountOz > 0f) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val name = if (selectedContainerName.isNotBlank()) selectedContainerName else "${amountOz.roundToInt()} oz Glass"
+                        onSetDefaultContainer(amountOz, name)
+                    }
+                },
+                enabled = amountOz > 0f,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = HydrationCyan),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "Set Default", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            // Primary Log Water Button
+            Button(
+                onClick = {
+                    if (amountOz > 0f) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLogWaterOz(amountOz, selectedContainerId, selectedContainerName)
+                        customAmountText = defaultContainerOz.roundToInt().toString()
+                    }
+                },
+                enabled = amountOz > 0f,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = HydrationCyan,
+                    contentColor = ByteSurfaceDark,
+                    disabledContainerColor = HydrationCyan.copy(alpha = 0.3f),
+                    disabledContentColor = ByteCreamMuted
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .weight(1.5f)
+                    .height(50.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.WaterDrop,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Log ${amountOz.roundToInt()} oz",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
         }
 
         HorizontalDivider(color = ByteSurfaceVariantDark)
@@ -300,6 +356,7 @@ fun HydrationSheet(
                 }
             } else {
                 todayLogs.forEach { log ->
+                    val drinkOz = log.waterOz()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -330,13 +387,13 @@ fun HydrationSheet(
 
                             Column {
                                 Text(
-                                    text = "${log.waterMl.roundToInt()} ml",
+                                    text = "${drinkOz.roundToInt()} oz",
                                     color = ByteCream,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 val timeLabel = formatTimestamp(log.loggedAt)
-                                val containerLabel = log.containerName ?: "Standard Drink"
+                                val containerLabel = log.containerName ?: "Drink"
                                 Text(
                                     text = if (timeLabel.isNotEmpty()) "$containerLabel • $timeLabel" else containerLabel,
                                     color = ByteCreamMuted,

@@ -10,10 +10,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.util.UUID
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+const val ML_PER_FL_OZ = 29.5735f
+
+fun Float.toOz(): Float = this / ML_PER_FL_OZ
+fun Float.toMl(): Float = this * ML_PER_FL_OZ
+fun WaterLogEntry.waterOz(): Float = this.waterMl / ML_PER_FL_OZ
 
 class WaterRepository(
     private val waterLogDao: WaterLogDao,
@@ -24,41 +33,54 @@ class WaterRepository(
     private val _containers = MutableStateFlow<List<WaterContainer>>(emptyList())
     val containers: StateFlow<List<WaterContainer>> = _containers.asStateFlow()
 
-    val targetWater: Flow<Float> = settingsRepository.targetWater
+    val targetWaterOz: Flow<Float> = settingsRepository.targetWaterOz
+    val defaultContainerOz: Flow<Float> = settingsRepository.defaultContainerOz
+    val defaultContainerName: Flow<String> = settingsRepository.defaultContainerName
 
     fun getLogsForDate(date: String): Flow<List<WaterLogEntry>> {
         val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
         return waterLogDao.getLogsForDate(cleanDate)
     }
 
-    fun getTotalWaterForDate(date: String): Flow<Float> {
+    fun getTotalWaterOzForDate(date: String): Flow<Float> {
         val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
-        return waterLogDao.getTotalWaterForDate(cleanDate)
+        return waterLogDao.getTotalWaterForDate(cleanDate).map { ml -> ml / ML_PER_FL_OZ }
+    }
+
+    suspend fun setDefaultContainer(oz: Float, name: String) {
+        settingsRepository.saveDefaultContainer(oz, name)
+    }
+
+    suspend fun setTargetWaterOz(targetOz: Float) {
+        settingsRepository.saveWaterTargetOz(targetOz)
     }
 
     /**
-     * Instantly log water intake locally (0ms optimistic latency)
+     * Instantly log water intake in oz locally (0ms optimistic latency)
      * and asynchronously sync with Sparky Fitness Server.
      */
-    fun quickAddWater(
+    fun quickAddWaterOz(
         date: String,
-        amountMl: Float,
+        amountOz: Float,
         containerId: Int? = null,
         containerName: String? = null
     ) {
         val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+        val amountMl = amountOz * ML_PER_FL_OZ
         val nowIso = try {
             Instant.now().toString()
         } catch (_: Exception) {
             null
         }
 
+        val displayName = containerName ?: "${amountOz.roundToInt()} oz"
+
         val entry = WaterLogEntry(
             id = UUID.randomUUID().toString(),
             entryDate = cleanDate,
             waterMl = amountMl,
             containerId = containerId,
-            containerName = containerName ?: "${amountMl.toInt()} ml",
+            containerName = displayName,
             loggedAt = nowIso,
             syncStatus = WaterLogEntry.SYNC_STATUS_PENDING_INSERT
         )
@@ -71,43 +93,38 @@ class WaterRepository(
                 if (containerId != null) {
                     sparkyApiClient.upsertWaterIntake(cleanDate, 1, containerId)
                 } else {
-                    // Check standard 250ml increments
-                    when (amountMl) {
-                        250f -> sparkyApiClient.upsertWaterIntake(cleanDate, 1, null)
-                        500f -> sparkyApiClient.upsertWaterIntake(cleanDate, 2, null)
-                        750f -> sparkyApiClient.upsertWaterIntake(cleanDate, 3, null)
-                        1000f -> sparkyApiClient.upsertWaterIntake(cleanDate, 4, null)
-                        else -> {
-                            // Check if matching container already exists
-                            val existingContainer = _containers.value.find { it.volume == amountMl }
-                            if (existingContainer != null) {
-                                sparkyApiClient.upsertWaterIntake(cleanDate, 1, existingContainer.id)
+                    // Check if matching container already exists on Sparky
+                    val existingContainer = _containers.value.find { container ->
+                        abs(container.volume - amountMl) < 5f ||
+                        (container.unit.equals("oz", ignoreCase = true) && abs(container.volume - amountOz) < 0.2f)
+                    }
+
+                    if (existingContainer != null) {
+                        sparkyApiClient.upsertWaterIntake(cleanDate, 1, existingContainer.id)
+                    } else {
+                        // Create custom container in Sparky with unit "oz"
+                        val createRes = sparkyApiClient.createWaterContainer(
+                            name = displayName,
+                            volume = amountOz,
+                            unit = "oz"
+                        )
+                        if (createRes.isSuccess) {
+                            val newContainer = createRes.getOrNull()
+                            if (newContainer != null) {
+                                _containers.value = _containers.value + newContainer
+                                sparkyApiClient.upsertWaterIntake(cleanDate, 1, newContainer.id)
                             } else {
-                                // Create custom container in Sparky so exact amount is tracked
-                                val createRes = sparkyApiClient.createWaterContainer(
-                                    name = "${amountMl.toInt()} ml",
-                                    volume = amountMl,
-                                    unit = "ml"
-                                )
-                                if (createRes.isSuccess) {
-                                    val newContainer = createRes.getOrNull()
-                                    if (newContainer != null) {
-                                        _containers.value = _containers.value + newContainer
-                                        sparkyApiClient.upsertWaterIntake(cleanDate, 1, newContainer.id)
-                                    } else {
-                                        val changeDrinks = (amountMl / 250f).coerceAtLeast(1f).toInt()
-                                        sparkyApiClient.upsertWaterIntake(cleanDate, changeDrinks, null)
-                                    }
-                                } else {
-                                    val changeDrinks = (amountMl / 250f).coerceAtLeast(1f).toInt()
-                                    sparkyApiClient.upsertWaterIntake(cleanDate, changeDrinks, null)
-                                }
+                                val changeDrinks = (amountMl / 250f).coerceAtLeast(1f).roundToInt()
+                                sparkyApiClient.upsertWaterIntake(cleanDate, changeDrinks, null)
                             }
+                        } else {
+                            val changeDrinks = (amountMl / 250f).coerceAtLeast(1f).roundToInt()
+                            sparkyApiClient.upsertWaterIntake(cleanDate, changeDrinks, null)
                         }
                     }
                 }
 
-                // Reconcile itemized logs with Sparky to replace local UUID with server UUID
+                // Reconcile itemized logs with Sparky
                 syncWaterLogs(cleanDate)
             } catch (_: Exception) {}
         }
@@ -158,7 +175,15 @@ class WaterRepository(
         try {
             val containersRes = sparkyApiClient.fetchWaterContainers()
             if (containersRes.isSuccess) {
-                _containers.value = containersRes.getOrNull().orEmpty()
+                val list = containersRes.getOrNull().orEmpty()
+                _containers.value = list
+
+                // If primary container exists, adopt its name and volume if user hasn't set custom
+                val primary = list.find { it.isPrimary }
+                if (primary != null) {
+                    val oz = if (primary.unit.equals("oz", ignoreCase = true)) primary.volume else primary.volume / ML_PER_FL_OZ
+                    settingsRepository.saveDefaultContainer(oz, primary.name)
+                }
             }
         } catch (_: Exception) {}
 
@@ -169,7 +194,7 @@ class WaterRepository(
         val intakeRes = sparkyApiClient.fetchWaterIntake(cleanDate)
         if (intakeRes.isSuccess) {
             val totalMl = intakeRes.getOrNull() ?: 0f
-            Result.success(totalMl)
+            Result.success(totalMl / ML_PER_FL_OZ)
         } else {
             Result.failure(intakeRes.exceptionOrNull() ?: Exception("Failed to sync water intake"))
         }
@@ -181,12 +206,14 @@ class WaterRepository(
             if (logsRes.isSuccess) {
                 val serverDtos = logsRes.getOrNull().orEmpty()
                 val serverEntries = serverDtos.map { dto ->
+                    val oz = dto.waterMl / ML_PER_FL_OZ
+                    val name = dto.containerName ?: "${oz.roundToInt()} oz"
                     WaterLogEntry(
                         id = dto.id,
                         entryDate = dto.entryDate,
                         waterMl = dto.waterMl,
                         containerId = dto.containerId,
-                        containerName = dto.containerName ?: "${dto.waterMl.toInt()} ml",
+                        containerName = name,
                         loggedAt = dto.createdAt,
                         syncStatus = WaterLogEntry.SYNC_STATUS_SYNCED
                     )

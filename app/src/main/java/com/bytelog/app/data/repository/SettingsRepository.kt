@@ -24,7 +24,9 @@ class SettingsRepository(private val context: Context) {
         val KEY_TARGET_PROTEIN = floatPreferencesKey("target_protein")
         val KEY_TARGET_CARBS = floatPreferencesKey("target_carbs")
         val KEY_TARGET_FAT = floatPreferencesKey("target_fat")
-        val KEY_TARGET_WATER = floatPreferencesKey("target_water")
+        val KEY_TARGET_WATER_OZ = floatPreferencesKey("target_water_oz")
+        val KEY_DEFAULT_CONTAINER_OZ = floatPreferencesKey("default_container_oz")
+        val KEY_DEFAULT_CONTAINER_NAME = stringPreferencesKey("default_container_name")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
@@ -59,8 +61,16 @@ class SettingsRepository(private val context: Context) {
         prefs[KEY_TARGET_FAT] ?: 70f
     }
 
-    val targetWater: Flow<Float> = context.dataStore.data.map { prefs ->
-        prefs[KEY_TARGET_WATER] ?: 2000f
+    val targetWaterOz: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[KEY_TARGET_WATER_OZ] ?: 64f
+    }
+
+    val defaultContainerOz: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DEFAULT_CONTAINER_OZ] ?: 8f
+    }
+
+    val defaultContainerName: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DEFAULT_CONTAINER_NAME] ?: "Glass"
     }
 
     suspend fun saveAuthToken(token: String?) {
@@ -97,9 +107,16 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    suspend fun saveWaterTarget(target: Float) {
+    suspend fun saveWaterTargetOz(targetOz: Float) {
         context.dataStore.edit { prefs ->
-            prefs[KEY_TARGET_WATER] = target
+            prefs[KEY_TARGET_WATER_OZ] = targetOz
+        }
+    }
+
+    suspend fun saveDefaultContainer(oz: Float, name: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_DEFAULT_CONTAINER_OZ] = oz
+            prefs[KEY_DEFAULT_CONTAINER_NAME] = name
         }
     }
 
@@ -108,15 +125,15 @@ class SettingsRepository(private val context: Context) {
         protein: Float,
         carbs: Float,
         fat: Float,
-        waterGoal: Float? = null
+        waterGoalOz: Float? = null
     ) {
         context.dataStore.edit { prefs ->
             prefs[KEY_TARGET_CALORIES] = calories
             prefs[KEY_TARGET_PROTEIN] = protein
             prefs[KEY_TARGET_CARBS] = carbs
             prefs[KEY_TARGET_FAT] = fat
-            if (waterGoal != null && waterGoal > 0f) {
-                prefs[KEY_TARGET_WATER] = waterGoal
+            if (waterGoalOz != null && waterGoalOz > 0f) {
+                prefs[KEY_TARGET_WATER_OZ] = waterGoalOz
             }
         }
     }

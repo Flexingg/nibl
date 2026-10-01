@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,7 +35,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bytelog.app.data.remote.WaterContainer
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteSurfaceDark
@@ -48,20 +46,21 @@ private val HydrationCyanSubtle = Color(0x2638BDF8)
 
 @Composable
 fun HydrationCard(
-    currentMl: Float,
-    targetMl: Float,
-    containers: List<WaterContainer> = emptyList(),
-    onQuickAdd: (amountMl: Float, containerId: Int?, containerName: String?) -> Unit,
+    currentOz: Float,
+    targetOz: Float,
+    defaultOz: Float = 8f,
+    defaultContainerName: String = "Glass",
+    onLogDefault: () -> Unit,
+    onOpenCustom: () -> Unit,
     onUndoLast: () -> Unit,
-    onOpenSheet: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
 
-    val progress = if (targetMl > 0f) (currentMl / targetMl).coerceIn(0f, 1f) else 0f
+    val progress = if (targetOz > 0f) (currentOz / targetOz).coerceIn(0f, 1f) else 0f
     val animatedProgress by animateFloatAsState(
         targetValue = progress,
-        label = "water_progress"
+        label = "water_progress_oz"
     )
     val percentage = (progress * 100).roundToInt()
 
@@ -72,7 +71,7 @@ fun HydrationCard(
             .background(ByteSurfaceDark)
             .clickable {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onOpenSheet()
+                onOpenCustom()
             }
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -111,7 +110,7 @@ fun HydrationCard(
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "${currentMl.roundToInt()} / ${targetMl.roundToInt()} ml",
+                        text = "${currentOz.roundToInt()} / ${targetOz.roundToInt()} oz",
                         color = ByteCream,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold
@@ -173,47 +172,91 @@ fun HydrationCard(
             )
         }
 
-        // Speed Logging Action Buttons Row
+        // Speed Logging Action Buttons: Default Container, Custom Amount, Undo
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Speed Buttons: +250ml, +500ml, +750ml
-            QuickWaterChip(
-                label = "+ 250",
-                unit = "ml",
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    val matched = containers.find { it.volume == 250f }
-                    onQuickAdd(250f, matched?.id, matched?.name ?: "250 ml")
-                },
-                modifier = Modifier.weight(1f)
-            )
+            // 1. Primary / Default Container Button (Fast 1-tap logging)
+            Box(
+                modifier = Modifier
+                    .weight(1.3f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ByteSurfaceVariantDark)
+                    .border(1.dp, HydrationCyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onLogDefault()
+                    }
+                    .padding(vertical = 8.dp, horizontal = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocalDrink,
+                        contentDescription = null,
+                        tint = HydrationCyan,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = "+ ${defaultOz.roundToInt()} oz",
+                        color = ByteCream,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = defaultContainerName,
+                        color = ByteCreamMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Normal,
+                        maxLines = 1
+                    )
+                }
+            }
 
-            QuickWaterChip(
-                label = "+ 500",
-                unit = "ml",
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    val matched = containers.find { it.volume == 500f }
-                    onQuickAdd(500f, matched?.id, matched?.name ?: "500 ml")
-                },
-                modifier = Modifier.weight(1f)
-            )
+            // 2. Custom Amount Button
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ByteSurfaceVariantDark)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onOpenCustom()
+                    }
+                    .padding(vertical = 8.dp, horizontal = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        tint = ByteCreamMuted,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "Custom",
+                        color = ByteCream,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "oz",
+                        color = HydrationCyan,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
 
-            QuickWaterChip(
-                label = "+ 750",
-                unit = "ml",
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    val matched = containers.find { it.volume == 750f }
-                    onQuickAdd(750f, matched?.id, matched?.name ?: "750 ml")
-                },
-                modifier = Modifier.weight(1f)
-            )
-
-            // Undo / Decrement Button
+            // 3. Undo / Decrement Button
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -232,42 +275,6 @@ fun HydrationCard(
                     modifier = Modifier.size(16.dp)
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun QuickWaterChip(
-    label: String,
-    unit: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(ByteSurfaceVariantDark)
-            .border(0.5.dp, HydrationCyan.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Text(
-                text = label,
-                color = ByteCream,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = unit,
-                color = HydrationCyan,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
-            )
         }
     }
 }

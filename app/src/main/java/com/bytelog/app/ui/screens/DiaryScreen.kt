@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
@@ -93,8 +94,10 @@ fun DiaryScreen(
     val mealTypes by viewModel.mealTypes.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
 
-    val waterTotal by viewModel.waterTotalForDate.collectAsState()
-    val waterGoal by viewModel.targetWater.collectAsState()
+    val waterTotalOz by viewModel.waterTotalOz.collectAsState()
+    val waterGoalOz by viewModel.targetWaterOz.collectAsState()
+    val defaultContainerOz by viewModel.defaultContainerOz.collectAsState()
+    val defaultContainerName by viewModel.defaultContainerName.collectAsState()
     val waterLogs by viewModel.waterLogsForDate.collectAsState()
     val waterContainers by viewModel.waterContainers.collectAsState()
 
@@ -155,15 +158,15 @@ fun DiaryScreen(
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     val defaultMeal = mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
-                    onNavigateToBarcode(defaultMeal.id, defaultMeal.name, selectedDate)
+                    onNavigateToSearch(defaultMeal.id, defaultMeal.name, selectedDate)
                 },
                 containerColor = ByteTomato,
                 contentColor = ByteCream,
                 shape = CircleShape
             ) {
                 Icon(
-                    imageVector = Icons.Default.QrCodeScanner,
-                    contentDescription = "Scan Barcode"
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search Foods"
                 )
             }
         }
@@ -262,19 +265,20 @@ fun DiaryScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Hydration Speed Logging Card
+            // Hydration Speed Logging Card (Always in oz)
             HydrationCard(
-                currentMl = waterTotal,
-                targetMl = waterGoal,
-                containers = waterContainers,
-                onQuickAdd = { amount, containerId, containerName ->
-                    viewModel.quickAddWater(amount, containerId, containerName)
+                currentOz = waterTotalOz,
+                targetOz = waterGoalOz,
+                defaultOz = defaultContainerOz,
+                defaultContainerName = defaultContainerName,
+                onLogDefault = {
+                    viewModel.logDefaultDrink()
+                },
+                onOpenCustom = {
+                    showHydrationSheet = true
                 },
                 onUndoLast = {
                     viewModel.undoLastDrink()
-                },
-                onOpenSheet = {
-                    showHydrationSheet = true
                 }
             )
 
@@ -459,10 +463,15 @@ fun DiaryScreen(
             HydrationSheet(
                 todayLogs = waterLogs,
                 containers = waterContainers,
-                currentTotalMl = waterTotal,
-                targetMl = waterGoal,
-                onLogWater = { amount, containerId, containerName ->
-                    viewModel.quickAddWater(amount, containerId, containerName)
+                currentTotalOz = waterTotalOz,
+                targetOz = waterGoalOz,
+                defaultContainerOz = defaultContainerOz,
+                defaultContainerName = defaultContainerName,
+                onLogWaterOz = { amount, containerId, containerName ->
+                    viewModel.quickAddWaterOz(amount, containerId, containerName)
+                },
+                onSetDefaultContainer = { oz, name ->
+                    viewModel.setDefaultContainer(oz, name)
                 },
                 onDeleteLog = { log ->
                     viewModel.deleteWaterLog(log)
