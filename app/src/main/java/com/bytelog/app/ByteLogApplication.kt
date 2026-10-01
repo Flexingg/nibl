@@ -26,6 +26,7 @@ class ByteLogApplication : Application() {
             foodEntryDao = database.foodEntryDao(),
             mealTypeDao = database.mealTypeDao(),
             sparkyApiClient = sparkyApiClient,
+            settingsRepository = settingsRepository,
             appScope = applicationScope
         )
     }

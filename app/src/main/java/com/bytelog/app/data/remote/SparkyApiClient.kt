@@ -582,4 +582,45 @@ class SparkyApiClient(
             Result.failure(e)
         }
     }
+
+    /**
+     * Fetch user's daily nutrition goals from Sparky Fitness Server for a given date.
+     */
+    suspend fun fetchGoalsForDate(date: String): Result<UserMacroGoals> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val request = Request.Builder()
+                .url("$baseUrl/api/goals/by-date/$cleanDate")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val obj = json.parseToJsonElement(content).jsonObject
+                    val calories = obj["calories"]?.jsonPrimitive?.floatOrNull
+                        ?: obj["calorie_target"]?.jsonPrimitive?.floatOrNull ?: 2000f
+                    val protein = obj["protein"]?.jsonPrimitive?.floatOrNull
+                        ?: obj["protein_grams"]?.jsonPrimitive?.floatOrNull ?: 150f
+                    val carbs = obj["carbs"]?.jsonPrimitive?.floatOrNull
+                        ?: obj["carbs_grams"]?.jsonPrimitive?.floatOrNull ?: 250f
+                    val fat = obj["fat"]?.jsonPrimitive?.floatOrNull
+                        ?: obj["fat_grams"]?.jsonPrimitive?.floatOrNull ?: 67f
+                    Result.success(UserMacroGoals(calories, protein, carbs, fat))
+                } else {
+                    Result.failure(IOException("Fetch goals failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
+@kotlinx.serialization.Serializable
+data class UserMacroGoals(
+    val calories: Float,
+    val protein: Float,
+    val carbs: Float,
+    val fat: Float
+)

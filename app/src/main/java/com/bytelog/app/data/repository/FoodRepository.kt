@@ -21,6 +21,7 @@ class FoodRepository(
     private val foodEntryDao: FoodEntryDao,
     private val mealTypeDao: MealTypeDao,
     private val sparkyApiClient: SparkyApiClient,
+    private val settingsRepository: SettingsRepository,
     private val appScope: CoroutineScope
 ) {
 
@@ -260,6 +261,22 @@ class FoodRepository(
                     mealTypeDao.insertMealTypes(types)
                 }
             }
+
+            // 4. Update daily user macro goals from Sparky
+            try {
+                val goalsRes = sparkyApiClient.fetchGoalsForDate(cleanDate)
+                if (goalsRes.isSuccess) {
+                    val goals = goalsRes.getOrNull()
+                    if (goals != null && goals.calories > 0f) {
+                        settingsRepository.saveMacroTargets(
+                            calories = goals.calories,
+                            protein = goals.protein,
+                            carbs = goals.carbs,
+                            fat = goals.fat
+                        )
+                    }
+                }
+            } catch (_: Exception) {}
 
             Result.success(serverEntries.size)
         } else {
