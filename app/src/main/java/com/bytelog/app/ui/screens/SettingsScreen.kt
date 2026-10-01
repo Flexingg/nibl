@@ -61,7 +61,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.remote.ConnectionTestResult
 import com.bytelog.app.data.repository.FoodRepository
+import com.bytelog.app.data.repository.MealTemplateRepository
 import com.bytelog.app.data.repository.SettingsRepository
+import com.bytelog.app.data.repository.WaterRepository
+import com.bytelog.app.data.repository.WeightRepository
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
@@ -81,6 +84,9 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     settingsRepository: SettingsRepository,
     foodRepository: FoodRepository,
+    waterRepository: WaterRepository? = null,
+    weightRepository: WeightRepository? = null,
+    mealTemplateRepository: MealTemplateRepository? = null,
     onNavigateBack: () -> Unit
 ) {
     val serverUrlPref by settingsRepository.serverUrl.collectAsState(initial = "http://10.0.2.2:3010")
@@ -251,9 +257,15 @@ fun SettingsScreen(
                                 isManualSyncing = true
                                 val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                                 val res = foodRepository.syncDateWithServer(today)
+                                waterRepository?.syncWaterForDate(today)
+                                weightRepository?.syncWeightForDate(today)
+                                weightRepository?.repairKgStoredAsLbs()
+                                weightRepository?.syncWeightHistory()
+                                mealTemplateRepository?.refreshTemplates()
+
                                 res.fold(
                                     onSuccess = { count ->
-                                        snackbarHostState.showSnackbar("Synced $count entries from Sparky Fitness")
+                                        snackbarHostState.showSnackbar("Manual sync complete: foods ($count), weights, water & templates updated!")
                                     },
                                     onFailure = { err ->
                                         snackbarHostState.showSnackbar("Sync failed: ${err.message ?: "Connection error"}")

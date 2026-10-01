@@ -12,6 +12,9 @@ interface MealTypeDao {
     @Query("SELECT * FROM meal_types ORDER BY sortOrder ASC")
     fun getAllMealTypes(): Flow<List<MealType>>
 
+    @Query("SELECT * FROM meal_types ORDER BY sortOrder ASC")
+    suspend fun getAllMealTypesList(): List<MealType>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMealTypes(mealTypes: List<MealType>)
 

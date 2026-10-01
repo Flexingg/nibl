@@ -129,7 +129,14 @@ fun WeightLogDialog(
                                 .background(if (isSelected) MacroCarbs else Color.Transparent)
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    selectedUnit = unit
+                                    if (!selectedUnit.equals(unit, ignoreCase = true)) {
+                                        val cur = weightText.toFloatOrNull()
+                                        if (cur != null && cur > 0f) {
+                                            val converted = if (unit.equals("lbs", ignoreCase = true)) cur * 2.20462262f else cur * 0.45359237f
+                                            weightText = String.format(Locale.US, "%.1f", converted)
+                                        }
+                                        selectedUnit = unit
+                                    }
                                 }
                                 .padding(horizontal = 20.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center

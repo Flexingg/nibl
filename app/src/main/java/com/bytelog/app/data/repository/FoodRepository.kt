@@ -320,11 +320,66 @@ class FoodRepository(
         targetDate: String,
         targetMealType: String
     ): Result<Boolean> = withContext(Dispatchers.IO) {
-        val result = sparkyApiClient.copyMeal(sourceDate, sourceMealType, targetDate, targetMealType)
+        val sDate = if (sourceDate.contains("T")) sourceDate.substringBefore("T") else sourceDate
+        val tDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
+
+        // Optimistically copy locally in Room so UI updates instantly
+        try {
+            val srcEntries = foodEntryDao.getEntriesForDateOnce(sDate)
+                .filter { it.mealName.equals(sourceMealType, ignoreCase = true) }
+            if (srcEntries.isNotEmpty()) {
+                val allTypes = mealTypeDao.getAllMealTypesList()
+                val targetTypeObj = allTypes.find { it.name.equals(targetMealType, ignoreCase = true) }
+                val targetTypeId = targetTypeObj?.id ?: targetMealType.lowercase()
+                val copied = srcEntries.map { entry ->
+                    entry.copy(
+                        id = UUID.randomUUID().toString(),
+                        entryDate = tDate,
+                        mealName = targetMealType,
+                        mealTypeId = targetTypeId,
+                        syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT,
+                        createdAt = System.currentTimeMillis()
+                    )
+                }
+                commitMultiAdd(copied)
+            }
+        } catch (_: Exception) {}
+
+        val result = sparkyApiClient.copyMeal(sDate, sourceMealType, tDate, targetMealType)
         if (result.isSuccess) {
-            syncDateWithServer(targetDate)
+            syncDateWithServer(tDate)
         }
         result
+    }
+
+    suspend fun copyMultipleMeals(
+        meals: List<Pair<String, List<FoodEntry>>>,
+        targetDate: String
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val tDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
+        val allTypes = mealTypeDao.getAllMealTypesList()
+        val allNewEntries = mutableListOf<FoodEntry>()
+        for ((targetMeal, entries) in meals) {
+            val targetTypeObj = allTypes.find { it.name.equals(targetMeal, ignoreCase = true) }
+            val targetTypeId = targetTypeObj?.id ?: targetMeal.lowercase()
+            for (entry in entries) {
+                allNewEntries.add(
+                    entry.copy(
+                        id = UUID.randomUUID().toString(),
+                        entryDate = tDate,
+                        mealName = targetMeal,
+                        mealTypeId = targetTypeId,
+                        syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT,
+                        createdAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+        if (allNewEntries.isNotEmpty()) {
+            commitMultiAdd(allNewEntries)
+        }
+        syncDateWithServer(tDate)
+        Result.success(allNewEntries.size)
     }
 
     suspend fun copyAllFromYesterday(targetDate: String): Result<Boolean> = withContext(Dispatchers.IO) {

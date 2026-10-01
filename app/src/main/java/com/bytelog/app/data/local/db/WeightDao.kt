@@ -25,8 +25,14 @@ interface WeightDao {
     @Query("SELECT * FROM weight_entries ORDER BY entryDate ASC")
     fun getAllWeights(): Flow<List<WeightEntry>>
 
+    @Query("SELECT * FROM weight_entries ORDER BY entryDate ASC")
+    suspend fun getAllWeightsList(): List<WeightEntry>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(entry: WeightEntry)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateAll(entries: List<WeightEntry>)
 
     @Query("DELETE FROM weight_entries WHERE entryDate = :date")
     suspend fun deleteByDate(date: String)

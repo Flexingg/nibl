@@ -13,6 +13,9 @@ interface FoodEntryDao {
     @Query("SELECT * FROM food_entries WHERE entryDate = :date ORDER BY createdAt ASC")
     fun getEntriesForDate(date: String): Flow<List<FoodEntry>>
 
+    @Query("SELECT * FROM food_entries WHERE entryDate = :date ORDER BY createdAt ASC")
+    suspend fun getEntriesForDateOnce(date: String): List<FoodEntry>
+
     @Query("SELECT * FROM food_entries WHERE id = :id LIMIT 1")
     suspend fun getEntryById(id: String): FoodEntry?
 

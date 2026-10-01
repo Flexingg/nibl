@@ -42,6 +42,22 @@ object AdaptiveTdeeEngine {
 
     private const val ENERGY_DENSITY_KCAL_PER_KG = 7700.0f
     private const val LBS_TO_KG = 0.45359237f
+    private const val KG_TO_LBS = 2.20462262f
+
+    fun normalizeWeights(weights: List<WeightEntry>, targetUnit: String): List<WeightEntry> {
+        val isLbs = targetUnit.equals("lbs", ignoreCase = true)
+        return weights.filter { it.weight > 0f }.map { entry ->
+            val entryUnit = entry.unit.ifBlank { targetUnit }
+            val converted = if (entryUnit.equals("kg", ignoreCase = true) && isLbs) {
+                (entry.weight * KG_TO_LBS * 10).toInt() / 10f
+            } else if (entryUnit.equals("lbs", ignoreCase = true) && !isLbs) {
+                (entry.weight * LBS_TO_KG * 10).toInt() / 10f
+            } else {
+                entry.weight
+            }
+            entry.copy(weight = converted, unit = targetUnit)
+        }
+    }
 
     /**
      * MacroFactor & Sparky-aligned Adaptive TDEE calculation.
@@ -68,9 +84,8 @@ object AdaptiveTdeeEngine {
         val caloriesByDate = allEntries.groupBy { it.entryDate }
             .mapValues { (_, entries) -> entries.sumOf { it.calories.toDouble() }.toFloat() }
 
-        // Sort weights by date
-        val sortedWeights = allWeights.filter { it.weight > 0f }
-            .sortedBy { it.entryDate }
+        // Sort normalized weights by date
+        val sortedWeights = normalizeWeights(allWeights, weightUnit).sortedBy { it.entryDate }
 
         // Collect dates in 28-day window
         val dateList = (0 until windowDays).map { startDate.plusDays(it.toLong()).format(dateFormatter) }
@@ -196,7 +211,8 @@ object AdaptiveTdeeEngine {
         allWeights: List<WeightEntry>,
         rangeDays: Int = 30,
         targetDateStr: String,
-        targetCalories: Float = 2200f
+        targetCalories: Float = 2200f,
+        weightUnit: String = "lbs"
     ): List<DayChartPoint> {
         val targetDate = try {
             LocalDate.parse(targetDateStr, dateFormatter)
@@ -208,7 +224,7 @@ object AdaptiveTdeeEngine {
         val caloriesByDate = allEntries.groupBy { it.entryDate }
             .mapValues { (_, entries) -> entries.sumOf { it.calories.toDouble() }.toFloat() }
 
-        val sortedWeights = allWeights.filter { it.weight > 0f }.sortedBy { it.entryDate }
+        val sortedWeights = normalizeWeights(allWeights, weightUnit).sortedBy { it.entryDate }
         val weightsByDate = sortedWeights.associateBy { it.entryDate }
 
         val dateList = (0 until rangeDays).map { startDate.plusDays(it.toLong()) }

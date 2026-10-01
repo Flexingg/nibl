@@ -12,11 +12,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -29,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,34 +49,32 @@ import androidx.compose.ui.window.Dialog
 import com.bytelog.app.data.local.model.MealType
 import com.bytelog.app.ui.theme.ByteCardDark
 import com.bytelog.app.ui.theme.ByteCream
+import com.bytelog.app.ui.theme.ByteCreamMuted
+import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
 import com.bytelog.app.ui.theme.MacroProtein
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CopyMealDialog(
-    currentMealName: String,
-    currentDate: String,
+    sourceMealName: String,
+    sourceDate: String,
     mealTypes: List<MealType>,
     onDismiss: () -> Unit,
-    onCopyFromYesterday: (mealType: String) -> Unit,
-    onCopyCustom: (sourceDate: String, sourceMeal: String, targetDate: String, targetMeal: String) -> Unit
+    onCopyMeal: (targetDate: String, targetMeal: String) -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
-    val yesterday = remember {
-        try {
-            LocalDate.parse(currentDate).minusDays(1).toString()
-        } catch (_: Exception) {
-            LocalDate.now().minusDays(1).toString()
-        }
-    }
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd") }
+    val today = remember { LocalDate.now().format(dateFormatter) }
+    val tomorrow = remember { LocalDate.now().plusDays(1).format(dateFormatter) }
 
-    var isCustomMode by remember { mutableStateOf(false) }
-    var sourceDateText by remember { mutableStateOf(yesterday) }
-    var selectedSourceMeal by remember { mutableStateOf(currentMealName) }
+    // Defaults: same meal name, and today's date
+    var targetDate by remember { mutableStateOf(today) }
+    var targetMeal by remember { mutableStateOf(sourceMealName) }
     var mealMenuExpanded by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -93,20 +94,37 @@ fun CopyMealDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            tint = MacroProtein,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Copy $currentMealName",
-                            color = ByteCream,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MacroProtein.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = MacroProtein,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Copy $sourceMealName",
+                                color = ByteCream,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "From $sourceDate",
+                                color = ByteTextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
                     }
 
                     IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
@@ -120,137 +138,155 @@ fun CopyMealDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (!isCustomMode) {
-                    // Quick Action: Copy from Yesterday
-                    Button(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onCopyFromYesterday(currentMealName)
-                            onDismiss()
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MacroProtein)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.History,
-                            contentDescription = null,
-                            tint = ByteCardDark,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Copy Yesterday's $currentMealName",
-                            color = ByteCardDark,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                // Target Date selection
+                Text(
+                    text = "TARGET DATE",
+                    color = ByteTomato,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Secondary: Custom Date / Meal
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(ByteSurfaceVariantDark.copy(alpha = 0.6f))
-                            .clickable { isCustomMode = true }
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Copy from another date or meal...",
-                            color = ByteCream,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                // Quick Date Chips: Today, Tomorrow, Same Day
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf(
+                        "Today" to today,
+                        "Tomorrow" to tomorrow,
+                        "Same Day" to sourceDate
+                    ).forEach { (label, dateVal) ->
+                        val isSelected = targetDate == dateVal
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    targetDate = dateVal
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) ByteCream else ByteCreamMuted,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
                     }
-                } else {
-                    // Custom copy mode
-                    Text(
-                        text = "Source Date (YYYY-MM-DD):",
-                        color = ByteTextSecondary,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = targetDate,
+                    onValueChange = { targetDate = it },
+                    leadingIcon = {
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = ByteCreamMuted, modifier = Modifier.size(16.dp))
+                    },
+                    label = { Text("Date (YYYY-MM-DD)", color = ByteCreamMuted) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = ByteCream,
+                        unfocusedTextColor = ByteCream,
+                        focusedBorderColor = ByteTomato,
+                        unfocusedBorderColor = ByteSurfaceVariantDark
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Target Meal selection
+                Text(
+                    text = "TARGET MEAL",
+                    color = ByteTomato,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                ExposedDropdownMenuBox(
+                    expanded = mealMenuExpanded,
+                    onExpandedChange = { mealMenuExpanded = it }
+                ) {
                     OutlinedTextField(
-                        value = sourceDateText,
-                        onValueChange = { sourceDateText = it },
-                        singleLine = true,
+                        value = targetMeal,
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = mealMenuExpanded) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = ByteCream,
                             unfocusedTextColor = ByteCream,
-                            focusedBorderColor = MacroProtein,
+                            focusedBorderColor = ByteTomato,
                             unfocusedBorderColor = ByteSurfaceVariantDark
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = "Source Meal:",
-                        color = ByteTextSecondary,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    ExposedDropdownMenuBox(
+                    ExposedDropdownMenu(
                         expanded = mealMenuExpanded,
-                        onExpandedChange = { mealMenuExpanded = it }
+                        onDismissRequest = { mealMenuExpanded = false },
+                        modifier = Modifier.background(ByteCardDark)
                     ) {
-                        OutlinedTextField(
-                            value = selectedSourceMeal,
-                            onValueChange = {},
-                            readOnly = true,
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = mealMenuExpanded) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = ByteCream,
-                                unfocusedTextColor = ByteCream,
-                                focusedBorderColor = MacroProtein,
-                                unfocusedBorderColor = ByteSurfaceVariantDark
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor()
-                        )
-
-                        ExposedDropdownMenu(
-                            expanded = mealMenuExpanded,
-                            onDismissRequest = { mealMenuExpanded = false },
-                            modifier = Modifier.background(ByteCardDark)
-                        ) {
-                            mealTypes.forEach { meal ->
-                                DropdownMenuItem(
-                                    text = { Text(meal.name, color = ByteCream) },
-                                    onClick = {
-                                        selectedSourceMeal = meal.name
-                                        mealMenuExpanded = false
-                                    }
-                                )
-                            }
+                        mealTypes.forEach { meal ->
+                            val cleanName = meal.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                            DropdownMenuItem(
+                                text = { Text(cleanName, color = ByteCream) },
+                                onClick = {
+                                    targetMeal = cleanName
+                                    mealMenuExpanded = false
+                                }
+                            )
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Cancel", color = ByteTextSecondary, fontSize = 14.sp)
+                    }
 
                     Button(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onCopyCustom(sourceDateText.trim(), selectedSourceMeal, currentDate, currentMealName)
+                            onCopyMeal(targetDate.trim(), targetMeal.trim())
                             onDismiss()
                         },
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .weight(2f)
                             .height(48.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
                     ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Copy Into $currentMealName",
+                            text = "Copy to $targetMeal",
                             color = ByteCream,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold

@@ -52,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.ui.components.BodyweightCard
 import com.bytelog.app.ui.components.CopyMealDialog
+import com.bytelog.app.ui.components.CopyRecentMealsDialog
 import com.bytelog.app.ui.components.DailyMacroHeader
 import com.bytelog.app.ui.components.EditFoodEntrySheet
 import com.bytelog.app.ui.components.GoalAdjustDialog
@@ -153,6 +155,7 @@ fun DiaryScreen(
     var showWeightDialog by remember { mutableStateOf(false) }
     var showGoalAdjustDialog by remember { mutableStateOf(false) }
     var copyingMealName by remember { mutableStateOf<String?>(null) }
+    var showRecentMealsDialog by remember { mutableStateOf(false) }
     var savingTemplateMealName by remember { mutableStateOf<String?>(null) }
     var showTemplatesSheet by remember { mutableStateOf(false) }
     var templateTargetMeal by remember { mutableStateOf<DisplayMealGroup?>(null) }
@@ -275,28 +278,10 @@ fun DiaryScreen(
                     IconButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.copyAllFromYesterday()
+                            showRecentMealsDialog = true
                         }
                     ) {
-                        Icon(Icons.Default.History, contentDescription = "Copy all yesterday's meals", tint = ByteCreamMuted)
-                    }
-
-                    IconButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            viewModel.manualSync()
-                        },
-                        enabled = !isSyncing
-                    ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = ByteTomato
-                            )
-                        } else {
-                            Icon(Icons.Default.Sync, contentDescription = "Sync with Sparky", tint = ByteCreamMuted)
-                        }
+                        Icon(Icons.Default.History, contentDescription = "Copy Recent Meals", tint = ByteCreamMuted)
                     }
 
                     IconButton(onClick = onNavigateToSettings) {
@@ -402,12 +387,13 @@ fun DiaryScreen(
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(ByteTomato.copy(alpha = 0.15f))
                                         .clickable {
-                                            viewModel.copyAllFromYesterday()
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            showRecentMealsDialog = true
                                         }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
                                     Text(
-                                        text = "Copy Yesterday",
+                                        text = "Copy Recent Meals",
                                         color = ByteTomato,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
@@ -684,20 +670,35 @@ fun DiaryScreen(
         )
     }
 
-    // Copy Meal Dialog
+    // Copy Meal Dialog (Per-meal copy)
     copyingMealName?.let { mealName ->
         CopyMealDialog(
-            currentMealName = mealName,
-            currentDate = selectedDate,
+            sourceMealName = mealName,
+            sourceDate = selectedDate,
             mealTypes = mealTypes,
             onDismiss = { copyingMealName = null },
-            onCopyFromYesterday = { targetMeal ->
-                viewModel.copyMealFromYesterday(targetMeal)
+            onCopyMeal = { targetDate, targetMeal ->
+                viewModel.copyMeal(
+                    sourceDate = selectedDate,
+                    sourceMeal = mealName,
+                    targetDate = targetDate,
+                    targetMeal = targetMeal
+                )
                 copyingMealName = null
-            },
-            onCopyCustom = { srcDate, srcMeal, tgtDate, tgtMeal ->
-                viewModel.copyMeal(srcDate, srcMeal, tgtDate, tgtMeal)
-                copyingMealName = null
+            }
+        )
+    }
+
+    // Copy Recent Meals Modal Dialog (From Copy Yesterday / History button)
+    if (showRecentMealsDialog) {
+        val recentMeals by viewModel.recentMealsHistory.collectAsState()
+        CopyRecentMealsDialog(
+            targetDate = selectedDate,
+            recentMeals = recentMeals,
+            onDismiss = { showRecentMealsDialog = false },
+            onCopyMeals = { selectedMeals, tgtDate ->
+                viewModel.copyMultipleMeals(selectedMeals, tgtDate)
+                showRecentMealsDialog = false
             }
         )
     }
@@ -894,13 +895,15 @@ fun MealCard(
             Spacer(modifier = Modifier.height(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 entries.forEach { entry ->
-                    SwipeableFoodEntryRow(
-                        entry = entry,
-                        onEdit = { onEditEntry(entry) },
-                        onDuplicate = { onDuplicateEntry(entry) },
-                        onQuickIncrement = { onQuickIncrementEntry(entry) },
-                        onDelete = { onDeleteEntry(entry) }
-                    )
+                    key(entry.id) {
+                        SwipeableFoodEntryRow(
+                            entry = entry,
+                            onEdit = { onEditEntry(entry) },
+                            onDuplicate = { onDuplicateEntry(entry) },
+                            onQuickIncrement = { onQuickIncrementEntry(entry) },
+                            onDelete = { onDeleteEntry(entry) }
+                        )
+                    }
                 }
             }
         }
@@ -927,12 +930,18 @@ fun SwipeableFoodEntryRow(
                 }
                 SwipeToDismissBoxValue.EndToStart -> {
                     onDelete()
-                    true
+                    false // Smoothly settle back while Room removes the item, never freeze stuck!
                 }
                 else -> false
             }
         }
     )
+
+    LaunchedEffect(entry.id) {
+        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+        }
+    }
 
     SwipeToDismissBox(
         state = dismissState,

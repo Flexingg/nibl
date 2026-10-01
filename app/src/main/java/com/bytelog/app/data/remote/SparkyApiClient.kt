@@ -1313,6 +1313,44 @@ class SparkyApiClient(
     }
 
     /**
+     * Fetch all check-in weights in range from Sparky Fitness Server (weights returned in kg).
+     */
+    suspend fun fetchWeightRange(startDate: String, endDate: String): Result<List<Pair<String, Float>>> = withContext(Dispatchers.IO) {
+        try {
+            val sDate = if (startDate.contains("T")) startDate.substringBefore("T") else startDate
+            val eDate = if (endDate.contains("T")) endDate.substringBefore("T") else endDate
+            val request = Request.Builder()
+                .url("$baseUrl/api/measurements/check-in-measurements-range/$sDate/$eDate")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    if (content.isBlank() || content == "[]") {
+                        return@withContext Result.success(emptyList())
+                    }
+                    val array = json.parseToJsonElement(content).jsonArray
+                    val list = mutableListOf<Pair<String, Float>>()
+                    for (elem in array) {
+                        val obj = elem.jsonObject
+                        val d = obj["entry_date"]?.jsonPrimitive?.content ?: continue
+                        val w = obj["weight"]?.jsonPrimitive?.floatOrNull ?: continue
+                        if (w > 0f) {
+                            list.add(Pair(d, w))
+                        }
+                    }
+                    Result.success(list)
+                } else {
+                    Result.failure(IOException("Fetch weight range failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Fetch Adaptive TDEE calculation from Sparky Fitness Server.
      */
     suspend fun fetchAdaptiveTdee(date: String? = null): Result<AdaptiveTdeeResult> = withContext(Dispatchers.IO) {

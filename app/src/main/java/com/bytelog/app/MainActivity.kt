@@ -160,6 +160,9 @@ fun ByteLogNavHost(
             SettingsScreen(
                 settingsRepository = settingsRepo,
                 foodRepository = foodRepo,
+                waterRepository = app.waterRepository,
+                weightRepository = app.weightRepository,
+                mealTemplateRepository = app.mealTemplateRepository,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

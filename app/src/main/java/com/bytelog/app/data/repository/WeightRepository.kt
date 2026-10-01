@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 class WeightRepository(
     private val weightDao: WeightDao,
@@ -16,6 +18,11 @@ class WeightRepository(
     private val settingsRepository: SettingsRepository,
     private val appScope: CoroutineScope
 ) {
+    companion object {
+        const val LBS_TO_KG = 0.45359237f
+        const val KG_TO_LBS = 2.20462262f
+    }
+
     val weightUnit: Flow<String> = settingsRepository.weightUnit
 
     fun getWeightForDate(date: String): Flow<WeightEntry?> {
@@ -34,8 +41,27 @@ class WeightRepository(
         return weightDao.getAllWeights()
     }
 
-    suspend fun saveWeightUnit(unit: String) {
-        settingsRepository.saveWeightUnit(unit)
+    suspend fun saveWeightUnit(newUnit: String) = withContext(Dispatchers.IO) {
+        val oldUnit = settingsRepository.weightUnit.first()
+        if (!oldUnit.equals(newUnit, ignoreCase = true)) {
+            val allWeights = weightDao.getAllWeightsList()
+            if (allWeights.isNotEmpty()) {
+                val converted = allWeights.map { entry ->
+                    val newWeight = if (newUnit.equals("lbs", ignoreCase = true)) {
+                        entry.weight * KG_TO_LBS
+                    } else {
+                        entry.weight * LBS_TO_KG
+                    }
+                    entry.copy(
+                        weight = (newWeight * 10).toInt() / 10f,
+                        unit = newUnit,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                }
+                weightDao.insertOrUpdateAll(converted)
+            }
+            settingsRepository.saveWeightUnit(newUnit)
+        }
     }
 
     fun logWeight(date: String, weight: Float, unit: String? = null, bodyFatPercentage: Float? = null) {
@@ -51,8 +77,14 @@ class WeightRepository(
             )
             weightDao.insertOrUpdate(entry)
 
-            // Sync with Sparky Fitness in background
-            val remoteResult = sparkyApiClient.upsertWeight(date, weight, bodyFatPercentage)
+            // Sparky Fitness check-in API expects weight in KG!
+            val weightInKg = if (resolvedUnit.equals("lbs", ignoreCase = true)) {
+                weight * LBS_TO_KG
+            } else {
+                weight
+            }
+
+            val remoteResult = sparkyApiClient.upsertWeight(date, weightInKg, bodyFatPercentage)
             if (remoteResult.isSuccess) {
                 weightDao.insertOrUpdate(entry.copy(syncStatus = WeightEntry.SYNC_STATUS_SYNCED))
             }
@@ -62,16 +94,73 @@ class WeightRepository(
     suspend fun syncWeightForDate(date: String) = withContext(Dispatchers.IO) {
         val remoteWeightResult = sparkyApiClient.fetchWeightForDate(date)
         if (remoteWeightResult.isSuccess) {
-            val remoteWeight = remoteWeightResult.getOrNull()
-            if (remoteWeight != null && remoteWeight > 0f) {
+            val remoteWeightKg = remoteWeightResult.getOrNull()
+            if (remoteWeightKg != null && remoteWeightKg > 0f) {
                 val currentUnit = settingsRepository.weightUnit.first()
+                val displayWeight = if (currentUnit.equals("lbs", ignoreCase = true)) {
+                    (remoteWeightKg * KG_TO_LBS * 10).toInt() / 10f
+                } else {
+                    remoteWeightKg
+                }
                 val entry = WeightEntry(
                     entryDate = date,
-                    weight = remoteWeight,
+                    weight = displayWeight,
                     unit = currentUnit,
-                    syncStatus = WeightEntry.SYNC_STATUS_SYNCED
+                    syncStatus = WeightEntry.SYNC_STATUS_SYNCED,
+                    updatedAt = System.currentTimeMillis()
                 )
                 weightDao.insertOrUpdate(entry)
+            }
+        }
+    }
+
+    suspend fun syncWeightHistory(days: Int = 90): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+            val today = LocalDate.now()
+            val startDate = today.minusDays(days.toLong()).format(dateFormatter)
+            val endDate = today.format(dateFormatter)
+
+            val remoteResult = sparkyApiClient.fetchWeightRange(startDate, endDate)
+            if (remoteResult.isSuccess) {
+                val list = remoteResult.getOrNull().orEmpty()
+                if (list.isNotEmpty()) {
+                    val currentUnit = settingsRepository.weightUnit.first()
+                    val isLbs = currentUnit.equals("lbs", ignoreCase = true)
+                    val entries = list.map { (date, kg) ->
+                        val displayW = if (isLbs) (kg * KG_TO_LBS * 10).toInt() / 10f else kg
+                        WeightEntry(
+                            entryDate = date,
+                            weight = displayW,
+                            unit = currentUnit,
+                            syncStatus = WeightEntry.SYNC_STATUS_SYNCED,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    }
+                    weightDao.insertOrUpdateAll(entries)
+                }
+                Result.success(list.size)
+            } else {
+                Result.failure(remoteResult.exceptionOrNull() ?: Exception("Failed to fetch weights from Sparky"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun repairKgStoredAsLbs() = withContext(Dispatchers.IO) {
+        val currentUnit = settingsRepository.weightUnit.first()
+        if (currentUnit.equals("lbs", ignoreCase = true)) {
+            val allWeights = weightDao.getAllWeightsList()
+            val needFix = allWeights.filter { it.unit.equals("lbs", ignoreCase = true) && it.weight in 35f..120f }
+            if (needFix.isNotEmpty()) {
+                val fixed = needFix.map { entry ->
+                    entry.copy(
+                        weight = ((entry.weight * KG_TO_LBS) * 10).toInt() / 10f,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                }
+                weightDao.insertOrUpdateAll(fixed)
             }
         }
     }
