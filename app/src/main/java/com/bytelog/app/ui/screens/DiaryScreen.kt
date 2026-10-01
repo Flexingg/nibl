@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.ui.components.DailyMacroHeader
 import com.bytelog.app.ui.components.EditFoodEntrySheet
+import com.bytelog.app.ui.components.HydrationCard
+import com.bytelog.app.ui.components.HydrationSheet
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
@@ -91,6 +93,11 @@ fun DiaryScreen(
     val mealTypes by viewModel.mealTypes.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
 
+    val waterTotal by viewModel.waterTotalForDate.collectAsState()
+    val waterGoal by viewModel.targetWater.collectAsState()
+    val waterLogs by viewModel.waterLogsForDate.collectAsState()
+    val waterContainers by viewModel.waterContainers.collectAsState()
+
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -106,6 +113,7 @@ fun DiaryScreen(
     }
 
     var editingEntry by remember { mutableStateOf<FoodEntry?>(null) }
+    var showHydrationSheet by remember { mutableStateOf(false) }
 
     data class DisplayMealGroup(
         val mealTypeId: String,
@@ -252,7 +260,25 @@ fun DiaryScreen(
             // Daily Macro Progress Cards
             DailyMacroHeader(summary = dailySummary)
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Hydration Speed Logging Card
+            HydrationCard(
+                currentMl = waterTotal,
+                targetMl = waterGoal,
+                containers = waterContainers,
+                onQuickAdd = { amount, containerId, containerName ->
+                    viewModel.quickAddWater(amount, containerId, containerName)
+                },
+                onUndoLast = {
+                    viewModel.undoLastDrink()
+                },
+                onOpenSheet = {
+                    showHydrationSheet = true
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Meal Categories List (Shows only logged meals, plus quick meal chips to add new ones)
             LazyColumn(
@@ -419,6 +445,29 @@ fun DiaryScreen(
                     }
                 },
                 onDismiss = { editingEntry = null }
+            )
+        }
+    }
+
+    // Hydration Modal Bottom Sheet
+    if (showHydrationSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showHydrationSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = ByteSurfaceDark
+        ) {
+            HydrationSheet(
+                todayLogs = waterLogs,
+                containers = waterContainers,
+                currentTotalMl = waterTotal,
+                targetMl = waterGoal,
+                onLogWater = { amount, containerId, containerName ->
+                    viewModel.quickAddWater(amount, containerId, containerName)
+                },
+                onDeleteLog = { log ->
+                    viewModel.deleteWaterLog(log)
+                },
+                onDismiss = { showHydrationSheet = false }
             )
         }
     }

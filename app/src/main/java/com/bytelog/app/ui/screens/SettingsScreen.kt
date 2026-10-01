@@ -92,6 +92,7 @@ fun SettingsScreen(
     val pPref by settingsRepository.targetProtein.collectAsState(initial = 160f)
     val cPref by settingsRepository.targetCarbs.collectAsState(initial = 220f)
     val fPref by settingsRepository.targetFat.collectAsState(initial = 70f)
+    val wPref by settingsRepository.targetWater.collectAsState(initial = 2000f)
 
     var serverUrl by remember { mutableStateOf(serverUrlPref) }
     var apiKey by remember { mutableStateOf(apiKeyPref ?: authTokenPref ?: "") }
@@ -103,13 +104,14 @@ fun SettingsScreen(
     var targetProtein by remember { mutableStateOf(pPref.roundToInt().toString()) }
     var targetCarbs by remember { mutableStateOf(cPref.roundToInt().toString()) }
     var targetFat by remember { mutableStateOf(fPref.roundToInt().toString()) }
+    var targetWater by remember { mutableStateOf(wPref.roundToInt().toString()) }
 
     var isTestingConnection by remember { mutableStateOf(false) }
     var connectionTestResult by remember { mutableStateOf<ConnectionTestResult?>(null) }
     var isSigningIn by remember { mutableStateOf(false) }
     var isManualSyncing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(serverUrlPref, apiKeyPref, authTokenPref, savedEmailPref, calPref, pPref, cPref, fPref) {
+    LaunchedEffect(serverUrlPref, apiKeyPref, authTokenPref, savedEmailPref, calPref, pPref, cPref, fPref, wPref) {
         serverUrl = serverUrlPref
         apiKey = apiKeyPref ?: authTokenPref ?: ""
         if (email.isBlank() && !savedEmailPref.isNullOrBlank()) {
@@ -119,6 +121,7 @@ fun SettingsScreen(
         targetProtein = pPref.roundToInt().toString()
         targetCarbs = cPref.roundToInt().toString()
         targetFat = fPref.roundToInt().toString()
+        targetWater = wPref.roundToInt().toString()
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -597,6 +600,21 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
+
+                OutlinedTextField(
+                    value = targetWater,
+                    onValueChange = { targetWater = it },
+                    label = { Text("Target Water (ml)", color = MacroProtein) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = ByteCream,
+                        unfocusedTextColor = ByteCream,
+                        focusedBorderColor = MacroProtein,
+                        unfocusedBorderColor = ByteSurfaceVariantDark
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             // 5. Save Configuration Button
@@ -609,10 +627,11 @@ fun SettingsScreen(
                             preserveExistingTokenIfNull = true
                         )
                         settingsRepository.saveMacroTargets(
-                            targetCalories.toFloatOrNull() ?: 2200f,
-                            targetProtein.toFloatOrNull() ?: 160f,
-                            targetCarbs.toFloatOrNull() ?: 220f,
-                            targetFat.toFloatOrNull() ?: 70f
+                            calories = targetCalories.toFloatOrNull() ?: 2200f,
+                            protein = targetProtein.toFloatOrNull() ?: 160f,
+                            carbs = targetCarbs.toFloatOrNull() ?: 220f,
+                            fat = targetFat.toFloatOrNull() ?: 70f,
+                            waterGoal = targetWater.toFloatOrNull() ?: 2000f
                         )
                         snackbarHostState.showSnackbar("Configuration saved successfully!")
                     }

@@ -24,6 +24,7 @@ class SettingsRepository(private val context: Context) {
         val KEY_TARGET_PROTEIN = floatPreferencesKey("target_protein")
         val KEY_TARGET_CARBS = floatPreferencesKey("target_carbs")
         val KEY_TARGET_FAT = floatPreferencesKey("target_fat")
+        val KEY_TARGET_WATER = floatPreferencesKey("target_water")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
@@ -56,6 +57,10 @@ class SettingsRepository(private val context: Context) {
 
     val targetFat: Flow<Float> = context.dataStore.data.map { prefs ->
         prefs[KEY_TARGET_FAT] ?: 70f
+    }
+
+    val targetWater: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[KEY_TARGET_WATER] ?: 2000f
     }
 
     suspend fun saveAuthToken(token: String?) {
@@ -92,12 +97,27 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    suspend fun saveMacroTargets(calories: Float, protein: Float, carbs: Float, fat: Float) {
+    suspend fun saveWaterTarget(target: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_TARGET_WATER] = target
+        }
+    }
+
+    suspend fun saveMacroTargets(
+        calories: Float,
+        protein: Float,
+        carbs: Float,
+        fat: Float,
+        waterGoal: Float? = null
+    ) {
         context.dataStore.edit { prefs ->
             prefs[KEY_TARGET_CALORIES] = calories
             prefs[KEY_TARGET_PROTEIN] = protein
             prefs[KEY_TARGET_CARBS] = carbs
             prefs[KEY_TARGET_FAT] = fat
+            if (waterGoal != null && waterGoal > 0f) {
+                prefs[KEY_TARGET_WATER] = waterGoal
+            }
         }
     }
 }

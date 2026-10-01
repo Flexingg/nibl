@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.bytelog.app.data.local.model.DailySummary
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.MealType
+import com.bytelog.app.data.local.model.WaterLogEntry
+import com.bytelog.app.data.remote.WaterContainer
 import com.bytelog.app.data.repository.FoodRepository
 import com.bytelog.app.data.repository.SettingsRepository
+import com.bytelog.app.data.repository.WaterRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -25,6 +28,7 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalCoroutinesApi::class)
 class DiaryViewModel(
     private val foodRepository: FoodRepository,
+    private val waterRepository: WaterRepository,
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
@@ -71,6 +75,19 @@ class DiaryViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DailySummary(date = _selectedDate.value))
 
+    val waterTotalForDate: StateFlow<Float> = _selectedDate
+        .flatMapLatest { date -> waterRepository.getTotalWaterForDate(date) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
+
+    val waterLogsForDate: StateFlow<List<WaterLogEntry>> = _selectedDate
+        .flatMapLatest { date -> waterRepository.getLogsForDate(date) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val waterContainers: StateFlow<List<WaterContainer>> = waterRepository.containers
+
+    val targetWater: StateFlow<Float> = settingsRepository.targetWater
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2000f)
+
     init {
         syncSelectedDate()
     }
@@ -110,11 +127,35 @@ class DiaryViewModel(
         }
     }
 
+    // --- Hydration Actions ---
+
+    fun quickAddWater(
+        amountMl: Float,
+        containerId: Int? = null,
+        containerName: String? = null
+    ) {
+        waterRepository.quickAddWater(
+            date = _selectedDate.value,
+            amountMl = amountMl,
+            containerId = containerId,
+            containerName = containerName
+        )
+    }
+
+    fun undoLastDrink() {
+        waterRepository.undoLastDrink(_selectedDate.value)
+    }
+
+    fun deleteWaterLog(entry: WaterLogEntry) {
+        waterRepository.deleteWaterLog(entry)
+    }
+
     fun syncSelectedDate() {
         viewModelScope.launch {
             _isSyncing.value = true
             try {
                 foodRepository.syncDateWithServer(_selectedDate.value)
+                waterRepository.syncWaterForDate(_selectedDate.value)
             } catch (_: Exception) {
             } finally {
                 _isSyncing.value = false
@@ -126,12 +167,15 @@ class DiaryViewModel(
         viewModelScope.launch {
             _isSyncing.value = true
             try {
-                val result = foodRepository.syncDateWithServer(_selectedDate.value)
-                result.fold(
+                val foodRes = foodRepository.syncDateWithServer(_selectedDate.value)
+                val waterRes = waterRepository.syncWaterForDate(_selectedDate.value)
+
+                foodRes.fold(
                     onSuccess = { count ->
+                        val waterInfo = if (waterRes.isSuccess) ", ${waterRes.getOrNull()?.toInt() ?: 0} ml water" else ""
                         _syncMessage.emit(
-                            if (count > 0) "Synced $count entries from Sparky Fitness"
-                            else "Synced with Sparky (0 entries for this date)"
+                            if (count > 0) "Synced $count food entries$waterInfo from Sparky Fitness"
+                            else "Synced with Sparky (0 foods$waterInfo)"
                         )
                     },
                     onFailure = { err ->

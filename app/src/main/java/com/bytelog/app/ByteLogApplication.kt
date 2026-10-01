@@ -31,6 +31,15 @@ class ByteLogApplication : Application() {
         )
     }
 
+    val waterRepository by lazy {
+        com.bytelog.app.data.repository.WaterRepository(
+            waterLogDao = database.waterLogDao(),
+            sparkyApiClient = sparkyApiClient,
+            settingsRepository = settingsRepository,
+            appScope = applicationScope
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
 

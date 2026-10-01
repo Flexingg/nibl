@@ -272,7 +272,8 @@ class FoodRepository(
                             calories = goals.calories,
                             protein = goals.protein,
                             carbs = goals.carbs,
-                            fat = goals.fat
+                            fat = goals.fat,
+                            waterGoal = goals.waterGoalMl
                         )
                     }
                 }

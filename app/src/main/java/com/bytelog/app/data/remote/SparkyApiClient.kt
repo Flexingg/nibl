@@ -606,9 +606,253 @@ class SparkyApiClient(
                         ?: obj["carbs_grams"]?.jsonPrimitive?.floatOrNull ?: 250f
                     val fat = obj["fat"]?.jsonPrimitive?.floatOrNull
                         ?: obj["fat_grams"]?.jsonPrimitive?.floatOrNull ?: 67f
-                    Result.success(UserMacroGoals(calories, protein, carbs, fat))
+                    val waterGoal = obj["water_goal_ml"]?.jsonPrimitive?.floatOrNull
+                        ?: obj["water_goal"]?.jsonPrimitive?.floatOrNull
+                        ?: obj["water_target_ml"]?.jsonPrimitive?.floatOrNull ?: 2000f
+                    Result.success(UserMacroGoals(calories, protein, carbs, fat, waterGoal))
                 } else {
                     Result.failure(IOException("Fetch goals failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Hydration / Water Intake Endpoints ---
+
+    /**
+     * Fetch daily water intake totals for a date from Sparky Fitness Server.
+     */
+    suspend fun fetchWaterIntake(date: String): Result<Float> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val request = Request.Builder()
+                .url("$baseUrl/api/v2/measurements/water-intake/$cleanDate")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val obj = json.parseToJsonElement(content).jsonObject
+                    val waterMl = obj["water_ml"]?.jsonPrimitive?.floatOrNull
+                        ?: obj["manual_ml"]?.jsonPrimitive?.floatOrNull
+                        ?: obj["ledger_ml"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    Result.success(waterMl)
+                } else if (response.code == 404) {
+                    Result.success(0f)
+                } else {
+                    Result.failure(IOException("Fetch water intake failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch itemized water intake log entries for a date.
+     */
+    suspend fun fetchWaterLog(date: String): Result<List<WaterLogDto>> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val request = Request.Builder()
+                .url("$baseUrl/api/v2/measurements/water-intake/$cleanDate/log")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val array = json.parseToJsonElement(content).jsonArray
+                    val logs = array.mapNotNull { elem ->
+                        try {
+                            val o = elem.jsonObject
+                            val id = o["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                            val waterMl = o["water_ml"]?.jsonPrimitive?.floatOrNull ?: 0f
+                            val entryDate = o["entry_date"]?.jsonPrimitive?.content ?: cleanDate
+                            val containerId = o["container_id"]?.jsonPrimitive?.intOrNull
+                            val containerName = o["container_name"]?.jsonPrimitive?.content
+                            val createdAt = o["created_at"]?.jsonPrimitive?.content
+                                ?: o["logged_at"]?.jsonPrimitive?.content
+                            WaterLogDto(
+                                id = id,
+                                waterMl = waterMl,
+                                entryDate = entryDate,
+                                containerId = containerId,
+                                containerName = containerName,
+                                createdAt = createdAt
+                            )
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    Result.success(logs)
+                } else if (response.code == 404) {
+                    Result.success(emptyList())
+                } else {
+                    Result.failure(IOException("Fetch water log failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Upsert water intake (positive or negative drinks count, optional container ID).
+     */
+    suspend fun upsertWaterIntake(
+        date: String,
+        changeDrinks: Int,
+        containerId: Int? = null
+    ): Result<Float> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val payload = buildString {
+                append("{")
+                append("\"entry_date\":\"").append(cleanDate).append("\",")
+                append("\"change_drinks\":").append(changeDrinks).append(",")
+                if (containerId != null) {
+                    append("\"container_id\":").append(containerId)
+                } else {
+                    append("\"container_id\":null")
+                }
+                append("}")
+            }
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/v2/measurements/water-intake")
+                .post(payload.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val waterMl = try {
+                        val obj = json.parseToJsonElement(content).jsonObject
+                        obj["water_ml"]?.jsonPrimitive?.floatOrNull
+                            ?: obj["total_ml"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    } catch (_: Exception) {
+                        0f
+                    }
+                    Result.success(waterMl)
+                } else {
+                    Result.failure(IOException("Upsert water failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Delete a specific water log entry by its UUID.
+     */
+    suspend fun deleteWaterLog(logId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/v2/measurements/water-intake/log/$logId")
+                .delete()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful || response.code == 404) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IOException("Delete water log failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch user's configured water containers from Sparky Fitness.
+     */
+    suspend fun fetchWaterContainers(): Result<List<WaterContainer>> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/water-containers")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val array = json.parseToJsonElement(content).jsonArray
+                    val containers = array.mapNotNull { elem ->
+                        try {
+                            val o = elem.jsonObject
+                            val id = o["id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+                            val name = o["name"]?.jsonPrimitive?.content ?: "Container $id"
+                            val volume = o["volume"]?.jsonPrimitive?.floatOrNull ?: 250f
+                            val unit = o["unit"]?.jsonPrimitive?.content ?: "ml"
+                            val isPrimary = o["is_primary"]?.jsonPrimitive?.booleanOrNull ?: false
+                            val servings = o["servings_per_container"]?.jsonPrimitive?.intOrNull ?: 1
+                            WaterContainer(
+                                id = id,
+                                name = name,
+                                volume = volume,
+                                unit = unit,
+                                isPrimary = isPrimary,
+                                servingsPerContainer = servings
+                            )
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    Result.success(containers)
+                } else {
+                    Result.failure(IOException("Fetch water containers failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Create a new water container on Sparky Fitness Server.
+     */
+    suspend fun createWaterContainer(
+        name: String,
+        volume: Float,
+        unit: String = "ml"
+    ): Result<WaterContainer> = withContext(Dispatchers.IO) {
+        try {
+            val payload = buildString {
+                append("{")
+                append("\"name\":\"").append(name.replace("\"", "\\\"")).append("\",")
+                append("\"volume\":").append(volume).append(",")
+                append("\"unit\":\"").append(unit).append("\",")
+                append("\"servings_per_container\":1")
+                append("}")
+            }
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/water-containers")
+                .post(payload.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val o = json.parseToJsonElement(content).jsonObject
+                    val id = o["id"]?.jsonPrimitive?.intOrNull ?: 0
+                    val container = WaterContainer(
+                        id = id,
+                        name = o["name"]?.jsonPrimitive?.content ?: name,
+                        volume = o["volume"]?.jsonPrimitive?.floatOrNull ?: volume,
+                        unit = o["unit"]?.jsonPrimitive?.content ?: unit,
+                        isPrimary = o["is_primary"]?.jsonPrimitive?.booleanOrNull ?: false,
+                        servingsPerContainer = 1
+                    )
+                    Result.success(container)
+                } else {
+                    Result.failure(IOException("Create container failed: HTTP ${response.code}"))
                 }
             }
         } catch (e: Exception) {
@@ -622,5 +866,26 @@ data class UserMacroGoals(
     val calories: Float,
     val protein: Float,
     val carbs: Float,
-    val fat: Float
+    val fat: Float,
+    val waterGoalMl: Float = 2000f
+)
+
+@kotlinx.serialization.Serializable
+data class WaterContainer(
+    val id: Int,
+    val name: String,
+    val volume: Float,
+    val unit: String = "ml",
+    val isPrimary: Boolean = false,
+    val servingsPerContainer: Int = 1
+)
+
+@kotlinx.serialization.Serializable
+data class WaterLogDto(
+    val id: String,
+    val waterMl: Float,
+    val entryDate: String,
+    val containerId: Int? = null,
+    val containerName: String? = null,
+    val createdAt: String? = null
 )

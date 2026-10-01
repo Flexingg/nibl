@@ -86,7 +86,7 @@ fun ByteLogNavHost(
         // 1. Daily Diary / Timeline
         composable("diary") {
             val diaryViewModel: DiaryViewModel = viewModel {
-                DiaryViewModel(foodRepo, settingsRepo)
+                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo)
             }
             DiaryScreen(
                 viewModel = diaryViewModel,
