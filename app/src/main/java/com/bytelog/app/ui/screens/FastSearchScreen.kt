@@ -189,28 +189,32 @@ fun FastSearchScreen(
                 }
             }
 
-            // Meal Picker Selector Chips
-            if (availableMealTypes.isNotEmpty()) {
+            // Meal Picker Selector Chips (Deduplicated)
+            val distinctMealTypes = remember(availableMealTypes) {
+                availableMealTypes.distinctBy { it.name.trim().lowercase() }
+            }
+            if (distinctMealTypes.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(availableMealTypes, key = { it.id }) { mt ->
-                        val isSelected = mt.name.equals(selectedMealName, ignoreCase = true)
+                    items(distinctMealTypes, key = { it.id }) { mt ->
+                        val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                        val isSelected = cleanName.equals(selectedMealName, ignoreCase = true)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) ByteTomato else ByteSurfaceDark)
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    viewModel.setTargetMeal(mt.id, mt.name)
+                                    viewModel.setTargetMeal(mt.id, cleanName)
                                 }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                text = mt.name,
+                                text = cleanName,
                                 color = if (isSelected) ByteCream else ByteCreamMuted,
                                 fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium

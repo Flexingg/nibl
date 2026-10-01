@@ -64,6 +64,10 @@ abstract class ByteLogDatabase : RoomDatabase() {
                     scope.launch(Dispatchers.IO) {
                         // Purge any legacy demo starter foods from previous runs
                         database.foodDao().deleteDemoFoods()
+                        // If user has synced meal types from Sparky, purge redundant placeholder meal types
+                        if (database.mealTypeDao().getCount() > 4) {
+                            database.mealTypeDao().purgeDefaultMealTypes()
+                        }
                     }
                 }
             }

@@ -105,7 +105,12 @@ class FoodRepository(
     }
 
     fun getAllMealTypes(): Flow<List<MealType>> {
-        return mealTypeDao.getAllMealTypes()
+        val uuidRegex = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+        return mealTypeDao.getAllMealTypes().map { list ->
+            list.sortedByDescending { uuidRegex.matches(it.id) }
+                .distinctBy { it.name.trim().lowercase() }
+                .sortedBy { it.sortOrder }
+        }
     }
 
     /**
@@ -131,9 +136,42 @@ class FoodRepository(
             entries.forEach { entry ->
                 val syncResult = sparkyApiClient.createFoodEntry(entry)
                 if (syncResult.isSuccess) {
-                    foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+                    val serverId = syncResult.getOrNull()
+                    if (!serverId.isNullOrBlank() && serverId != entry.id) {
+                        foodEntryDao.deleteEntryById(entry.id)
+                        foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_SYNCED))
+                    } else {
+                        foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+                    }
                 } else {
                     android.util.Log.e("ByteLog", "Failed to sync entry ${entry.foodName} to Sparky: ${syncResult.exceptionOrNull()?.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Update an entry optimistically in local DB and sync changes to Sparky Fitness in background.
+     */
+    suspend fun updateEntry(entry: FoodEntry) = withContext(Dispatchers.IO) {
+        foodEntryDao.updateEntry(entry.copy(syncStatus = FoodEntry.SYNC_STATUS_PENDING_UPDATE))
+        appScope.launch(Dispatchers.IO) {
+            val updateRes = sparkyApiClient.updateFoodEntry(entry)
+            if (updateRes.isSuccess) {
+                foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+            } else {
+                // If update failed (e.g. entry ID was client-side or missing on server), try creating
+                val createRes = sparkyApiClient.createFoodEntry(entry)
+                if (createRes.isSuccess) {
+                    val serverId = createRes.getOrNull()
+                    if (!serverId.isNullOrBlank() && serverId != entry.id) {
+                        foodEntryDao.deleteEntryById(entry.id)
+                        foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_SYNCED))
+                    } else {
+                        foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+                    }
+                } else {
+                    android.util.Log.e("ByteLog", "Failed to update or recreate entry on Sparky: ${updateRes.exceptionOrNull()?.message}")
                 }
             }
         }
@@ -160,7 +198,7 @@ class FoodRepository(
     }
 
     /**
-     * Delete an entry optimistically.
+     * Delete an entry optimistically and sync deletion to Sparky in background.
      */
     suspend fun deleteEntry(entry: FoodEntry) = withContext(Dispatchers.IO) {
         foodEntryDao.deleteEntryById(entry.id)
@@ -171,9 +209,9 @@ class FoodRepository(
 
     /**
      * Fully sync daily entries with Sparky Fitness Server:
-     * 1. Push any local pending un-synced entries.
+     * 1. Push any local pending un-synced entries (inserts or updates).
      * 2. Pull latest entries from Sparky for this date and reconcile local DB.
-     * 3. Sync meal types.
+     * 3. Sync authoritative meal types from Sparky.
      */
     suspend fun syncDateWithServer(date: String): Result<Int> = withContext(Dispatchers.IO) {
         val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
@@ -182,9 +220,22 @@ class FoodRepository(
         try {
             val pendingEntries = foodEntryDao.getPendingSyncEntries().filter { it.entryDate == cleanDate }
             pendingEntries.forEach { entry ->
-                val pushResult = sparkyApiClient.createFoodEntry(entry)
-                if (pushResult.isSuccess) {
-                    foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+                if (entry.syncStatus == FoodEntry.SYNC_STATUS_PENDING_UPDATE) {
+                    val updateRes = sparkyApiClient.updateFoodEntry(entry)
+                    if (updateRes.isSuccess) {
+                        foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+                    }
+                } else {
+                    val pushResult = sparkyApiClient.createFoodEntry(entry)
+                    if (pushResult.isSuccess) {
+                        val serverId = pushResult.getOrNull()
+                        if (!serverId.isNullOrBlank() && serverId != entry.id) {
+                            foodEntryDao.deleteEntryById(entry.id)
+                            foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_SYNCED))
+                        } else {
+                            foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+                        }
+                    }
                 }
             }
         } catch (_: Exception) {}
@@ -205,6 +256,7 @@ class FoodRepository(
             if (mealTypesRes.isSuccess) {
                 val types = mealTypesRes.getOrNull().orEmpty()
                 if (types.isNotEmpty()) {
+                    mealTypeDao.clearAllMealTypes()
                     mealTypeDao.insertMealTypes(types)
                 }
             }

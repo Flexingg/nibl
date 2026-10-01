@@ -93,6 +93,12 @@ class DiaryViewModel(
         }
     }
 
+    fun updateEntry(entry: FoodEntry) {
+        viewModelScope.launch {
+            foodRepository.updateEntry(entry)
+        }
+    }
+
     fun duplicateEntryToNow(entry: FoodEntry) {
         viewModelScope.launch {
             foodRepository.duplicateEntry(

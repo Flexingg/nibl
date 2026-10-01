@@ -449,8 +449,9 @@ class SparkyApiClient(
 
     /**
      * Post a newly logged food entry to Sparky Fitness Server.
+     * Returns the server-assigned UUID on success.
      */
-    suspend fun createFoodEntry(entry: FoodEntry): Result<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun createFoodEntry(entry: FoodEntry): Result<String> = withContext(Dispatchers.IO) {
         try {
             val isUuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
             val cleanMealName = entry.mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
@@ -489,7 +490,11 @@ class SparkyApiClient(
 
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
-                    Result.success(true)
+                    val content = response.body?.string().orEmpty()
+                    val serverId = try {
+                        json.parseToJsonElement(content).jsonObject["id"]?.jsonPrimitive?.content
+                    } catch (_: Exception) { null }
+                    Result.success(serverId ?: entry.id)
                 } else {
                     val errBody = response.body?.string().orEmpty()
                     android.util.Log.e("ByteLog", "Failed to create food entry on Sparky: HTTP ${response.code} $errBody")
@@ -498,6 +503,60 @@ class SparkyApiClient(
             }
         } catch (e: Exception) {
             android.util.Log.e("ByteLog", "Exception logging to Sparky: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Update an existing food entry on Sparky Fitness Server.
+     */
+    suspend fun updateFoodEntry(entry: FoodEntry): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val isUuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+            val cleanMealName = entry.mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val timeString = entry.entryTime?.take(5)
+            val cleanDate = if (entry.entryDate.contains("T")) entry.entryDate.substringBefore("T") else entry.entryDate
+
+            val payload = buildString {
+                append("{")
+                if (isUuid.matches(entry.mealTypeId)) {
+                    append("\"meal_type_id\":\"${entry.mealTypeId}\",")
+                }
+                append("\"meal_type\":\"${cleanMealName.replace("\"", "\\\"")}\",")
+                append("\"quantity\":${entry.quantity},")
+                append("\"unit\":\"${entry.unit}\",")
+                append("\"serving_size\":${entry.quantity},")
+                append("\"serving_unit\":\"${entry.unit}\",")
+                append("\"entry_date\":\"$cleanDate\",")
+                if (!timeString.isNullOrBlank() && Regex("^([01]\\d|2[0-3]):[0-5]\\d$").matches(timeString)) {
+                    append("\"entry_time\":\"$timeString\",")
+                }
+                append("\"food_name\":\"${entry.foodName.replace("\"", "\\\"")}\",")
+                entry.brandName?.let { append("\"brand_name\":\"${it.replace("\"", "\\\"")}\",") }
+                append("\"calories\":${entry.calories},")
+                append("\"protein\":${entry.protein},")
+                append("\"carbs\":${entry.carbs},")
+                append("\"fat\":${entry.fat}")
+                append("}")
+            }
+
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/food-entries/${entry.id}")
+                .put(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    val errBody = response.body?.string().orEmpty()
+                    android.util.Log.e("ByteLog", "Failed to update food entry on Sparky: HTTP ${response.code} $errBody")
+                    Result.failure(IOException("Update food entry failed: HTTP ${response.code} - $errBody"))
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ByteLog", "Exception updating entry on Sparky: ${e.message}", e)
             Result.failure(e)
         }
     }

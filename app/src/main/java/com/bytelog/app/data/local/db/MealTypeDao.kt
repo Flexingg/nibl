@@ -17,4 +17,10 @@ interface MealTypeDao {
 
     @Query("SELECT COUNT(*) FROM meal_types")
     suspend fun getCount(): Int
+
+    @Query("DELETE FROM meal_types")
+    suspend fun clearAllMealTypes()
+
+    @Query("DELETE FROM meal_types WHERE id IN ('breakfast', 'lunch', 'dinner', 'snacks')")
+    suspend fun purgeDefaultMealTypes()
 }

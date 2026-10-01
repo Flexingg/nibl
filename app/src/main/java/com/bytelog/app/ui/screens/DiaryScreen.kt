@@ -28,9 +28,11 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -38,13 +40,16 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.ui.components.DailyMacroHeader
+import com.bytelog.app.ui.components.EditFoodEntrySheet
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
@@ -71,6 +77,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiaryScreen(
     viewModel: DiaryViewModel,
@@ -97,6 +104,8 @@ fun DiaryScreen(
     val isToday = remember(selectedDate) {
         selectedDate == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
     }
+
+    var editingEntry by remember { mutableStateOf<FoodEntry?>(null) }
 
     data class DisplayMealGroup(
         val mealTypeId: String,
@@ -285,6 +294,10 @@ fun DiaryScreen(
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onNavigateToSearch(group.mealTypeId, group.mealName, selectedDate)
                             },
+                            onEditEntry = { entry ->
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                editingEntry = entry
+                            },
                             onDuplicateEntry = { entry ->
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 viewModel.duplicateEntryToNow(entry)
@@ -311,7 +324,10 @@ fun DiaryScreen(
 
                 // Quick Meal Selection Action Bar
                 item {
-                    val candidateMeals = if (mealTypes.isNotEmpty()) mealTypes else com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES
+                    val candidateMeals = remember(mealTypes) {
+                        (if (mealTypes.isNotEmpty()) mealTypes else com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES)
+                            .distinctBy { it.name.trim().lowercase() }
+                    }
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -371,6 +387,41 @@ fun DiaryScreen(
             }
         }
     }
+
+    // Edit Food Entry Modal Bottom Sheet
+    editingEntry?.let { entry ->
+        ModalBottomSheet(
+            onDismissRequest = { editingEntry = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = ByteSurfaceDark
+        ) {
+            EditFoodEntrySheet(
+                entry = entry,
+                availableMealTypes = mealTypes,
+                onSave = { updatedEntry ->
+                    viewModel.updateEntry(updatedEntry)
+                    editingEntry = null
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Updated ${updatedEntry.foodName}")
+                    }
+                },
+                onDelete = { entryToDelete ->
+                    viewModel.deleteEntry(entryToDelete)
+                    editingEntry = null
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(
+                            message = "Deleted ${entryToDelete.foodName}",
+                            actionLabel = "Undo"
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            viewModel.duplicateEntryToNow(entryToDelete)
+                        }
+                    }
+                },
+                onDismiss = { editingEntry = null }
+            )
+        }
+    }
 }
 
 @Composable
@@ -379,6 +430,7 @@ fun MealCard(
     mealCalories: Float,
     entries: List<FoodEntry>,
     onAddFood: () -> Unit,
+    onEditEntry: (FoodEntry) -> Unit,
     onDuplicateEntry: (FoodEntry) -> Unit,
     onDeleteEntry: (FoodEntry) -> Unit
 ) {
@@ -432,6 +484,7 @@ fun MealCard(
                 entries.forEach { entry ->
                     SwipeableFoodEntryRow(
                         entry = entry,
+                        onEdit = { onEditEntry(entry) },
                         onDuplicate = { onDuplicateEntry(entry) },
                         onDelete = { onDeleteEntry(entry) }
                     )
@@ -441,9 +494,11 @@ fun MealCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwipeableFoodEntryRow(
     entry: FoodEntry,
+    onEdit: () -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -493,6 +548,7 @@ fun SwipeableFoodEntryRow(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(ByteSurfaceVariantDark)
+                .clickable(onClick = onEdit)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
