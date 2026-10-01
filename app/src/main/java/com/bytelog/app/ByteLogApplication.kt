@@ -57,6 +57,15 @@ class ByteLogApplication : Application() {
         )
     }
 
+    val chatRepository by lazy {
+        com.bytelog.app.data.repository.SparkyChatRepository(
+            sparkyApiClient = sparkyApiClient,
+            foodRepository = foodRepository,
+            weightRepository = weightRepository,
+            appScope = applicationScope
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
 

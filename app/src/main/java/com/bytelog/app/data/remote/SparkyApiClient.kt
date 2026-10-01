@@ -278,9 +278,20 @@ class SparkyApiClient(
      * Search foods remotely from Sparky Fitness database.
      * Extracts nutrition from `default_variant` (or fallback to root).
      */
+    /**
+     * Search foods remotely from Sparky Fitness database.
+     * Queries both user's custom foods and Sparky's OpenFoodFacts proxy to ensure comprehensive search results.
+     */
     suspend fun searchFoods(query: String): Result<List<FoodItem>> = withContext(Dispatchers.IO) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return@withContext Result.success(emptyList())
+
+        val combinedResults = mutableListOf<FoodItem>()
+        val seenKeys = mutableSetOf<String>()
+
+        // 1. Query Sparky Custom / Saved Foods
         try {
-            val encodedQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
+            val encodedQuery = java.net.URLEncoder.encode(trimmed, "UTF-8")
             val request = Request.Builder()
                 .url("$baseUrl/api/foods/foods-paginated?searchTerm=$encodedQuery&currentPage=1&itemsPerPage=30")
                 .get()
@@ -298,7 +309,7 @@ class SparkyApiClient(
                         kotlinx.serialization.json.JsonArray(emptyList())
                     }
 
-                    val items = foodsArray.map { el ->
+                    for (el in foodsArray) {
                         val obj = el.jsonObject
                         val variant = obj["default_variant"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonObject
                             ?: obj["variants"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonArray?.firstOrNull()?.jsonObject
@@ -318,11 +329,16 @@ class SparkyApiClient(
                         val servingUnit = variant?.get("serving_unit")?.jsonPrimitive?.content
                             ?: obj["serving_unit"]?.jsonPrimitive?.content ?: "g"
 
-                        FoodItem(
-                            id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
-                            name = obj["name"]?.jsonPrimitive?.content ?: "Unknown Food",
-                            brand = obj["brand"]?.jsonPrimitive?.content,
-                            barcode = obj["barcode"]?.jsonPrimitive?.content,
+                        val id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString()
+                        val name = obj["name"]?.jsonPrimitive?.content ?: "Unknown Food"
+                        val brand = obj["brand"]?.jsonPrimitive?.content
+                        val barcode = obj["barcode"]?.jsonPrimitive?.content
+
+                        val item = FoodItem(
+                            id = id,
+                            name = name,
+                            brand = brand,
+                            barcode = barcode,
                             servingSize = servingSize,
                             servingUnit = servingUnit,
                             calories = calories,
@@ -332,10 +348,95 @@ class SparkyApiClient(
                             fiber = fiber,
                             isFavorite = obj["is_favorite"]?.jsonPrimitive?.booleanOrNull ?: false
                         )
+                        val key = (barcode ?: "${name.lowercase()}_${brand?.lowercase()}").trim()
+                        if (seenKeys.add(key)) {
+                            combinedResults.add(item)
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Non-fatal, continue to OpenFoodFacts search
+        }
+
+        // 2. Query OpenFoodFacts database proxy on Sparky server
+        try {
+            val offResult = searchOpenFoodFacts(trimmed, page = 1)
+            if (offResult.isSuccess) {
+                val offFoods = offResult.getOrNull().orEmpty()
+                for (food in offFoods) {
+                    val key = (food.barcode ?: "${food.name.lowercase()}_${food.brand?.lowercase()}").trim()
+                    if (seenKeys.add(key)) {
+                        combinedResults.add(food)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Non-fatal
+        }
+
+        Result.success(combinedResults)
+    }
+
+    /**
+     * Search global OpenFoodFacts database proxy via Sparky Fitness backend.
+     */
+    suspend fun searchOpenFoodFacts(query: String, page: Int = 1): Result<List<FoodItem>> = withContext(Dispatchers.IO) {
+        try {
+            val encodedQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
+            val request = Request.Builder()
+                .url("$baseUrl/api/foods/openfoodfacts/search?query=$encodedQuery&page=$page")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val root = json.parseToJsonElement(content).jsonObject
+                    val productsArray = root["products"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+
+                    val items = productsArray.mapNotNull { el ->
+                        val obj = el.jsonObject
+                        val name = obj["product_name"]?.jsonPrimitive?.content
+                            ?: obj["product_name_en"]?.jsonPrimitive?.content
+                        if (name.isNullOrBlank()) return@mapNotNull null
+
+                        val brand = obj["brands"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+                        val code = obj["code"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+                        val servingQty = obj["serving_quantity"]?.jsonPrimitive?.floatOrNull ?: 100f
+                        val servingUnit = obj["serving_quantity_unit"]?.jsonPrimitive?.content
+                            ?: obj["product_quantity_unit"]?.jsonPrimitive?.content ?: "g"
+
+                        val nutriments = obj["nutriments"]?.jsonObject
+                        val calories = nutriments?.get("energy-kcal_100g")?.jsonPrimitive?.floatOrNull
+                            ?: nutriments?.get("energy-kcal")?.jsonPrimitive?.floatOrNull
+                            ?: nutriments?.get("energy-kcal_serving")?.jsonPrimitive?.floatOrNull ?: 0f
+                        val protein = nutriments?.get("proteins_100g")?.jsonPrimitive?.floatOrNull
+                            ?: nutriments?.get("proteins")?.jsonPrimitive?.floatOrNull ?: 0f
+                        val carbs = nutriments?.get("carbohydrates_100g")?.jsonPrimitive?.floatOrNull
+                            ?: nutriments?.get("carbohydrates")?.jsonPrimitive?.floatOrNull ?: 0f
+                        val fat = nutriments?.get("fat_100g")?.jsonPrimitive?.floatOrNull
+                            ?: nutriments?.get("fat")?.jsonPrimitive?.floatOrNull ?: 0f
+                        val fiber = nutriments?.get("fiber_100g")?.jsonPrimitive?.floatOrNull
+                            ?: nutriments?.get("fiber")?.jsonPrimitive?.floatOrNull ?: 0f
+
+                        FoodItem(
+                            id = code?.let { "off_$it" } ?: UUID.randomUUID().toString(),
+                            name = name,
+                            brand = brand,
+                            barcode = code,
+                            servingSize = servingQty,
+                            servingUnit = servingUnit,
+                            calories = calories,
+                            protein = protein,
+                            carbs = carbs,
+                            fat = fat,
+                            fiber = fiber
+                        )
                     }
                     Result.success(items)
                 } else {
-                    Result.failure(IOException("Remote search error: HTTP ${response.code}"))
+                    Result.failure(IOException("OpenFoodFacts search error: HTTP ${response.code}"))
                 }
             }
         } catch (e: Exception) {
@@ -1402,7 +1503,148 @@ class SparkyApiClient(
             Result.failure(e)
         }
     }
+
+    /**
+     * Send chat messages to Sparky Fitness AI Chatbot (/api/chat).
+     * The Sparky server runs the LLM, executes fitness tools (food logging, weight recording, checkins),
+     * and returns the assistant reply along with executed tools.
+     */
+    suspend fun sendChatMessage(messages: List<ChatMessageInput>): Result<ChatMessageOutput> = withContext(Dispatchers.IO) {
+        try {
+            val jsonArray = kotlinx.serialization.json.buildJsonArray {
+                for (m in messages) {
+                    add(kotlinx.serialization.json.buildJsonObject {
+                        put("role", kotlinx.serialization.json.JsonPrimitive(m.role))
+                        put("content", kotlinx.serialization.json.JsonPrimitive(m.content))
+                    })
+                }
+            }
+            val requestBodyObj = kotlinx.serialization.json.buildJsonObject {
+                put("messages", jsonArray)
+            }
+            val body = requestBodyObj.toString().toRequestBody("application/json".toMediaType())
+
+            val request = Request.Builder()
+                .url("$baseUrl/api/chat")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val root = json.parseToJsonElement(content).jsonObject
+                    val replyContent = root["content"]?.jsonPrimitive?.content ?: ""
+                    val action = root["action"]?.jsonPrimitive?.content
+                    val executedToolsArray = root["executedTools"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+                    val executedToolsList = executedToolsArray.mapNotNull {
+                        if (it is kotlinx.serialization.json.JsonObject) {
+                            it["name"]?.jsonPrimitive?.content
+                        } else {
+                            it.jsonPrimitive.content
+                        }
+                    }
+
+                    Result.success(
+                        ChatMessageOutput(
+                            id = UUID.randomUUID().toString(),
+                            role = "assistant",
+                            content = replyContent,
+                            action = action,
+                            executedTools = executedToolsList
+                        )
+                    )
+                } else {
+                    Result.failure(IOException("Chat request failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Load recent chat history from Sparky Fitness server (/api/chat/sparky-chat-history).
+     */
+    suspend fun fetchChatHistory(): Result<List<ChatHistoryItem>> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/chat/sparky-chat-history")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val root = json.parseToJsonElement(content).jsonArray
+                    val items = root.mapNotNull { el ->
+                        val obj = el.jsonObject
+                        val id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString()
+                        val msgType = obj["message_type"]?.jsonPrimitive?.content ?: "assistant"
+                        val text = obj["content"]?.jsonPrimitive?.content ?: ""
+                        val createdAt = obj["created_at"]?.jsonPrimitive?.content
+                        ChatHistoryItem(
+                            id = id,
+                            message_type = msgType,
+                            content = text,
+                            created_at = createdAt
+                        )
+                    }
+                    Result.success(items)
+                } else {
+                    Result.failure(IOException("Failed to fetch chat history: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Clear all user chat history on Sparky Fitness server (/api/chat/clear-all-history).
+     */
+    suspend fun clearChatHistory(): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val body = "{}".toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/chat/clear-all-history")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    Result.failure(IOException("Failed to clear chat history: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
+@kotlinx.serialization.Serializable
+data class ChatMessageInput(
+    val role: String,
+    val content: String
+)
+
+data class ChatMessageOutput(
+    val id: String = UUID.randomUUID().toString(),
+    val role: String = "assistant",
+    val content: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val action: String? = null,
+    val executedTools: List<String> = emptyList()
+)
+
+@kotlinx.serialization.Serializable
+data class ChatHistoryItem(
+    val id: String,
+    val message_type: String,
+    val content: String,
+    val created_at: String? = null
+)
 
 @kotlinx.serialization.Serializable
 data class AdaptiveTdeeResult(

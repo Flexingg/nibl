@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -101,6 +102,7 @@ fun DiaryScreen(
     viewModel: DiaryViewModel,
     onNavigateToSearch: (mealTypeId: String, mealName: String, date: String) -> Unit,
     onNavigateToBarcode: (mealTypeId: String, mealName: String, date: String) -> Unit,
+    onNavigateToChat: () -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
     val selectedDate by viewModel.selectedDate.collectAsState()
@@ -282,6 +284,14 @@ fun DiaryScreen(
                         }
                     ) {
                         Icon(Icons.Default.History, contentDescription = "Copy Recent Meals", tint = ByteCreamMuted)
+                    }
+
+                    IconButton(onClick = onNavigateToChat) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "Sparky AI Coach",
+                            tint = ByteTomato
+                        )
                     }
 
                     IconButton(onClick = onNavigateToSettings) {

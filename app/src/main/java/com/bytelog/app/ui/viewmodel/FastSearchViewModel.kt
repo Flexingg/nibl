@@ -64,20 +64,33 @@ class FastSearchViewModel(
     val suggestedFoods: StateFlow<List<FoodItem>> = foodRepository.getMealSuggestions(targetMealName)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Remote search status for OpenFoodFacts & Sparky database
+    private val _isSearchingRemote = MutableStateFlow(false)
+    val isSearchingRemote: StateFlow<Boolean> = _isSearchingRemote.asStateFlow()
+
     // Remote search job for Sparky Fitness API
     private var remoteSearchJob: Job? = null
 
     init {
         viewModelScope.launch {
             _searchQuery
-                .debounce(300)
+                .debounce(250)
                 .distinctUntilChanged()
                 .collect { query ->
-                    if (query.length >= 3) {
+                    val trimmed = query.trim()
+                    if (trimmed.length >= 2) {
                         remoteSearchJob?.cancel()
                         remoteSearchJob = launch(Dispatchers.IO) {
-                            foodRepository.searchRemoteFoods(query)
+                            _isSearchingRemote.value = true
+                            try {
+                                foodRepository.searchRemoteFoods(trimmed)
+                            } finally {
+                                _isSearchingRemote.value = false
+                            }
                         }
+                    } else {
+                        remoteSearchJob?.cancel()
+                        _isSearchingRemote.value = false
                     }
                 }
         }

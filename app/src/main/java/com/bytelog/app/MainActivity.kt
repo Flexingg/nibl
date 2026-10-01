@@ -27,10 +27,12 @@ import com.bytelog.app.ui.screens.BarcodeScannerScreen
 import com.bytelog.app.ui.screens.DiaryScreen
 import com.bytelog.app.ui.screens.FastSearchScreen
 import com.bytelog.app.ui.screens.SettingsScreen
+import com.bytelog.app.ui.screens.SparkyChatScreen
 import com.bytelog.app.ui.splash.AnimatedSplashScreen
 import com.bytelog.app.ui.theme.ByteLogTheme
 import com.bytelog.app.ui.viewmodel.DiaryViewModel
 import com.bytelog.app.ui.viewmodel.FastSearchViewModel
+import com.bytelog.app.ui.viewmodel.SparkyChatViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -95,6 +97,9 @@ fun ByteLogNavHost(
                 },
                 onNavigateToBarcode = { mealId, mealName, date ->
                     navController.navigate("barcode/$mealId/$mealName/$date")
+                },
+                onNavigateToChat = {
+                    navController.navigate("chat")
                 },
                 onNavigateToSettings = {
                     navController.navigate("settings")
@@ -163,6 +168,17 @@ fun ByteLogNavHost(
                 waterRepository = app.waterRepository,
                 weightRepository = app.weightRepository,
                 mealTemplateRepository = app.mealTemplateRepository,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        // 5. Sparky AI Chatbot Screen
+        composable("chat") {
+            val chatViewModel: SparkyChatViewModel = viewModel {
+                SparkyChatViewModel(app.chatRepository)
+            }
+            SparkyChatScreen(
+                viewModel = chatViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

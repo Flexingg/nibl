@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.Favorite
@@ -30,10 +32,14 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -96,6 +102,7 @@ fun FastSearchScreen(
     val favoriteFoods by viewModel.favoriteFoods.collectAsState()
     val suggestedFoods by viewModel.suggestedFoods.collectAsState()
     val stagedEntries by viewModel.stagedEntries.collectAsState()
+    val isSearchingRemote by viewModel.isSearchingRemote.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var selectedFoodForPortion by remember { mutableStateOf<FoodItem?>(null) }
@@ -253,6 +260,28 @@ fun FastSearchScreen(
                 Spacer(modifier = Modifier.height(4.dp))
             }
 
+            // Remote Database Searching Indicator
+            AnimatedVisibility(visible = isSearchingRemote) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        color = ByteTomato,
+                        strokeWidth = 1.5.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Searching online databases (OpenFoodFacts & Sparky)…",
+                        color = ByteCreamMuted,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
             // Zero-Query Context Tabs (when search query is blank)
             if (searchQuery.isBlank()) {
                 val tabs = listOf("Suggested", "Recents", "Favorites")
@@ -297,24 +326,103 @@ fun FastSearchScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(displayFoods, key = { it.id }) { food ->
-                    FoodSearchRow(
-                        food = food,
-                        onQuickAdd = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            viewModel.stageFood(food)
-                        },
-                        onDoubleTapQuickAdd = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.stageFood(food, quantity = food.servingSize * 2f)
-                        },
-                        onAdjustPortion = {
-                            selectedFoodForPortion = food
-                        },
-                        onToggleFavorite = {
-                            viewModel.toggleFavorite(food)
+                if (searchQuery.isNotBlank() && displayFoods.isEmpty()) {
+                    item {
+                        if (isSearchingRemote) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(
+                                        color = ByteTomato,
+                                        modifier = Modifier.size(32.dp),
+                                        strokeWidth = 3.dp
+                                    )
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Text(
+                                        text = "Searching food databases…",
+                                        color = ByteCream,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Querying OpenFoodFacts & custom foods on Sparky",
+                                        color = ByteCreamMuted,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(horizontal = 24.dp)
+                                ) {
+                                    Text(
+                                        text = "No foods found for \"$searchQuery\"",
+                                        color = ByteCream,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Not in your history or OpenFoodFacts. Create a custom food or scan a barcode below.",
+                                        color = ByteCreamMuted,
+                                        fontSize = 13.sp,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(18.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Button(
+                                            onClick = { showCustomFoodDialog = true },
+                                            colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
+                                        ) {
+                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Custom Food", color = ByteCream, fontSize = 13.sp)
+                                        }
+                                        OutlinedButton(
+                                            onClick = onNavigateToBarcode,
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
+                                        ) {
+                                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Scan Barcode", fontSize = 13.sp)
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    )
+                    }
+                } else {
+                    items(displayFoods, key = { it.id }) { food ->
+                        FoodSearchRow(
+                            food = food,
+                            onQuickAdd = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.stageFood(food)
+                            },
+                            onDoubleTapQuickAdd = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.stageFood(food, quantity = food.servingSize * 2f)
+                            },
+                            onAdjustPortion = {
+                                selectedFoodForPortion = food
+                            },
+                            onToggleFavorite = {
+                                viewModel.toggleFavorite(food)
+                            }
+                        )
+                    }
                 }
 
                 item {
@@ -456,13 +564,32 @@ fun FoodSearchRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = food.name,
-                color = ByteCream,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = food.name,
+                    color = ByteCream,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (food.id.startsWith("off_")) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(ByteTomato.copy(alpha = 0.18f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = "DB",
+                            color = ByteTomato,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
             Text(
                 text = "${food.brand ?: "Generic"} • ${food.servingSize.roundToInt()}${food.servingUnit} • P: ${food.protein.roundToInt()}g  C: ${food.carbs.roundToInt()}g  F: ${food.fat.roundToInt()}g",
                 color = ByteCreamMuted,
