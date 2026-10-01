@@ -47,8 +47,11 @@ import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroProtein
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import java.util.Locale
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BodyweightCard(
     currentEntry: WeightEntry?,
@@ -63,10 +66,20 @@ fun BodyweightCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .clickable {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                onOpenLogDialog()
-            },
+            .combinedClickable(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onOpenLogDialog()
+                },
+                onDoubleClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onOpenLogDialog()
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onOpenLogDialog()
+                }
+            ),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = ByteCardDark)
     ) {

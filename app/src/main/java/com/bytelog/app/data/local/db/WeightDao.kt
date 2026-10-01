@@ -19,6 +19,12 @@ interface WeightDao {
     @Query("SELECT * FROM weight_entries ORDER BY entryDate DESC LIMIT :limit")
     fun getRecentWeights(limit: Int = 30): Flow<List<WeightEntry>>
 
+    @Query("SELECT * FROM weight_entries WHERE entryDate >= :startDate AND entryDate <= :endDate ORDER BY entryDate ASC")
+    fun getWeightsInRange(startDate: String, endDate: String): Flow<List<WeightEntry>>
+
+    @Query("SELECT * FROM weight_entries ORDER BY entryDate ASC")
+    fun getAllWeights(): Flow<List<WeightEntry>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(entry: WeightEntry)
 

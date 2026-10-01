@@ -54,4 +54,10 @@ interface FoodEntryDao {
         LIMIT :limit
     """)
     fun getRecentlyLoggedEntries(limit: Int = 30): Flow<List<FoodEntry>>
+
+    @Query("SELECT * FROM food_entries WHERE entryDate >= :startDate AND entryDate <= :endDate ORDER BY entryDate ASC, createdAt ASC")
+    fun getEntriesInRange(startDate: String, endDate: String): Flow<List<FoodEntry>>
+
+    @Query("SELECT * FROM food_entries ORDER BY entryDate ASC, createdAt ASC")
+    fun getAllEntries(): Flow<List<FoodEntry>>
 }

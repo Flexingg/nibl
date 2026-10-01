@@ -1,7 +1,9 @@
 package com.bytelog.app.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -302,6 +304,10 @@ fun FastSearchScreen(
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             viewModel.stageFood(food)
                         },
+                        onDoubleTapQuickAdd = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.stageFood(food, quantity = food.servingSize * 2f)
+                        },
                         onAdjustPortion = {
                             selectedFoodForPortion = food
                         },
@@ -421,19 +427,30 @@ fun FastSearchScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FoodSearchRow(
     food: FoodItem,
     onQuickAdd: () -> Unit,
+    onDoubleTapQuickAdd: () -> Unit,
     onAdjustPortion: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(ByteSurfaceDark)
-            .clickable(onClick = onQuickAdd)
+            .combinedClickable(
+                onClick = onQuickAdd,
+                onDoubleClick = onDoubleTapQuickAdd,
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onToggleFavorite()
+                }
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically

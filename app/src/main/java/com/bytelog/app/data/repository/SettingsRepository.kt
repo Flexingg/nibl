@@ -28,6 +28,11 @@ class SettingsRepository(private val context: Context) {
         val KEY_DEFAULT_CONTAINER_OZ = floatPreferencesKey("default_container_oz")
         val KEY_DEFAULT_CONTAINER_NAME = stringPreferencesKey("default_container_name")
         val KEY_WEIGHT_UNIT = stringPreferencesKey("weight_unit")
+
+        val KEY_AUTO_ADJUST_CALORIES = androidx.datastore.preferences.core.booleanPreferencesKey("auto_adjust_calories")
+        val KEY_CALORIE_GOAL_MODE = stringPreferencesKey("calorie_goal_mode")
+        val KEY_CALORIE_GOAL_OFFSET = floatPreferencesKey("calorie_goal_offset")
+        val KEY_LAST_ADAPTIVE_TDEE = floatPreferencesKey("last_adaptive_tdee")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
@@ -76,6 +81,41 @@ class SettingsRepository(private val context: Context) {
 
     val weightUnit: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_WEIGHT_UNIT] ?: "lbs"
+    }
+
+    val autoAdjustCalories: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_AUTO_ADJUST_CALORIES] ?: true
+    }
+
+    val calorieGoalMode: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_CALORIE_GOAL_MODE] ?: "cut"
+    }
+
+    val calorieGoalOffset: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[KEY_CALORIE_GOAL_OFFSET] ?: -500f
+    }
+
+    val lastAdaptiveTdee: Flow<Float?> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LAST_ADAPTIVE_TDEE]
+    }
+
+    suspend fun saveAutoAdjustCalories(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_AUTO_ADJUST_CALORIES] = enabled
+        }
+    }
+
+    suspend fun saveCalorieGoal(mode: String, offset: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_CALORIE_GOAL_MODE] = mode
+            prefs[KEY_CALORIE_GOAL_OFFSET] = offset
+        }
+    }
+
+    suspend fun saveLastAdaptiveTdee(tdee: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAST_ADAPTIVE_TDEE] = tdee
+        }
     }
 
     suspend fun saveWeightUnit(unit: String) {

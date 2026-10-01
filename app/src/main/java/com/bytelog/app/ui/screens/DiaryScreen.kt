@@ -1,7 +1,9 @@
 package com.bytelog.app.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,12 +70,14 @@ import com.bytelog.app.ui.components.BodyweightCard
 import com.bytelog.app.ui.components.CopyMealDialog
 import com.bytelog.app.ui.components.DailyMacroHeader
 import com.bytelog.app.ui.components.EditFoodEntrySheet
+import com.bytelog.app.ui.components.GoalAdjustDialog
 import com.bytelog.app.ui.components.HydrationCard
 import com.bytelog.app.ui.components.HydrationSheet
 import com.bytelog.app.ui.components.MealTemplatesSheet
 import com.bytelog.app.ui.components.RecipeBuilderSheet
 import com.bytelog.app.ui.components.SaveMealTemplateDialog
 import com.bytelog.app.ui.components.WeightLogDialog
+import com.bytelog.app.ui.components.WeightVsCaloriesCard
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
@@ -116,6 +120,13 @@ fun DiaryScreen(
     val mealTemplates by viewModel.mealTemplates.collectAsState()
     val availableFoods by viewModel.availableFoods.collectAsState()
 
+    val chartPoints by viewModel.weightVsCaloriesChartData.collectAsState()
+    val adaptiveCalc by viewModel.adaptiveTdeeCalculation.collectAsState()
+    val selectedChartDays by viewModel.selectedChartRangeDays.collectAsState()
+    val autoAdjustEnabled by viewModel.autoAdjustCalories.collectAsState()
+    val calorieGoalMode by viewModel.calorieGoalMode.collectAsState()
+    val calorieGoalOffset by viewModel.calorieGoalOffset.collectAsState()
+
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -140,6 +151,7 @@ fun DiaryScreen(
     var editingEntry by remember { mutableStateOf<FoodEntry?>(null) }
     var showHydrationSheet by remember { mutableStateOf(false) }
     var showWeightDialog by remember { mutableStateOf(false) }
+    var showGoalAdjustDialog by remember { mutableStateOf(false) }
     var copyingMealName by remember { mutableStateOf<String?>(null) }
     var savingTemplateMealName by remember { mutableStateOf<String?>(null) }
     var showTemplatesSheet by remember { mutableStateOf(false) }
@@ -307,6 +319,12 @@ fun DiaryScreen(
                 onLogDefault = {
                     viewModel.logDefaultDrink()
                 },
+                onLogDoubleDrink = {
+                    viewModel.quickAddWaterOz(
+                        amountOz = defaultContainerOz * 2f,
+                        containerName = "${defaultContainerName} x2"
+                    )
+                },
                 onOpenCustom = {
                     showHydrationSheet = true
                 },
@@ -408,6 +426,13 @@ fun DiaryScreen(
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onNavigateToSearch(group.mealTypeId, group.mealName, selectedDate)
                             },
+                            onAddFoodLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onNavigateToBarcode(group.mealTypeId, group.mealName, selectedDate)
+                            },
+                            onHeaderDoubleClick = {
+                                viewModel.copyMealFromYesterday(group.mealName)
+                            },
                             onCopyMeal = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 copyingMealName = group.mealName
@@ -431,6 +456,9 @@ fun DiaryScreen(
                                 scope.launch {
                                     snackbarHostState.showSnackbar("Duplicated ${entry.foodName}")
                                 }
+                            },
+                            onQuickIncrementEntry = { entry ->
+                                viewModel.quickIncrementServing(entry)
                             },
                             onDeleteEntry = { entry ->
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -484,7 +512,7 @@ fun DiaryScreen(
                                             showTemplatesSheet = true
                                         }
                                         .padding(horizontal = 14.dp, vertical = 10.dp)
-                                ) {
+                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -537,6 +565,22 @@ fun DiaryScreen(
                             }
                         }
                     }
+                }
+
+                // Interactive Weight vs Calories Over Time Chart & Adaptive TDEE
+                item {
+                    WeightVsCaloriesCard(
+                        chartPoints = chartPoints,
+                        calculation = adaptiveCalc,
+                        selectedDaysRange = selectedChartDays,
+                        weightUnit = weightUnit,
+                        onSelectDaysRange = { days ->
+                            viewModel.setChartRange(days)
+                        },
+                        onOpenGoalAdjuster = {
+                            showGoalAdjustDialog = true
+                        }
+                    )
                 }
 
                 item {
@@ -624,6 +668,22 @@ fun DiaryScreen(
         )
     }
 
+    // Adaptive Calorie & Macro Goal Adjust Dialog
+    if (showGoalAdjustDialog) {
+        GoalAdjustDialog(
+            currentTdee = adaptiveCalc.tdee,
+            isAutoAdjustEnabled = autoAdjustEnabled,
+            currentGoalMode = calorieGoalMode,
+            currentGoalOffset = calorieGoalOffset,
+            confidence = adaptiveCalc.confidence,
+            onDismiss = { showGoalAdjustDialog = false },
+            onSaveGoal = { enabled, mode, offset ->
+                viewModel.saveGoalSettings(enabled, mode, offset)
+                showGoalAdjustDialog = false
+            }
+        )
+    }
+
     // Copy Meal Dialog
     copyingMealName?.let { mealName ->
         CopyMealDialog(
@@ -699,19 +759,25 @@ fun DiaryScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MealCard(
     mealName: String,
     mealCalories: Float,
     entries: List<FoodEntry>,
     onAddFood: () -> Unit,
+    onAddFoodLongClick: () -> Unit,
+    onHeaderDoubleClick: () -> Unit,
     onCopyMeal: () -> Unit,
     onSaveTemplate: () -> Unit,
     onOpenTemplates: () -> Unit,
     onEditEntry: (FoodEntry) -> Unit,
     onDuplicateEntry: (FoodEntry) -> Unit,
+    onQuickIncrementEntry: (FoodEntry) -> Unit,
     onDeleteEntry: (FoodEntry) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -725,7 +791,22 @@ fun MealCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .combinedClickable(
+                        onClick = onCopyMeal,
+                        onDoubleClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onHeaderDoubleClick()
+                        },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onHeaderDoubleClick()
+                        }
+                    )
+            ) {
                 Text(
                     text = mealName,
                     color = ByteCream,
@@ -781,16 +862,26 @@ fun MealCard(
                     )
                 }
 
-                IconButton(
-                    onClick = onAddFood,
+                Box(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(CircleShape)
                         .background(ByteSurfaceVariantDark)
+                        .combinedClickable(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onAddFood()
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onAddFoodLongClick()
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "Add food to $mealName",
+                        contentDescription = "Add food to $mealName (Hold for Barcode)",
                         tint = ByteTomato,
                         modifier = Modifier.size(18.dp)
                     )
@@ -807,6 +898,7 @@ fun MealCard(
                         entry = entry,
                         onEdit = { onEditEntry(entry) },
                         onDuplicate = { onDuplicateEntry(entry) },
+                        onQuickIncrement = { onQuickIncrementEntry(entry) },
                         onDelete = { onDeleteEntry(entry) }
                     )
                 }
@@ -815,14 +907,17 @@ fun MealCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SwipeableFoodEntryRow(
     entry: FoodEntry,
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
+    onQuickIncrement: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
@@ -869,7 +964,20 @@ fun SwipeableFoodEntryRow(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(ByteSurfaceVariantDark)
-                .clickable(onClick = onEdit)
+                .combinedClickable(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onEdit()
+                    },
+                    onDoubleClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onQuickIncrement()
+                    },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onDelete()
+                    }
+                )
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically

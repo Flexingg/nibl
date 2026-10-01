@@ -1311,7 +1311,76 @@ class SparkyApiClient(
             Result.failure(e)
         }
     }
+
+    /**
+     * Fetch Adaptive TDEE calculation from Sparky Fitness Server.
+     */
+    suspend fun fetchAdaptiveTdee(date: String? = null): Result<AdaptiveTdeeResult> = withContext(Dispatchers.IO) {
+        try {
+            val url = if (date != null) "$baseUrl/api/adaptive-tdee?date=$date" else "$baseUrl/api/adaptive-tdee"
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string().orEmpty()
+                    val elem = json.parseToJsonElement(body).jsonObject
+                    val tdee = elem["tdee"]?.jsonPrimitive?.floatOrNull ?: 2200f
+                    val confidence = elem["confidence"]?.jsonPrimitive?.content ?: "LOW"
+                    val weightTrend = elem["weightTrend"]?.jsonPrimitive?.floatOrNull
+                    val isFallback = elem["isFallback"]?.jsonPrimitive?.booleanOrNull ?: false
+                    val fallbackReason = elem["fallbackReason"]?.jsonPrimitive?.content
+                    val avgIntake = elem["avgIntake"]?.jsonPrimitive?.floatOrNull
+                    val daysOfData = elem["daysOfData"]?.jsonPrimitive?.intOrNull ?: 0
+                    val weightChangeKg = elem["weightChangeKg"]?.jsonPrimitive?.floatOrNull
+                    val dailyWeightChangeKg = elem["dailyWeightChangeKg"]?.jsonPrimitive?.floatOrNull
+                    val weightChangeCalories = elem["weightChangeCalories"]?.jsonPrimitive?.floatOrNull
+                    val rawTdee = elem["rawTdee"]?.jsonPrimitive?.floatOrNull
+                    val wasClamped = elem["wasClamped"]?.jsonPrimitive?.booleanOrNull ?: false
+
+                    Result.success(
+                        AdaptiveTdeeResult(
+                            tdee = tdee,
+                            confidence = confidence,
+                            weightTrend = weightTrend,
+                            isFallback = isFallback,
+                            fallbackReason = fallbackReason,
+                            avgIntake = avgIntake,
+                            daysOfData = daysOfData,
+                            weightChangeKg = weightChangeKg,
+                            dailyWeightChangeKg = dailyWeightChangeKg,
+                            weightChangeCalories = weightChangeCalories,
+                            rawTdee = rawTdee,
+                            wasClamped = wasClamped
+                        )
+                    )
+                } else {
+                    Result.failure(IOException("Fetch adaptive TDEE failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
+@kotlinx.serialization.Serializable
+data class AdaptiveTdeeResult(
+    val tdee: Float,
+    val confidence: String = "LOW",
+    val weightTrend: Float? = null,
+    val isFallback: Boolean = false,
+    val fallbackReason: String? = null,
+    val avgIntake: Float? = null,
+    val daysOfData: Int = 0,
+    val weightChangeKg: Float? = null,
+    val dailyWeightChangeKg: Float? = null,
+    val weightChangeCalories: Float? = null,
+    val rawTdee: Float? = null,
+    val wasClamped: Boolean = false
+)
 
 @kotlinx.serialization.Serializable
 data class UserMacroGoals(

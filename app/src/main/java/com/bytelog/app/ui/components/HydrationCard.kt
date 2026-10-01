@@ -1,9 +1,11 @@
 package com.bytelog.app.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +46,7 @@ import kotlin.math.roundToInt
 private val HydrationCyan = Color(0xFF38BDF8)
 private val HydrationCyanSubtle = Color(0x2638BDF8)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HydrationCard(
     currentOz: Float,
@@ -53,6 +56,7 @@ fun HydrationCard(
     onLogDefault: () -> Unit,
     onOpenCustom: () -> Unit,
     onUndoLast: () -> Unit,
+    onLogDoubleDrink: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -69,10 +73,20 @@ fun HydrationCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             .background(ByteSurfaceDark)
-            .clickable {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onOpenCustom()
-            }
+            .combinedClickable(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onOpenCustom()
+                },
+                onDoubleClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onUndoLast()
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onOpenCustom()
+                }
+            )
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -185,10 +199,26 @@ fun HydrationCard(
                     .clip(RoundedCornerShape(10.dp))
                     .background(ByteSurfaceVariantDark)
                     .border(1.dp, HydrationCyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                    .clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onLogDefault()
-                    }
+                    .combinedClickable(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onLogDefault()
+                        },
+                        onDoubleClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (onLogDoubleDrink != null) onLogDoubleDrink() else {
+                                onLogDefault()
+                                onLogDefault()
+                            }
+                        },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (onLogDoubleDrink != null) onLogDoubleDrink() else {
+                                onLogDefault()
+                                onLogDefault()
+                            }
+                        }
+                    )
                     .padding(vertical = 8.dp, horizontal = 10.dp),
                 contentAlignment = Alignment.Center
             ) {

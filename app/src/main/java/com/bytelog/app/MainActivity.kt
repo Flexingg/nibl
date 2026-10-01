@@ -86,7 +86,7 @@ fun ByteLogNavHost(
         // 1. Daily Diary / Timeline
         composable("diary") {
             val diaryViewModel: DiaryViewModel = viewModel {
-                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository)
+                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient)
             }
             DiaryScreen(
                 viewModel = diaryViewModel,

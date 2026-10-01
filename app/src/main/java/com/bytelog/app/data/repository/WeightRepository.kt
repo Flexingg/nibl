@@ -26,6 +26,14 @@ class WeightRepository(
         return weightDao.getLatestWeightOnOrBefore(date)
     }
 
+    fun getWeightsInRange(startDate: String, endDate: String): Flow<List<WeightEntry>> {
+        return weightDao.getWeightsInRange(startDate, endDate)
+    }
+
+    fun getAllWeights(): Flow<List<WeightEntry>> {
+        return weightDao.getAllWeights()
+    }
+
     suspend fun saveWeightUnit(unit: String) {
         settingsRepository.saveWeightUnit(unit)
     }

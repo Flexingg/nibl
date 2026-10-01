@@ -16,6 +16,11 @@ import com.bytelog.app.data.repository.MealTemplateRepository
 import com.bytelog.app.data.repository.SettingsRepository
 import com.bytelog.app.data.repository.WaterRepository
 import com.bytelog.app.data.repository.WeightRepository
+import com.bytelog.app.data.analytics.AdaptiveTdeeCalculation
+import com.bytelog.app.data.analytics.AdaptiveTdeeEngine
+import com.bytelog.app.data.analytics.DayChartPoint
+import com.bytelog.app.data.remote.AdaptiveTdeeResult
+import com.bytelog.app.data.remote.SparkyApiClient
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -30,6 +35,15 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
+
+private data class GoalSettingsData(
+    val autoAdjust: Boolean,
+    val goalMode: String,
+    val goalOffset: Float,
+    val fallbackCalories: Float,
+    val weightUnit: String
+)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DiaryViewModel(
@@ -37,7 +51,8 @@ class DiaryViewModel(
     private val waterRepository: WaterRepository,
     private val settingsRepository: SettingsRepository,
     private val weightRepository: WeightRepository,
-    private val mealTemplateRepository: MealTemplateRepository
+    private val mealTemplateRepository: MealTemplateRepository,
+    private val sparkyApiClient: SparkyApiClient? = null
 ) : ViewModel() {
 
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
@@ -51,6 +66,20 @@ class DiaryViewModel(
     private val _syncMessage = MutableSharedFlow<String>()
     val syncMessage: SharedFlow<String> = _syncMessage.asSharedFlow()
 
+    private val _serverAdaptiveTdee = MutableStateFlow<AdaptiveTdeeResult?>(null)
+
+    private val _selectedChartRangeDays = MutableStateFlow(30)
+    val selectedChartRangeDays: StateFlow<Int> = _selectedChartRangeDays.asStateFlow()
+
+    val autoAdjustCalories: StateFlow<Boolean> = settingsRepository.autoAdjustCalories
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val calorieGoalMode: StateFlow<String> = settingsRepository.calorieGoalMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "cut")
+
+    val calorieGoalOffset: StateFlow<Float> = settingsRepository.calorieGoalOffset
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), -500f)
+
     val mealTypes: StateFlow<List<MealType>> = foodRepository.getAllMealTypes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MealType.DEFAULT_MEAL_TYPES)
 
@@ -58,30 +87,116 @@ class DiaryViewModel(
         .flatMapLatest { date -> foodRepository.getEntriesForDate(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allEntries: StateFlow<List<FoodEntry>> = foodRepository.getAllEntries()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allWeights: StateFlow<List<WeightEntry>> = weightRepository.getAllWeights()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val weightUnit: StateFlow<String> = weightRepository.weightUnit
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "lbs")
+
+    private val goalSettingsFlow = combine(
+        settingsRepository.autoAdjustCalories,
+        settingsRepository.calorieGoalMode,
+        settingsRepository.calorieGoalOffset,
+        settingsRepository.targetCalories,
+        weightUnit
+    ) { autoAdjust, mode, offset, fallbackCal, unit ->
+        GoalSettingsData(autoAdjust, mode, offset, fallbackCal, unit)
+    }
+
+    val adaptiveTdeeCalculation: StateFlow<AdaptiveTdeeCalculation> = combine(
+        allEntries,
+        allWeights,
+        _selectedDate,
+        goalSettingsFlow,
+        _serverAdaptiveTdee
+    ) { entries, weights, date, settings, serverRes ->
+        if (serverRes != null && !serverRes.isFallback && serverRes.tdee > 0f) {
+            val recommended = (serverRes.tdee + settings.goalOffset).coerceAtLeast(1200f)
+            val weeklyDelta = if (serverRes.weightChangeKg != null) {
+                val isLbs = settings.weightUnit.equals("lbs", ignoreCase = true)
+                val change = if (isLbs) serverRes.weightChangeKg * 2.20462f else serverRes.weightChangeKg
+                change * (7f / 28f)
+            } else null
+
+            AdaptiveTdeeCalculation(
+                tdee = serverRes.tdee,
+                confidence = serverRes.confidence,
+                weightTrend = serverRes.weightTrend,
+                weightChangeRatePerWeek = weeklyDelta,
+                avgDailyIntake = serverRes.avgIntake,
+                recommendedCalories = recommended,
+                goalMode = settings.goalMode,
+                goalOffset = settings.goalOffset,
+                daysOfData = serverRes.daysOfData,
+                isFallback = false,
+                explanation = "Synced with Sparky Adaptive Engine (${serverRes.confidence.lowercase().replaceFirstChar { it.uppercase() }} confidence)"
+            )
+        } else {
+            AdaptiveTdeeEngine.calculate(
+                allEntries = entries,
+                allWeights = weights,
+                targetDateStr = date,
+                goalOffset = settings.goalOffset,
+                goalMode = settings.goalMode,
+                weightUnit = settings.weightUnit,
+                fallbackTdee = settings.fallbackCalories
+            )
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        AdaptiveTdeeEngine.calculate(emptyList(), emptyList(), LocalDate.now().format(dateFormatter))
+    )
+
     val dailySummary: StateFlow<DailySummary> = combine(
         entriesForDate,
-        settingsRepository.targetCalories,
+        adaptiveTdeeCalculation,
+        goalSettingsFlow,
         settingsRepository.targetProtein,
-        settingsRepository.targetCarbs,
-        settingsRepository.targetFat
-    ) { entries, targetCal, targetP, targetC, targetF ->
+        settingsRepository.targetCarbs
+    ) { entries, adaptiveCalc, settings, targetP, targetC ->
         val totalCal = entries.sumOf { it.calories.toDouble() }.toFloat()
         val totalP = entries.sumOf { it.protein.toDouble() }.toFloat()
         val totalC = entries.sumOf { it.carbs.toDouble() }.toFloat()
         val totalF = entries.sumOf { it.fat.toDouble() }.toFloat()
+
+        val targetCal = if (settings.autoAdjust) adaptiveCalc.recommendedCalories else settings.fallbackCalories
+        val autoMacros = if (settings.autoAdjust) {
+            val currentKg = adaptiveCalc.weightTrend ?: 75f
+            AdaptiveTdeeEngine.computeMacros(targetCal, currentKg)
+        } else null
 
         DailySummary(
             date = _selectedDate.value,
             totalCalories = totalCal,
             targetCalories = targetCal,
             totalProtein = totalP,
-            targetProtein = targetP,
+            targetProtein = autoMacros?.protein ?: targetP,
             totalCarbs = totalC,
-            targetCarbs = targetC,
+            targetCarbs = autoMacros?.carbs ?: targetC,
             totalFat = totalF,
-            targetFat = targetF
+            targetFat = autoMacros?.fat ?: (targetCal * 0.28f / 9f)
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DailySummary(date = _selectedDate.value))
+
+    val weightVsCaloriesChartData: StateFlow<List<DayChartPoint>> = combine(
+        allEntries,
+        allWeights,
+        _selectedChartRangeDays,
+        _selectedDate,
+        dailySummary
+    ) { entries, weights, rangeDays, date, summary ->
+        AdaptiveTdeeEngine.buildChartPoints(
+            allEntries = entries,
+            allWeights = weights,
+            rangeDays = rangeDays,
+            targetDateStr = date,
+            targetCalories = summary.targetCalories
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val waterTotalOz: StateFlow<Float> = _selectedDate
         .flatMapLatest { date -> waterRepository.getTotalWaterOzForDate(date) }
@@ -109,9 +224,6 @@ class DiaryViewModel(
     val previousWeight: StateFlow<WeightEntry?> = _selectedDate
         .flatMapLatest { date -> weightRepository.getLatestWeightOnOrBefore(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    val weightUnit: StateFlow<String> = weightRepository.weightUnit
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "lbs")
 
     val mealTemplates: StateFlow<List<MealTemplate>> = mealTemplateRepository.templates
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -316,6 +428,36 @@ class DiaryViewModel(
         }
     }
 
+    fun setChartRange(days: Int) {
+        _selectedChartRangeDays.value = days
+    }
+
+    fun saveGoalSettings(enabled: Boolean, mode: String, offset: Float) {
+        viewModelScope.launch {
+            settingsRepository.saveAutoAdjustCalories(enabled)
+            settingsRepository.saveCalorieGoal(mode, offset)
+            _syncMessage.emit("Goal updated: $mode (${if (offset > 0) "+${offset.toInt()}" else offset.toInt()} kcal)")
+        }
+    }
+
+    fun quickIncrementServing(entry: FoodEntry) {
+        viewModelScope.launch {
+            val addQty = if (entry.unit.contains("serving", ignoreCase = true)) 1f else entry.quantity
+            val newQty = entry.quantity + addQty
+            val ratio = if (entry.quantity > 0f) newQty / entry.quantity else 2f
+            val updated = entry.copy(
+                quantity = newQty,
+                calories = entry.calories * ratio,
+                protein = entry.protein * ratio,
+                carbs = entry.carbs * ratio,
+                fat = entry.fat * ratio,
+                syncStatus = FoodEntry.SYNC_STATUS_PENDING_UPDATE
+            )
+            foodRepository.updateEntry(updated)
+            _syncMessage.emit("+1 serving (${newQty.toInt()}${entry.unit}) to ${entry.foodName}")
+        }
+    }
+
     fun syncSelectedDate() {
         viewModelScope.launch {
             _isSyncing.value = true
@@ -323,6 +465,13 @@ class DiaryViewModel(
                 foodRepository.syncDateWithServer(_selectedDate.value)
                 waterRepository.syncWaterForDate(_selectedDate.value)
                 weightRepository.syncWeightForDate(_selectedDate.value)
+
+                sparkyApiClient?.let { client ->
+                    val tdeeRes = client.fetchAdaptiveTdee(_selectedDate.value)
+                    if (tdeeRes.isSuccess) {
+                        _serverAdaptiveTdee.value = tdeeRes.getOrNull()
+                    }
+                }
             } catch (_: Exception) {
             } finally {
                 _isSyncing.value = false
@@ -338,6 +487,11 @@ class DiaryViewModel(
                 val waterRes = waterRepository.syncWaterForDate(_selectedDate.value)
                 weightRepository.syncWeightForDate(_selectedDate.value)
                 mealTemplateRepository.refreshTemplates()
+
+                val tdeeRes = sparkyApiClient?.fetchAdaptiveTdee(_selectedDate.value)
+                if (tdeeRes?.isSuccess == true) {
+                    _serverAdaptiveTdee.value = tdeeRes.getOrNull()
+                }
 
                 foodRes.fold(
                     onSuccess = { count ->

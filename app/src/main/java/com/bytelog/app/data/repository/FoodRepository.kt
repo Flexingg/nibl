@@ -72,6 +72,14 @@ class FoodRepository(
         return foodDao.getFavoriteFoods()
     }
 
+    fun getEntriesInRange(startDate: String, endDate: String): Flow<List<FoodEntry>> {
+        return foodEntryDao.getEntriesInRange(startDate, endDate)
+    }
+
+    fun getAllEntries(): Flow<List<FoodEntry>> {
+        return foodEntryDao.getAllEntries()
+    }
+
     fun getMealSuggestions(mealName: String): Flow<List<FoodItem>> {
         val affinity = when (mealName.lowercase()) {
             "breakfast" -> "breakfast"
