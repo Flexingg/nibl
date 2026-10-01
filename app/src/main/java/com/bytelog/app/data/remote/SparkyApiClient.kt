@@ -257,7 +257,7 @@ class SparkyApiClient(
                         val obj = el.jsonObject
                         MealType(
                             id = obj["id"]?.jsonPrimitive?.content ?: "meal_$index",
-                            name = obj["name"]?.jsonPrimitive?.content ?: "Meal $index",
+                            name = (obj["name"]?.jsonPrimitive?.content ?: "Meal $index").trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
                             sortOrder = obj["sort_order"]?.jsonPrimitive?.intOrNull ?: index
                         )
                     }
@@ -273,6 +273,7 @@ class SparkyApiClient(
 
     /**
      * Search foods remotely from Sparky Fitness database.
+     * Extracts nutrition from `default_variant` (or fallback to root).
      */
     suspend fun searchFoods(query: String): Result<List<FoodItem>> = withContext(Dispatchers.IO) {
         try {
@@ -296,18 +297,36 @@ class SparkyApiClient(
 
                     val items = foodsArray.map { el ->
                         val obj = el.jsonObject
+                        val variant = obj["default_variant"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonObject
+                            ?: obj["variants"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonArray?.firstOrNull()?.jsonObject
+
+                        val calories = variant?.get("calories")?.jsonPrimitive?.floatOrNull
+                            ?: obj["calories"]?.jsonPrimitive?.floatOrNull ?: 0f
+                        val protein = variant?.get("protein")?.jsonPrimitive?.floatOrNull
+                            ?: obj["protein"]?.jsonPrimitive?.floatOrNull ?: 0f
+                        val carbs = variant?.get("carbs")?.jsonPrimitive?.floatOrNull
+                            ?: obj["carbs"]?.jsonPrimitive?.floatOrNull ?: 0f
+                        val fat = variant?.get("fat")?.jsonPrimitive?.floatOrNull
+                            ?: obj["fat"]?.jsonPrimitive?.floatOrNull ?: 0f
+                        val fiber = variant?.get("dietary_fiber")?.jsonPrimitive?.floatOrNull
+                            ?: obj["dietary_fiber"]?.jsonPrimitive?.floatOrNull ?: 0f
+                        val servingSize = variant?.get("serving_size")?.jsonPrimitive?.floatOrNull
+                            ?: obj["serving_size"]?.jsonPrimitive?.floatOrNull ?: 100f
+                        val servingUnit = variant?.get("serving_unit")?.jsonPrimitive?.content
+                            ?: obj["serving_unit"]?.jsonPrimitive?.content ?: "g"
+
                         FoodItem(
                             id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
                             name = obj["name"]?.jsonPrimitive?.content ?: "Unknown Food",
                             brand = obj["brand"]?.jsonPrimitive?.content,
                             barcode = obj["barcode"]?.jsonPrimitive?.content,
-                            servingSize = obj["serving_size"]?.jsonPrimitive?.floatOrNull ?: 100f,
-                            servingUnit = obj["serving_unit"]?.jsonPrimitive?.content ?: "g",
-                            calories = obj["calories"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                            protein = obj["protein"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                            carbs = obj["carbs"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                            fat = obj["fat"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                            fiber = obj["dietary_fiber"]?.jsonPrimitive?.floatOrNull ?: 0f,
+                            servingSize = servingSize,
+                            servingUnit = servingUnit,
+                            calories = calories,
+                            protein = protein,
+                            carbs = carbs,
+                            fat = fat,
+                            fiber = fiber,
                             isFavorite = obj["is_favorite"]?.jsonPrimitive?.booleanOrNull ?: false
                         )
                     }
@@ -335,18 +354,36 @@ class SparkyApiClient(
                 if (response.isSuccessful) {
                     val content = response.body?.string().orEmpty()
                     val obj = json.parseToJsonElement(content).jsonObject
+                    val variant = obj["default_variant"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonObject
+                        ?: obj["variants"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonArray?.firstOrNull()?.jsonObject
+
+                    val calories = variant?.get("calories")?.jsonPrimitive?.floatOrNull
+                        ?: obj["calories"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    val protein = variant?.get("protein")?.jsonPrimitive?.floatOrNull
+                        ?: obj["protein"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    val carbs = variant?.get("carbs")?.jsonPrimitive?.floatOrNull
+                        ?: obj["carbs"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    val fat = variant?.get("fat")?.jsonPrimitive?.floatOrNull
+                        ?: obj["fat"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    val fiber = variant?.get("dietary_fiber")?.jsonPrimitive?.floatOrNull
+                        ?: obj["dietary_fiber"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    val servingSize = variant?.get("serving_size")?.jsonPrimitive?.floatOrNull
+                        ?: obj["serving_size"]?.jsonPrimitive?.floatOrNull ?: 100f
+                    val servingUnit = variant?.get("serving_unit")?.jsonPrimitive?.content
+                        ?: obj["serving_unit"]?.jsonPrimitive?.content ?: "g"
+
                     val item = FoodItem(
                         id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
                         name = obj["name"]?.jsonPrimitive?.content ?: "Scanned Product",
                         brand = obj["brand"]?.jsonPrimitive?.content,
                         barcode = barcode,
-                        servingSize = obj["serving_size"]?.jsonPrimitive?.floatOrNull ?: 100f,
-                        servingUnit = obj["serving_unit"]?.jsonPrimitive?.content ?: "g",
-                        calories = obj["calories"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                        protein = obj["protein"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                        carbs = obj["carbs"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                        fat = obj["fat"]?.jsonPrimitive?.floatOrNull ?: 0f,
-                        fiber = obj["dietary_fiber"]?.jsonPrimitive?.floatOrNull ?: 0f
+                        servingSize = servingSize,
+                        servingUnit = servingUnit,
+                        calories = calories,
+                        protein = protein,
+                        carbs = carbs,
+                        fat = fat,
+                        fiber = fiber
                     )
                     Result.success(item)
                 } else if (response.code == 404) {
@@ -379,14 +416,16 @@ class SparkyApiClient(
                         val obj = el.jsonObject
                         val rawEntryDate = obj["entry_date"]?.jsonPrimitive?.content ?: cleanDate
                         val normalizedDate = if (rawEntryDate.contains("T")) rawEntryDate.substringBefore("T") else rawEntryDate
+                        val rawMealName = obj["meal_type"]?.jsonPrimitive?.content ?: "Meal"
+                        val cleanMealName = rawMealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
                         FoodEntry(
                             id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
                             foodId = obj["food_id"]?.jsonPrimitive?.content,
                             foodName = obj["food_name"]?.jsonPrimitive?.content ?: "Food Item",
                             brandName = obj["brand_name"]?.jsonPrimitive?.content,
-                            mealTypeId = obj["meal_type_id"]?.jsonPrimitive?.content ?: "breakfast",
-                            mealName = obj["meal_type"]?.jsonPrimitive?.content ?: "Meal",
+                            mealTypeId = obj["meal_type_id"]?.jsonPrimitive?.content ?: cleanMealName.lowercase(),
+                            mealName = cleanMealName,
                             quantity = obj["quantity"]?.jsonPrimitive?.floatOrNull ?: 1f,
                             unit = obj["unit"]?.jsonPrimitive?.content ?: "g",
                             calories = obj["calories"]?.jsonPrimitive?.floatOrNull ?: 0f,
@@ -413,15 +452,26 @@ class SparkyApiClient(
      */
     suspend fun createFoodEntry(entry: FoodEntry): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
+            val isUuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+            val cleanMealName = entry.mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val timeString = entry.entryTime?.take(5)
+            val cleanDate = if (entry.entryDate.contains("T")) entry.entryDate.substringBefore("T") else entry.entryDate
+
             val payload = buildString {
                 append("{")
                 append("\"id\":\"${entry.id}\",")
-                append("\"meal_type_id\":\"${entry.mealTypeId}\",")
+                if (isUuid.matches(entry.mealTypeId)) {
+                    append("\"meal_type_id\":\"${entry.mealTypeId}\",")
+                }
+                append("\"meal_type\":\"${cleanMealName.replace("\"", "\\\"")}\",")
                 append("\"quantity\":${entry.quantity},")
                 append("\"unit\":\"${entry.unit}\",")
-                append("\"entry_date\":\"${entry.entryDate}\",")
-                entry.entryTime?.let { append("\"entry_time\":\"$it\",") }
-                entry.foodId?.let { append("\"food_id\":\"$it\",") }
+                append("\"serving_size\":${entry.quantity},")
+                append("\"serving_unit\":\"${entry.unit}\",")
+                append("\"entry_date\":\"$cleanDate\",")
+                if (!timeString.isNullOrBlank() && Regex("^([01]\\d|2[0-3]):[0-5]\\d$").matches(timeString)) {
+                    append("\"entry_time\":\"$timeString\",")
+                }
                 append("\"food_name\":\"${entry.foodName.replace("\"", "\\\"")}\",")
                 entry.brandName?.let { append("\"brand_name\":\"${it.replace("\"", "\\\"")}\",") }
                 append("\"calories\":${entry.calories},")
@@ -441,10 +491,13 @@ class SparkyApiClient(
                 if (response.isSuccessful) {
                     Result.success(true)
                 } else {
-                    Result.failure(IOException("Create food entry failed: HTTP ${response.code}"))
+                    val errBody = response.body?.string().orEmpty()
+                    android.util.Log.e("ByteLog", "Failed to create food entry on Sparky: HTTP ${response.code} $errBody")
+                    Result.failure(IOException("Create food entry failed: HTTP ${response.code} - $errBody"))
                 }
             }
         } catch (e: Exception) {
+            android.util.Log.e("ByteLog", "Exception logging to Sparky: ${e.message}", e)
             Result.failure(e)
         }
     }

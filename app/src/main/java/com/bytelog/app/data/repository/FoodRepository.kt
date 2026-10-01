@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -44,7 +45,26 @@ class FoodRepository(
     }
 
     fun getRecentFoods(limit: Int = 25): Flow<List<FoodItem>> {
-        return foodDao.getRecentFoods(limit)
+        return getRecentlyLoggedFoods(limit)
+    }
+
+    fun getRecentlyLoggedFoods(limit: Int = 30): Flow<List<FoodItem>> {
+        return foodEntryDao.getRecentlyLoggedEntries(limit).map { entries ->
+            entries.map { entry ->
+                FoodItem(
+                    id = entry.foodId ?: entry.id,
+                    name = entry.foodName,
+                    brand = entry.brandName,
+                    servingSize = entry.quantity,
+                    servingUnit = entry.unit,
+                    calories = entry.calories,
+                    protein = entry.protein,
+                    carbs = entry.carbs,
+                    fat = entry.fat,
+                    fiber = 0f
+                )
+            }
+        }
     }
 
     fun getFavoriteFoods(): Flow<List<FoodItem>> {
@@ -112,6 +132,8 @@ class FoodRepository(
                 val syncResult = sparkyApiClient.createFoodEntry(entry)
                 if (syncResult.isSuccess) {
                     foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
+                } else {
+                    android.util.Log.e("ByteLog", "Failed to sync entry ${entry.foodName} to Sparky: ${syncResult.exceptionOrNull()?.message}")
                 }
             }
         }

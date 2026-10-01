@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -95,6 +96,38 @@ fun DiaryScreen(
 
     val isToday = remember(selectedDate) {
         selectedDate == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+    }
+
+    data class DisplayMealGroup(
+        val mealTypeId: String,
+        val mealName: String,
+        val calories: Float,
+        val entries: List<FoodEntry>
+    )
+
+    val loggedMealGroups: List<DisplayMealGroup> = remember(entries, mealTypes) {
+        if (entries.isEmpty()) return@remember emptyList()
+
+        val grouped = entries.groupBy { it.mealName.trim().lowercase() }
+        grouped.map { (lowerMealKey, mealEntries) ->
+            val matchedMealType = mealTypes.find {
+                it.name.trim().equals(lowerMealKey, ignoreCase = true) ||
+                it.id.equals(mealEntries.first().mealTypeId, ignoreCase = true)
+            }
+            val displayName = matchedMealType?.name?.trim()?.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                ?: mealEntries.first().mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val mealId = matchedMealType?.id ?: mealEntries.first().mealTypeId
+
+            DisplayMealGroup(
+                mealTypeId = mealId,
+                mealName = displayName,
+                calories = mealEntries.sumOf { it.calories.toDouble() }.toFloat(),
+                entries = mealEntries
+            )
+        }.sortedBy { group ->
+            val sortIdx = mealTypes.indexOfFirst { it.name.trim().equals(group.mealName, ignoreCase = true) }
+            if (sortIdx >= 0) sortIdx else 999
+        }
     }
 
     Scaffold(
@@ -212,70 +245,124 @@ fun DiaryScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Meal Categories List
+            // Meal Categories List (Shows only logged meals, plus quick meal chips to add new ones)
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (entries.isEmpty()) {
+                if (loggedMealGroups.isEmpty()) {
                     item {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(ByteSurfaceDark.copy(alpha = 0.5f))
-                                .padding(20.dp),
+                                .padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text(
                                 text = "No foods logged for this date",
                                 color = ByteCream,
-                                fontSize = 15.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Tap + on any meal below to fast-log food, or tap the sync icon above to fetch entries from Sparky Fitness.",
+                                text = "Choose a meal below to start logging, or tap the sync icon above to fetch entries from Sparky Fitness.",
                                 color = ByteCreamMuted,
-                                fontSize = 12.sp,
+                                fontSize = 13.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                     }
-                }
-                items(mealTypes, key = { it.id }) { mealType ->
-                    val mealEntries = entries.filter { it.mealTypeId == mealType.id }
-                    val mealCalories = mealEntries.sumOf { it.calories.toDouble() }.toFloat()
-
-                    MealCard(
-                        mealName = mealType.name,
-                        mealCalories = mealCalories,
-                        entries = mealEntries,
-                        onAddFood = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onNavigateToSearch(mealType.id, mealType.name, selectedDate)
-                        },
-                        onDuplicateEntry = { entry ->
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            viewModel.duplicateEntryToNow(entry)
-                            scope.launch {
-                                snackbarHostState.showSnackbar("Duplicated ${entry.foodName}")
+                } else {
+                    items(loggedMealGroups, key = { it.mealName }) { group ->
+                        MealCard(
+                            mealName = group.mealName,
+                            mealCalories = group.calories,
+                            entries = group.entries,
+                            onAddFood = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onNavigateToSearch(group.mealTypeId, group.mealName, selectedDate)
+                            },
+                            onDuplicateEntry = { entry ->
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.duplicateEntryToNow(entry)
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("Duplicated ${entry.foodName}")
+                                }
+                            },
+                            onDeleteEntry = { entry ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.deleteEntry(entry)
+                                scope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = "Deleted ${entry.foodName}",
+                                        actionLabel = "Undo"
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        viewModel.duplicateEntryToNow(entry)
+                                    }
+                                }
                             }
-                        },
-                        onDeleteEntry = { entry ->
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.deleteEntry(entry)
-                            scope.launch {
-                                val result = snackbarHostState.showSnackbar(
-                                    message = "Deleted ${entry.foodName}",
-                                    actionLabel = "Undo"
-                                )
-                                if (result == SnackbarResult.ActionPerformed) {
-                                    viewModel.duplicateEntryToNow(entry)
+                        )
+                    }
+                }
+
+                // Quick Meal Selection Action Bar
+                item {
+                    val candidateMeals = if (mealTypes.isNotEmpty()) mealTypes else com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (loggedMealGroups.isEmpty()) "START LOGGING" else "LOG TO ANOTHER MEAL",
+                            color = ByteCreamMuted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(candidateMeals, key = { it.id }) { mt ->
+                                val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(ByteSurfaceDark)
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onNavigateToSearch(mt.id, cleanName, selectedDate)
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = null,
+                                            tint = ByteTomato,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = cleanName,
+                                            color = ByteCream,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                 }
                             }
                         }
-                    )
+                    }
                 }
 
                 item {

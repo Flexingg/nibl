@@ -42,4 +42,16 @@ interface FoodEntryDao {
 
     @Query("DELETE FROM food_entries")
     suspend fun clearAllEntries()
+
+    @Query("""
+        SELECT fe.* FROM food_entries fe
+        INNER JOIN (
+            SELECT LOWER(foodName) as lowerName, MAX(createdAt) as maxCreated
+            FROM food_entries
+            GROUP BY LOWER(foodName)
+        ) latest ON LOWER(fe.foodName) = latest.lowerName AND fe.createdAt = latest.maxCreated
+        ORDER BY fe.createdAt DESC
+        LIMIT :limit
+    """)
+    fun getRecentlyLoggedEntries(limit: Int = 30): Flow<List<FoodEntry>>
 }

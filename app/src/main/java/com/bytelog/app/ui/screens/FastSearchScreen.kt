@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -78,6 +79,8 @@ fun FastSearchScreen(
     onNavigateBack: () -> Unit,
     onNavigateToBarcode: () -> Unit
 ) {
+    val availableMealTypes by viewModel.availableMealTypes.collectAsState()
+    val selectedMealName by viewModel.selectedMealName.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val recentFoods by viewModel.recentFoods.collectAsState()
@@ -98,7 +101,7 @@ fun FastSearchScreen(
         bottomBar = {
             MultiAddTray(
                 stagedEntries = stagedEntries,
-                targetMealName = viewModel.targetMealName,
+                targetMealName = selectedMealName,
                 onLogAll = {
                     viewModel.commitStagedTray {
                         onNavigateBack()
@@ -184,6 +187,38 @@ fun FastSearchScreen(
                 IconButton(onClick = onNavigateToBarcode) {
                     Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan", tint = ByteTomato)
                 }
+            }
+
+            // Meal Picker Selector Chips
+            if (availableMealTypes.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(availableMealTypes, key = { it.id }) { mt ->
+                        val isSelected = mt.name.equals(selectedMealName, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) ByteTomato else ByteSurfaceDark)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    viewModel.setTargetMeal(mt.id, mt.name)
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = mt.name,
+                                color = if (isSelected) ByteCream else ByteCreamMuted,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             // Zero-Query Context Tabs (when search query is blank)

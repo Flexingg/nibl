@@ -48,8 +48,14 @@ class FastSearchViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _selectedMealName = MutableStateFlow("Breakfast")
+    val selectedMealName: StateFlow<String> = _selectedMealName.asStateFlow()
+
+    val availableMealTypes: StateFlow<List<com.bytelog.app.data.local.model.MealType>> = foodRepository.getAllMealTypes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // Zero-query context tabs
-    val recentFoods: StateFlow<List<FoodItem>> = foodRepository.getRecentFoods(30)
+    val recentFoods: StateFlow<List<FoodItem>> = foodRepository.getRecentlyLoggedFoods(30)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val favoriteFoods: StateFlow<List<FoodItem>> = foodRepository.getFavoriteFoods()
@@ -78,9 +84,18 @@ class FastSearchViewModel(
     }
 
     fun initContext(mealTypeId: String, mealName: String, date: String) {
+        val cleanName = mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
         this.targetMealTypeId = mealTypeId
-        this.targetMealName = mealName
+        this.targetMealName = cleanName
         this.targetDate = date
+        this._selectedMealName.value = cleanName
+    }
+
+    fun setTargetMeal(mealId: String, mealName: String) {
+        val cleanName = mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        this.targetMealTypeId = mealId
+        this.targetMealName = cleanName
+        this._selectedMealName.value = cleanName
     }
 
     fun setSearchQuery(query: String) {
