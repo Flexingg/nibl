@@ -3,13 +3,19 @@ package com.bytelog.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bytelog.app.data.local.model.DailySummary
+import com.bytelog.app.data.local.model.FoodItem
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.MealType
 import com.bytelog.app.data.local.model.WaterLogEntry
 import com.bytelog.app.data.remote.WaterContainer
+import com.bytelog.app.data.local.model.MealTemplate
+import com.bytelog.app.data.local.model.TemplateIngredient
+import com.bytelog.app.data.local.model.WeightEntry
 import com.bytelog.app.data.repository.FoodRepository
+import com.bytelog.app.data.repository.MealTemplateRepository
 import com.bytelog.app.data.repository.SettingsRepository
 import com.bytelog.app.data.repository.WaterRepository
+import com.bytelog.app.data.repository.WeightRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -29,7 +35,9 @@ import java.time.format.DateTimeFormatter
 class DiaryViewModel(
     private val foodRepository: FoodRepository,
     private val waterRepository: WaterRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val weightRepository: WeightRepository,
+    private val mealTemplateRepository: MealTemplateRepository
 ) : ViewModel() {
 
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
@@ -93,6 +101,23 @@ class DiaryViewModel(
 
     val defaultContainerName: StateFlow<String> = waterRepository.defaultContainerName
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Glass")
+
+    val currentWeight: StateFlow<WeightEntry?> = _selectedDate
+        .flatMapLatest { date -> weightRepository.getWeightForDate(date) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val previousWeight: StateFlow<WeightEntry?> = _selectedDate
+        .flatMapLatest { date -> weightRepository.getLatestWeightOnOrBefore(date) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val weightUnit: StateFlow<String> = weightRepository.weightUnit
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "lbs")
+
+    val mealTemplates: StateFlow<List<MealTemplate>> = mealTemplateRepository.templates
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val availableFoods: StateFlow<List<FoodItem>> = foodRepository.getRecentFoods(30)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         syncSelectedDate()
@@ -170,12 +195,134 @@ class DiaryViewModel(
         waterRepository.deleteWaterLog(entry)
     }
 
+    // --- Bodyweight Actions ---
+
+    fun logWeight(weight: Float, unit: String? = null, bodyFat: Float? = null) {
+        weightRepository.logWeight(_selectedDate.value, weight, unit, bodyFat)
+    }
+
+    fun saveWeightUnit(unit: String) {
+        viewModelScope.launch {
+            weightRepository.saveWeightUnit(unit)
+        }
+    }
+
+    // --- Copy Meals Actions ---
+
+    fun copyMealFromYesterday(mealType: String) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = foodRepository.copyMealFromYesterday(mealType, _selectedDate.value)
+            _isSyncing.value = false
+            if (result.isSuccess) {
+                _syncMessage.emit("Copied yesterday's $mealType!")
+            } else {
+                _syncMessage.emit("Failed to copy $mealType: ${result.exceptionOrNull()?.message ?: "Error"}")
+            }
+        }
+    }
+
+    fun copyMeal(sourceDate: String, sourceMeal: String, targetDate: String, targetMeal: String) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = foodRepository.copyMeal(sourceDate, sourceMeal, targetDate, targetMeal)
+            _isSyncing.value = false
+            if (result.isSuccess) {
+                _syncMessage.emit("Copied $sourceMeal into $targetMeal!")
+            } else {
+                _syncMessage.emit("Failed to copy meal: ${result.exceptionOrNull()?.message ?: "Error"}")
+            }
+        }
+    }
+
+    fun copyAllFromYesterday() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = foodRepository.copyAllFromYesterday(_selectedDate.value)
+            _isSyncing.value = false
+            if (result.isSuccess) {
+                _syncMessage.emit("Copied all yesterday's meals!")
+            } else {
+                _syncMessage.emit("Failed to copy yesterday: ${result.exceptionOrNull()?.message ?: "Error"}")
+            }
+        }
+    }
+
+    // --- Meal Template & Recipe Actions ---
+
+    fun saveMealAsTemplate(mealName: String, description: String?) {
+        viewModelScope.launch {
+            val result = mealTemplateRepository.createTemplateFromDiary(
+                date = _selectedDate.value,
+                mealType = mealName,
+                mealName = "$mealName Template",
+                description = description
+            )
+            if (result.isSuccess) {
+                _syncMessage.emit("Saved $mealName as template to Sparky!")
+            } else {
+                _syncMessage.emit("Failed to save template: ${result.exceptionOrNull()?.message ?: "Error"}")
+            }
+        }
+    }
+
+    fun createRecipeTemplate(
+        name: String,
+        description: String?,
+        servingSize: Float,
+        servingUnit: String,
+        totalServings: Float,
+        foods: List<TemplateIngredient>
+    ) {
+        viewModelScope.launch {
+            val result = mealTemplateRepository.createRecipeTemplate(
+                name = name,
+                description = description,
+                servingSize = servingSize,
+                servingUnit = servingUnit,
+                totalServings = totalServings,
+                foods = foods
+            )
+            if (result.isSuccess) {
+                _syncMessage.emit("Recipe '$name' created on Sparky!")
+            } else {
+                _syncMessage.emit("Failed to create recipe: ${result.exceptionOrNull()?.message ?: "Error"}")
+            }
+        }
+    }
+
+    fun logTemplateToDiary(template: MealTemplate, mealName: String, mealId: String?) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = mealTemplateRepository.logTemplateToDiary(
+                templateId = template.id,
+                mealType = mealName,
+                mealTypeId = mealId,
+                date = _selectedDate.value
+            )
+            if (result.isSuccess) {
+                foodRepository.syncDateWithServer(_selectedDate.value)
+                _syncMessage.emit("Logged ${template.name} to $mealName!")
+            } else {
+                _syncMessage.emit("Failed to log template: ${result.exceptionOrNull()?.message ?: "Error"}")
+            }
+            _isSyncing.value = false
+        }
+    }
+
+    fun deleteTemplate(templateId: String) {
+        viewModelScope.launch {
+            mealTemplateRepository.deleteTemplate(templateId)
+        }
+    }
+
     fun syncSelectedDate() {
         viewModelScope.launch {
             _isSyncing.value = true
             try {
                 foodRepository.syncDateWithServer(_selectedDate.value)
                 waterRepository.syncWaterForDate(_selectedDate.value)
+                weightRepository.syncWeightForDate(_selectedDate.value)
             } catch (_: Exception) {
             } finally {
                 _isSyncing.value = false
@@ -189,6 +336,8 @@ class DiaryViewModel(
             try {
                 val foodRes = foodRepository.syncDateWithServer(_selectedDate.value)
                 val waterRes = waterRepository.syncWaterForDate(_selectedDate.value)
+                weightRepository.syncWeightForDate(_selectedDate.value)
+                mealTemplateRepository.refreshTemplates()
 
                 foodRes.fold(
                     onSuccess = { count ->

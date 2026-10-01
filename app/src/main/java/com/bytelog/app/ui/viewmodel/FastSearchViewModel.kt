@@ -180,4 +180,37 @@ class FastSearchViewModel(
             foodRepository.toggleFavorite(food.id, food.isFavorite)
         }
     }
+
+    fun createCustomFood(
+        name: String,
+        brand: String?,
+        servingSize: Float,
+        servingUnit: String,
+        calories: Float,
+        protein: Float,
+        carbs: Float,
+        fat: Float,
+        fiber: Float?,
+        autoStage: Boolean = true
+    ) {
+        viewModelScope.launch {
+            val result = foodRepository.createCustomFood(
+                name = name,
+                brand = brand,
+                servingSize = servingSize,
+                servingUnit = servingUnit,
+                calories = calories,
+                protein = protein,
+                carbs = carbs,
+                fat = fat,
+                fiber = fiber
+            )
+            if (result.isSuccess && autoStage) {
+                val item = result.getOrNull()
+                if (item != null) {
+                    stageFood(item, servingSize, servingUnit)
+                }
+            }
+        }
+    }
 }

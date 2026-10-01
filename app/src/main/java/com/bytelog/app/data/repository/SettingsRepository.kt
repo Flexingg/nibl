@@ -27,6 +27,7 @@ class SettingsRepository(private val context: Context) {
         val KEY_TARGET_WATER_OZ = floatPreferencesKey("target_water_oz")
         val KEY_DEFAULT_CONTAINER_OZ = floatPreferencesKey("default_container_oz")
         val KEY_DEFAULT_CONTAINER_NAME = stringPreferencesKey("default_container_name")
+        val KEY_WEIGHT_UNIT = stringPreferencesKey("weight_unit")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
@@ -71,6 +72,16 @@ class SettingsRepository(private val context: Context) {
 
     val defaultContainerName: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_DEFAULT_CONTAINER_NAME] ?: "Glass"
+    }
+
+    val weightUnit: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_WEIGHT_UNIT] ?: "lbs"
+    }
+
+    suspend fun saveWeightUnit(unit: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_WEIGHT_UNIT] = unit
+        }
     }
 
     suspend fun saveAuthToken(token: String?) {

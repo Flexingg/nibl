@@ -20,11 +20,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
@@ -61,10 +64,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.local.model.FoodEntry
+import com.bytelog.app.ui.components.BodyweightCard
+import com.bytelog.app.ui.components.CopyMealDialog
 import com.bytelog.app.ui.components.DailyMacroHeader
 import com.bytelog.app.ui.components.EditFoodEntrySheet
 import com.bytelog.app.ui.components.HydrationCard
 import com.bytelog.app.ui.components.HydrationSheet
+import com.bytelog.app.ui.components.MealTemplatesSheet
+import com.bytelog.app.ui.components.RecipeBuilderSheet
+import com.bytelog.app.ui.components.SaveMealTemplateDialog
+import com.bytelog.app.ui.components.WeightLogDialog
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
@@ -101,6 +110,12 @@ fun DiaryScreen(
     val waterLogs by viewModel.waterLogsForDate.collectAsState()
     val waterContainers by viewModel.waterContainers.collectAsState()
 
+    val currentWeight by viewModel.currentWeight.collectAsState()
+    val previousWeight by viewModel.previousWeight.collectAsState()
+    val weightUnit by viewModel.weightUnit.collectAsState()
+    val mealTemplates by viewModel.mealTemplates.collectAsState()
+    val availableFoods by viewModel.availableFoods.collectAsState()
+
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -115,15 +130,24 @@ fun DiaryScreen(
         selectedDate == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
     }
 
-    var editingEntry by remember { mutableStateOf<FoodEntry?>(null) }
-    var showHydrationSheet by remember { mutableStateOf(false) }
-
     data class DisplayMealGroup(
         val mealTypeId: String,
         val mealName: String,
         val calories: Float,
         val entries: List<FoodEntry>
     )
+
+    var editingEntry by remember { mutableStateOf<FoodEntry?>(null) }
+    var showHydrationSheet by remember { mutableStateOf(false) }
+    var showWeightDialog by remember { mutableStateOf(false) }
+    var copyingMealName by remember { mutableStateOf<String?>(null) }
+    var savingTemplateMealName by remember { mutableStateOf<String?>(null) }
+    var showTemplatesSheet by remember { mutableStateOf(false) }
+    var templateTargetMeal by remember { mutableStateOf<DisplayMealGroup?>(null) }
+    var showRecipeBuilderSheet by remember { mutableStateOf(false) }
+
+    val templatesSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val recipeBuilderSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val loggedMealGroups: List<DisplayMealGroup> = remember(entries, mealTypes) {
         if (entries.isEmpty()) return@remember emptyList()
@@ -238,6 +262,15 @@ fun DiaryScreen(
 
                     IconButton(
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.copyAllFromYesterday()
+                        }
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = "Copy all yesterday's meals", tint = ByteCreamMuted)
+                    }
+
+                    IconButton(
+                        onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             viewModel.manualSync()
                         },
@@ -282,6 +315,18 @@ fun DiaryScreen(
                 }
             )
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Bodyweight Tracking Card
+            BodyweightCard(
+                currentEntry = currentWeight,
+                previousEntry = previousWeight,
+                weightUnit = weightUnit,
+                onOpenLogDialog = {
+                    showWeightDialog = true
+                }
+            )
+
             Spacer(modifier = Modifier.height(12.dp))
 
             // Meal Categories List (Shows only logged meals, plus quick meal chips to add new ones)
@@ -312,6 +357,45 @@ fun DiaryScreen(
                                 fontSize = 13.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(MacroProtein.copy(alpha = 0.15f))
+                                        .clickable {
+                                            templateTargetMeal = null
+                                            showTemplatesSheet = true
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = "Templates & Recipes",
+                                        color = MacroProtein,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(ByteTomato.copy(alpha = 0.15f))
+                                        .clickable {
+                                            viewModel.copyAllFromYesterday()
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = "Copy Yesterday",
+                                        color = ByteTomato,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
                     }
                 } else {
@@ -323,6 +407,19 @@ fun DiaryScreen(
                             onAddFood = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onNavigateToSearch(group.mealTypeId, group.mealName, selectedDate)
+                            },
+                            onCopyMeal = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                copyingMealName = group.mealName
+                            },
+                            onSaveTemplate = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                savingTemplateMealName = group.mealName
+                            },
+                            onOpenTemplates = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                templateTargetMeal = group
+                                showTemplatesSheet = true
                             },
                             onEditEntry = { entry ->
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -376,6 +473,37 @@ fun DiaryScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MacroProtein.copy(alpha = 0.15f))
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            templateTargetMeal = null
+                                            showTemplatesSheet = true
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.RestaurantMenu,
+                                            contentDescription = null,
+                                            tint = MacroProtein,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Templates",
+                                            color = MacroProtein,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                             items(candidateMeals, key = { it.id }) { mt ->
                                 val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                                 Box(
@@ -480,6 +608,95 @@ fun DiaryScreen(
             )
         }
     }
+
+    // Bodyweight Log Dialog
+    if (showWeightDialog) {
+        WeightLogDialog(
+            initialWeight = currentWeight?.weight ?: previousWeight?.weight,
+            currentUnit = weightUnit,
+            dateString = selectedDate,
+            onDismiss = { showWeightDialog = false },
+            onSaveWeight = { weight, unit ->
+                viewModel.logWeight(weight = weight, unit = unit)
+                viewModel.saveWeightUnit(unit)
+                showWeightDialog = false
+            }
+        )
+    }
+
+    // Copy Meal Dialog
+    copyingMealName?.let { mealName ->
+        CopyMealDialog(
+            currentMealName = mealName,
+            currentDate = selectedDate,
+            mealTypes = mealTypes,
+            onDismiss = { copyingMealName = null },
+            onCopyFromYesterday = { targetMeal ->
+                viewModel.copyMealFromYesterday(targetMeal)
+                copyingMealName = null
+            },
+            onCopyCustom = { srcDate, srcMeal, tgtDate, tgtMeal ->
+                viewModel.copyMeal(srcDate, srcMeal, tgtDate, tgtMeal)
+                copyingMealName = null
+            }
+        )
+    }
+
+    // Save Meal Template Dialog
+    savingTemplateMealName?.let { mealName ->
+        SaveMealTemplateDialog(
+            mealName = mealName,
+            dateString = selectedDate,
+            onDismiss = { savingTemplateMealName = null },
+            onSaveTemplate = { tName, desc ->
+                viewModel.saveMealAsTemplate(mealName, desc)
+                savingTemplateMealName = null
+            }
+        )
+    }
+
+    // Meal Templates & Recipes Sheet
+    if (showTemplatesSheet) {
+        val targetName = templateTargetMeal?.mealName ?: mealTypes.firstOrNull()?.name ?: "Meal"
+        val targetId = templateTargetMeal?.mealTypeId ?: mealTypes.firstOrNull()?.id
+        MealTemplatesSheet(
+            sheetState = templatesSheetState,
+            templates = mealTemplates,
+            targetMealName = targetName,
+            onDismiss = { showTemplatesSheet = false },
+            onLogTemplate = { template ->
+                viewModel.logTemplateToDiary(template, targetName, targetId)
+                showTemplatesSheet = false
+            },
+            onDeleteTemplate = { templateId ->
+                viewModel.deleteTemplate(templateId)
+            },
+            onOpenRecipeBuilder = {
+                showTemplatesSheet = false
+                showRecipeBuilderSheet = true
+            }
+        )
+    }
+
+    // Recipe Builder Sheet
+    if (showRecipeBuilderSheet) {
+        RecipeBuilderSheet(
+            sheetState = recipeBuilderSheetState,
+            availableFoods = availableFoods,
+            onDismiss = { showRecipeBuilderSheet = false },
+            onSaveRecipe = { name, desc, servingSize, servingUnit, totalServings, ingredients ->
+                viewModel.createRecipeTemplate(
+                    name = name,
+                    description = desc,
+                    servingSize = servingSize,
+                    servingUnit = servingUnit,
+                    totalServings = totalServings,
+                    foods = ingredients
+                )
+                showRecipeBuilderSheet = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -488,6 +705,9 @@ fun MealCard(
     mealCalories: Float,
     entries: List<FoodEntry>,
     onAddFood: () -> Unit,
+    onCopyMeal: () -> Unit,
+    onSaveTemplate: () -> Unit,
+    onOpenTemplates: () -> Unit,
     onEditEntry: (FoodEntry) -> Unit,
     onDuplicateEntry: (FoodEntry) -> Unit,
     onDeleteEntry: (FoodEntry) -> Unit
@@ -505,7 +725,7 @@ fun MealCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = mealName,
                     color = ByteCream,
@@ -519,19 +739,62 @@ fun MealCard(
                 )
             }
 
-            IconButton(
-                onClick = onAddFood,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(ByteSurfaceVariantDark)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Add food to $mealName",
-                    tint = ByteTomato,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (entries.isNotEmpty()) {
+                    IconButton(
+                        onClick = onSaveTemplate,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BookmarkAdd,
+                            contentDescription = "Save $mealName as Template",
+                            tint = ByteCreamMuted,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onCopyMeal,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy $mealName",
+                        tint = ByteCreamMuted,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onOpenTemplates,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.RestaurantMenu,
+                        contentDescription = "Templates & Recipes",
+                        tint = ByteCreamMuted,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onAddFood,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(ByteSurfaceVariantDark)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add food to $mealName",
+                        tint = ByteTomato,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 

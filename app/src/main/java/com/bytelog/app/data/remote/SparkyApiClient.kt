@@ -2,7 +2,10 @@ package com.bytelog.app.data.remote
 
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.FoodItem
+import com.bytelog.app.data.local.model.MealTemplate
 import com.bytelog.app.data.local.model.MealType
+import com.bytelog.app.data.local.model.TemplateIngredient
+import com.bytelog.app.data.local.model.WeightEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -853,6 +856,455 @@ class SparkyApiClient(
                     Result.success(container)
                 } else {
                     Result.failure(IOException("Create container failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Copy Meals & Diary Entries ---
+
+    suspend fun copyMealFromYesterday(mealType: String, targetDate: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
+            val cleanMeal = mealType.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val payload = """{"mealType":"$cleanMeal","targetDate":"$cleanDate"}"""
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/food-entries/copy-yesterday")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    Result.failure(IOException("Copy yesterday failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun copyMeal(
+        sourceDate: String,
+        sourceMealType: String,
+        targetDate: String,
+        targetMealType: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val sDate = if (sourceDate.contains("T")) sourceDate.substringBefore("T") else sourceDate
+            val tDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
+            val sMeal = sourceMealType.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val tMeal = targetMealType.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val payload = """{"sourceDate":"$sDate","sourceMealType":"$sMeal","targetDate":"$tDate","targetMealType":"$tMeal"}"""
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/food-entries/copy")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    Result.failure(IOException("Copy meal failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun copyAllFromYesterday(targetDate: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
+            val payload = """{"targetDate":"$cleanDate"}"""
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/food-entries/copy-all-yesterday")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    Result.failure(IOException("Copy all yesterday failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Meal Templates & Recipes ---
+
+    suspend fun createMealFromDiary(
+        date: String,
+        mealType: String,
+        mealName: String,
+        description: String? = null,
+        isPublic: Boolean = false
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val cleanMeal = mealType.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val payload = buildString {
+                append("{")
+                append("\"date\":\"").append(cleanDate).append("\",")
+                append("\"mealType\":\"").append(cleanMeal.replace("\"", "\\\"")).append("\",")
+                append("\"mealName\":\"").append(mealName.replace("\"", "\\\"")).append("\",")
+                if (!description.isNullOrBlank()) {
+                    append("\"description\":\"").append(description.replace("\"", "\\\"")).append("\",")
+                }
+                append("\"isPublic\":").append(isPublic)
+                append("}")
+            }
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/meals/create-meal-from-diary")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val id = try {
+                        json.parseToJsonElement(content).jsonObject["id"]?.jsonPrimitive?.content
+                    } catch (_: Exception) { null }
+                    Result.success(id ?: UUID.randomUUID().toString())
+                } else {
+                    val err = response.body?.string().orEmpty()
+                    Result.failure(IOException("Create meal from diary failed: HTTP ${response.code} $err"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun fetchMealTemplates(): Result<List<MealTemplate>> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/meals?filter=all")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val array = json.parseToJsonElement(content).jsonArray
+                    val templates = array.mapNotNull { elem ->
+                        try {
+                            val o = elem.jsonObject
+                            val id = o["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                            val name = o["name"]?.jsonPrimitive?.content ?: "Meal Template"
+                            val desc = o["description"]?.jsonPrimitive?.content
+                            val servingSize = o["serving_size"]?.jsonPrimitive?.floatOrNull ?: 1f
+                            val servingUnit = o["serving_unit"]?.jsonPrimitive?.content ?: "serving"
+                            val totalServings = o["total_servings"]?.jsonPrimitive?.floatOrNull ?: 1f
+                            val calories = o["calories"]?.jsonPrimitive?.floatOrNull ?: 0f
+                            val protein = o["protein"]?.jsonPrimitive?.floatOrNull ?: 0f
+                            val carbs = o["carbs"]?.jsonPrimitive?.floatOrNull ?: 0f
+                            val fat = o["fat"]?.jsonPrimitive?.floatOrNull ?: 0f
+                            val isPub = o["is_public"]?.jsonPrimitive?.booleanOrNull ?: false
+                            val createdAt = o["created_at"]?.jsonPrimitive?.content
+                            val foods = o["foods"]?.toString() ?: "[]"
+
+                            MealTemplate(
+                                id = id,
+                                name = name,
+                                description = desc,
+                                servingSize = servingSize,
+                                servingUnit = servingUnit,
+                                totalServings = totalServings,
+                                calories = calories,
+                                protein = protein,
+                                carbs = carbs,
+                                fat = fat,
+                                foodsJson = foods,
+                                isPublic = isPub,
+                                createdAt = createdAt,
+                                syncStatus = MealTemplate.SYNC_STATUS_SYNCED
+                            )
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                    Result.success(templates)
+                } else {
+                    Result.failure(IOException("Fetch meal templates failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createMealTemplate(
+        name: String,
+        description: String? = null,
+        servingSize: Float = 1f,
+        servingUnit: String = "serving",
+        totalServings: Float = 1f,
+        foods: List<TemplateIngredient>
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val foodsJsonArray = buildString {
+                append("[")
+                foods.forEachIndexed { i, ing ->
+                    if (i > 0) append(",")
+                    append("{")
+                    append("\"item_type\":\"food\",")
+                    append("\"food_id\":\"").append(ing.foodId).append("\",")
+                    append("\"quantity\":").append(ing.quantity).append(",")
+                    append("\"unit\":\"").append(ing.unit.replace("\"", "\\\"")).append("\"")
+                    append("}")
+                }
+                append("]")
+            }
+
+            val payload = buildString {
+                append("{\"mealData\":{")
+                append("\"name\":\"").append(name.replace("\"", "\\\"")).append("\",")
+                if (!description.isNullOrBlank()) {
+                    append("\"description\":\"").append(description.replace("\"", "\\\"")).append("\",")
+                }
+                append("\"serving_size\":").append(servingSize).append(",")
+                append("\"serving_unit\":\"").append(servingUnit.replace("\"", "\\\"")).append("\",")
+                append("\"total_servings\":").append(totalServings).append(",")
+                append("\"foods\":").append(foodsJsonArray)
+                append("}}")
+            }
+
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/meals")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val id = try {
+                        json.parseToJsonElement(content).jsonObject["id"]?.jsonPrimitive?.content
+                    } catch (_: Exception) { null }
+                    Result.success(id ?: UUID.randomUUID().toString())
+                } else {
+                    val err = response.body?.string().orEmpty()
+                    Result.failure(IOException("Create recipe template failed: HTTP ${response.code} $err"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun logMealTemplate(
+        templateId: String,
+        mealType: String,
+        mealTypeId: String?,
+        date: String,
+        quantity: Float = 1f,
+        unit: String = "serving"
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val cleanMeal = mealType.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val isUuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+            val payload = buildString {
+                append("{")
+                append("\"meal_template_id\":\"").append(templateId).append("\",")
+                append("\"meal_type\":\"").append(cleanMeal.replace("\"", "\\\"")).append("\",")
+                if (!mealTypeId.isNullOrBlank() && isUuid.matches(mealTypeId)) {
+                    append("\"meal_type_id\":\"").append(mealTypeId).append("\",")
+                }
+                append("\"entry_date\":\"").append(cleanDate).append("\",")
+                append("\"quantity\":").append(quantity).append(",")
+                append("\"unit\":\"").append(unit).append("\"")
+                append("}")
+            }
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/food-entry-meals")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    val err = response.body?.string().orEmpty()
+                    Result.failure(IOException("Log meal template failed: HTTP ${response.code} $err"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteMealTemplate(templateId: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/meals/$templateId?force=true")
+                .delete()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful || response.code == 404) {
+                    Result.success(true)
+                } else {
+                    Result.failure(IOException("Delete template failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Custom Food Builder ---
+
+    suspend fun createCustomFood(
+        name: String,
+        brand: String? = null,
+        servingSize: Float = 100f,
+        servingUnit: String = "g",
+        calories: Float,
+        protein: Float,
+        carbs: Float,
+        fat: Float,
+        fiber: Float? = 0f
+    ): Result<FoodItem> = withContext(Dispatchers.IO) {
+        try {
+            val payload = buildString {
+                append("{")
+                append("\"name\":\"").append(name.replace("\"", "\\\"")).append("\",")
+                brand?.let { append("\"brand\":\"").append(it.replace("\"", "\\\"")).append("\",") }
+                append("\"serving_size\":").append(servingSize).append(",")
+                append("\"serving_unit\":\"").append(servingUnit.replace("\"", "\\\"")).append("\",")
+                append("\"calories\":").append(calories).append(",")
+                append("\"protein\":").append(protein).append(",")
+                append("\"carbs\":").append(carbs).append(",")
+                append("\"fat\":").append(fat).append(",")
+                fiber?.let { append("\"dietary_fiber\":").append(it).append(",") }
+                append("\"is_custom\":true")
+                append("}")
+            }
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/foods")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val obj = json.parseToJsonElement(content).jsonObject
+                    val id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString()
+                    val foodItem = FoodItem(
+                        id = id,
+                        name = name,
+                        brand = brand,
+                        servingSize = servingSize,
+                        servingUnit = servingUnit,
+                        calories = calories,
+                        protein = protein,
+                        carbs = carbs,
+                        fat = fat,
+                        fiber = fiber
+                    )
+                    Result.success(foodItem)
+                } else {
+                    val err = response.body?.string().orEmpty()
+                    Result.failure(IOException("Create custom food failed: HTTP ${response.code} $err"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Bodyweight Tracking (Check-In) ---
+
+    suspend fun fetchWeightForDate(date: String): Result<Float?> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val request = Request.Builder()
+                .url("$baseUrl/api/measurements/check-in/$cleanDate")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    if (content.isBlank() || content == "{}") {
+                        fetchLatestWeightOnOrBefore(cleanDate)
+                    } else {
+                        val obj = json.parseToJsonElement(content).jsonObject
+                        val weight = obj["weight"]?.jsonPrimitive?.floatOrNull
+                        Result.success(weight)
+                    }
+                } else if (response.code == 404) {
+                    fetchLatestWeightOnOrBefore(cleanDate)
+                } else {
+                    Result.failure(IOException("Fetch weight failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun fetchLatestWeightOnOrBefore(date: String): Result<Float?> {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/measurements/check-in/latest-on-or-before-date?date=$date")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    if (content.isBlank() || content == "{}") {
+                        return Result.success(null)
+                    }
+                    val obj = json.parseToJsonElement(content).jsonObject
+                    val weight = obj["weight"]?.jsonPrimitive?.floatOrNull
+                    return Result.success(weight)
+                } else {
+                    return Result.success(null)
+                }
+            }
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+    }
+
+    suspend fun upsertWeight(date: String, weight: Float, bodyFatPercentage: Float? = null): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val payload = buildString {
+                append("{")
+                append("\"entry_date\":\"").append(cleanDate).append("\",")
+                append("\"weight\":").append(weight)
+                bodyFatPercentage?.let { append(",\"body_fat_percentage\":").append(it) }
+                append("}")
+            }
+            val body = payload.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/measurements/check-in")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Result.success(true)
+                } else {
+                    val err = response.body?.string().orEmpty()
+                    Result.failure(IOException("Save weight failed: HTTP ${response.code} $err"))
                 }
             }
         } catch (e: Exception) {

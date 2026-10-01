@@ -297,4 +297,64 @@ class FoodRepository(
     suspend fun loginWithEmail(email: String, password: String): Result<String> {
         return sparkyApiClient.signInEmail(email, password)
     }
+
+    suspend fun copyMealFromYesterday(mealType: String, targetDate: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val result = sparkyApiClient.copyMealFromYesterday(mealType, targetDate)
+        if (result.isSuccess) {
+            syncDateWithServer(targetDate)
+        }
+        result
+    }
+
+    suspend fun copyMeal(
+        sourceDate: String,
+        sourceMealType: String,
+        targetDate: String,
+        targetMealType: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        val result = sparkyApiClient.copyMeal(sourceDate, sourceMealType, targetDate, targetMealType)
+        if (result.isSuccess) {
+            syncDateWithServer(targetDate)
+        }
+        result
+    }
+
+    suspend fun copyAllFromYesterday(targetDate: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        val result = sparkyApiClient.copyAllFromYesterday(targetDate)
+        if (result.isSuccess) {
+            syncDateWithServer(targetDate)
+        }
+        result
+    }
+
+    suspend fun createCustomFood(
+        name: String,
+        brand: String? = null,
+        servingSize: Float = 100f,
+        servingUnit: String = "g",
+        calories: Float,
+        protein: Float,
+        carbs: Float,
+        fat: Float,
+        fiber: Float? = 0f
+    ): Result<FoodItem> = withContext(Dispatchers.IO) {
+        val result = sparkyApiClient.createCustomFood(
+            name = name,
+            brand = brand,
+            servingSize = servingSize,
+            servingUnit = servingUnit,
+            calories = calories,
+            protein = protein,
+            carbs = carbs,
+            fat = fat,
+            fiber = fiber
+        )
+        if (result.isSuccess) {
+            val food = result.getOrNull()
+            if (food != null) {
+                foodDao.insertFood(food)
+            }
+        }
+        result
+    }
 }

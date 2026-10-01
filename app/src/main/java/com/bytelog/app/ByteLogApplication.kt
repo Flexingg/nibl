@@ -40,6 +40,23 @@ class ByteLogApplication : Application() {
         )
     }
 
+    val weightRepository by lazy {
+        com.bytelog.app.data.repository.WeightRepository(
+            weightDao = database.weightDao(),
+            sparkyApiClient = sparkyApiClient,
+            settingsRepository = settingsRepository,
+            appScope = applicationScope
+        )
+    }
+
+    val mealTemplateRepository by lazy {
+        com.bytelog.app.data.repository.MealTemplateRepository(
+            mealTemplateDao = database.mealTemplateDao(),
+            sparkyApiClient = sparkyApiClient,
+            appScope = applicationScope
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
 

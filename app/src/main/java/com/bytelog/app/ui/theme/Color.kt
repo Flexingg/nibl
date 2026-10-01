@@ -19,6 +19,8 @@ val ByteSurfaceDark = Color(0xFF221C18)
 val ByteSurfaceVariantDark = Color(0xFF2C2420)
 val ByteSurfaceElevatedDark = Color(0xFF362E2A)
 val ByteOutlineDark = Color(0xFF453B36)
+val ByteCardDark = ByteSurfaceDark
+val ByteTextSecondary = ByteCreamMuted
 
 // Light Theme Ground & Surfaces
 val ByteBackgroundLight = Color(0xFFFBF8F5)

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Mic
@@ -63,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.FoodItem
+import com.bytelog.app.ui.components.CustomFoodDialog
 import com.bytelog.app.ui.components.MultiAddTray
 import com.bytelog.app.ui.components.PortionEditorSheet
 import com.bytelog.app.ui.components.QuickAddDialog
@@ -98,6 +100,7 @@ fun FastSearchScreen(
     var activeEntryToEdit by remember { mutableStateOf<FoodEntry?>(null) }
     var showQuickAddDialog by remember { mutableStateOf(false) }
     var showVoiceLogDialog by remember { mutableStateOf(false) }
+    var showCustomFoodDialog by remember { mutableStateOf(false) }
 
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -186,6 +189,13 @@ fun FastSearchScreen(
                 )
 
                 // Quick Action Icons
+                IconButton(onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    showCustomFoodDialog = true
+                }) {
+                    Icon(Icons.Default.Fastfood, contentDescription = "New Custom Food", tint = ByteCream)
+                }
+
                 IconButton(onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     showQuickAddDialog = true
@@ -384,6 +394,28 @@ fun FastSearchScreen(
             onParsedEntries = { entries ->
                 viewModel.stageEntries(entries)
                 showVoiceLogDialog = false
+            }
+        )
+    }
+
+    // Custom Food Dialog
+    if (showCustomFoodDialog) {
+        CustomFoodDialog(
+            onDismiss = { showCustomFoodDialog = false },
+            onCreateCustomFood = { name, brand, servingSize, servingUnit, calories, protein, carbs, fat, fiber ->
+                viewModel.createCustomFood(
+                    name = name,
+                    brand = brand,
+                    servingSize = servingSize,
+                    servingUnit = servingUnit,
+                    calories = calories,
+                    protein = protein,
+                    carbs = carbs,
+                    fat = fat,
+                    fiber = fiber,
+                    autoStage = true
+                )
+                showCustomFoodDialog = false
             }
         )
     }
