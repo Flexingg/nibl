@@ -226,4 +226,45 @@ class FastSearchViewModel(
             }
         }
     }
+
+    private val _isGeneratingAi = MutableStateFlow(false)
+    val isGeneratingAi: StateFlow<Boolean> = _isGeneratingAi.asStateFlow()
+
+    private val _aiGenerationError = MutableStateFlow<String?>(null)
+    val aiGenerationError: StateFlow<String?> = _aiGenerationError.asStateFlow()
+
+    fun generateFoodWithAi(
+        name: String,
+        description: String = "",
+        imageBase64: String? = null,
+        imageMimeType: String = "image/jpeg",
+        autoStage: Boolean = true,
+        onSuccess: (FoodItem) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isGeneratingAi.value = true
+            _aiGenerationError.value = null
+            try {
+                val result = foodRepository.generateFoodWithAi(
+                    name = name,
+                    description = description,
+                    imageBase64 = imageBase64,
+                    imageMimeType = imageMimeType
+                )
+                if (result.isSuccess) {
+                    val item = result.getOrNull()
+                    if (item != null) {
+                        if (autoStage) {
+                            stageFood(item)
+                        }
+                        onSuccess(item)
+                    }
+                } else {
+                    _aiGenerationError.value = result.exceptionOrNull()?.message ?: "AI food generation failed"
+                }
+            } finally {
+                _isGeneratingAi.value = false
+            }
+        }
+    }
 }

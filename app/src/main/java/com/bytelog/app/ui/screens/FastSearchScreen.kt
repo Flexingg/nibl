@@ -2,6 +2,7 @@ package com.bytelog.app.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.Favorite
@@ -73,6 +75,7 @@ import kotlinx.coroutines.delay
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.FoodItem
 import com.bytelog.app.ui.components.CustomFoodDialog
+import com.bytelog.app.ui.components.GenerateFoodAiDialog
 import com.bytelog.app.ui.components.MultiAddTray
 import com.bytelog.app.ui.components.PortionEditorSheet
 import com.bytelog.app.ui.components.QuickAddDialog
@@ -110,6 +113,9 @@ fun FastSearchScreen(
     var showQuickAddDialog by remember { mutableStateOf(false) }
     var showVoiceLogDialog by remember { mutableStateOf(false) }
     var showCustomFoodDialog by remember { mutableStateOf(false) }
+    var showAiGenerateDialog by remember { mutableStateOf(false) }
+    val isGeneratingAi by viewModel.isGeneratingAi.collectAsState()
+    val aiGenerationError by viewModel.aiGenerationError.collectAsState()
 
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -360,43 +366,93 @@ fun FastSearchScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 48.dp),
+                                    .padding(vertical = 24.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.padding(horizontal = 24.dp)
+                                    modifier = Modifier.padding(horizontal = 16.dp)
                                 ) {
-                                    Text(
-                                        text = "No foods found for \"$searchQuery\"",
-                                        color = ByteCream,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = "Not in your history or OpenFoodFacts. Create a custom food or scan a barcode below.",
-                                        color = ByteCreamMuted,
-                                        fontSize = 13.sp,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(18.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Button(
+                                    // Highlighted AI Generation Card
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(ByteSurfaceDark)
+                                            .border(1.dp, ByteTomato.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                            .padding(18.dp)
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AutoAwesome,
+                                                    contentDescription = null,
+                                                    tint = ByteTomato,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = "No results for \"$searchQuery\"",
+                                                    color = ByteCream,
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "Let Sparky AI estimate realistic macros and create this food in your library.",
+                                                color = ByteCreamMuted,
+                                                fontSize = 12.sp,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(14.dp))
+                                            Button(
+                                                onClick = { showAiGenerateDialog = true },
+                                                colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AutoAwesome,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = "Generate with AI",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // Secondary options: Manual Custom Food & Barcode Scan
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        OutlinedButton(
                                             onClick = { showCustomFoodDialog = true },
-                                            colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                                         ) {
                                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Custom Food", color = ByteCream, fontSize = 13.sp)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Custom Food", fontSize = 12.sp)
                                         }
                                         OutlinedButton(
                                             onClick = onNavigateToBarcode,
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.weight(1f),
                                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                                         ) {
                                             Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Scan Barcode", fontSize = 13.sp)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Scan Barcode", fontSize = 12.sp)
                                         }
                                     }
                                 }
@@ -530,6 +586,29 @@ fun FastSearchScreen(
                     autoStage = true
                 )
                 showCustomFoodDialog = false
+            }
+        )
+    }
+
+    // AI Food Generation Dialog
+    if (showAiGenerateDialog) {
+        GenerateFoodAiDialog(
+            initialName = searchQuery,
+            isGenerating = isGeneratingAi,
+            errorMessage = aiGenerationError,
+            onDismiss = { showAiGenerateDialog = false },
+            onGenerate = { name, description, imageBase64, imageMimeType ->
+                viewModel.generateFoodWithAi(
+                    name = name,
+                    description = description,
+                    imageBase64 = imageBase64,
+                    imageMimeType = imageMimeType,
+                    autoStage = true,
+                    onSuccess = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showAiGenerateDialog = false
+                    }
+                )
             }
         )
     }

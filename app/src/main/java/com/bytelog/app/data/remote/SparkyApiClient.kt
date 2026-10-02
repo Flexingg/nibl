@@ -1621,7 +1621,81 @@ class SparkyApiClient(
             Result.failure(e)
         }
     }
+
+    /**
+     * Estimate nutrition from food photo using Sparky Fitness Server (/api/foods/estimate-food-photo).
+     */
+    suspend fun estimateFoodPhoto(
+        base64: String,
+        mimeType: String = "image/jpeg",
+        description: String? = null
+    ): Result<FoodPhotoEstimateResult> = withContext(Dispatchers.IO) {
+        try {
+            val cleanBase64 = if (base64.contains(",")) base64.substringAfter(",") else base64
+            val payloadObj = kotlinx.serialization.json.buildJsonObject {
+                put("images", kotlinx.serialization.json.buildJsonArray {
+                    add(kotlinx.serialization.json.buildJsonObject {
+                        put("image", kotlinx.serialization.json.JsonPrimitive(cleanBase64))
+                        put("mime_type", kotlinx.serialization.json.JsonPrimitive(mimeType))
+                    })
+                })
+                if (!description.isNullOrBlank()) {
+                    put("description", kotlinx.serialization.json.JsonPrimitive(description))
+                }
+            }
+            val body = payloadObj.toString().toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$baseUrl/api/foods/estimate-food-photo")
+                .post(body)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val content = response.body?.string().orEmpty()
+                    val root = json.parseToJsonElement(content).jsonObject
+                    val mealSummary = root["meal_summary"]?.jsonPrimitive?.content ?: "Estimated Meal"
+                    val totals = root["totals"]?.jsonObject
+                    val calories = totals?.get("calories_kcal")?.jsonPrimitive?.floatOrNull ?: 0f
+                    val protein = totals?.get("protein_g")?.jsonPrimitive?.floatOrNull ?: 0f
+                    val carbs = totals?.get("carbs_g")?.jsonPrimitive?.floatOrNull ?: 0f
+                    val fat = totals?.get("fat_g")?.jsonPrimitive?.floatOrNull ?: 0f
+                    val fiber = totals?.get("fiber_g")?.jsonPrimitive?.floatOrNull ?: 0f
+                    val totalGrams = totals?.get("total_grams")?.jsonPrimitive?.floatOrNull ?: 100f
+
+                    Result.success(
+                        FoodPhotoEstimateResult(
+                            mealSummary = mealSummary,
+                            calories = calories,
+                            protein = protein,
+                            carbs = carbs,
+                            fat = fat,
+                            fiber = fiber,
+                            servingSize = totalGrams,
+                            servingUnit = "g"
+                        )
+                    )
+                } else {
+                    val err = response.body?.string().orEmpty()
+                    Result.failure(IOException("Food photo estimation failed: HTTP ${response.code} $err"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
+@kotlinx.serialization.Serializable
+data class FoodPhotoEstimateResult(
+    val mealSummary: String,
+    val calories: Float,
+    val protein: Float,
+    val carbs: Float,
+    val fat: Float,
+    val fiber: Float = 0f,
+    val servingSize: Float = 100f,
+    val servingUnit: String = "g"
+)
 
 @kotlinx.serialization.Serializable
 data class ChatMessageInput(

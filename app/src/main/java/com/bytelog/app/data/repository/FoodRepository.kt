@@ -14,6 +14,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
 
 class FoodRepository(
@@ -419,5 +423,119 @@ class FoodRepository(
             }
         }
         result
+    }
+
+    /**
+     * Generate and estimate food nutrition with Sparky AI on the backend.
+     * Supports photo estimation (/api/foods/estimate-food-photo) or text-based AI estimation
+     * using Sparky's agent / chat (/api/chat), creating the resulting food in Sparky Fitness.
+     */
+    suspend fun generateFoodWithAi(
+        name: String,
+        description: String = "",
+        imageBase64: String? = null,
+        imageMimeType: String = "image/jpeg"
+    ): Result<FoodItem> = withContext(Dispatchers.IO) {
+        val cleanName = name.trim().ifBlank { "Custom Food" }
+
+        // Path 1: Photo estimate via SparkyFitnessServer
+        if (!imageBase64.isNullOrBlank()) {
+            val photoResult = sparkyApiClient.estimateFoodPhoto(
+                base64 = imageBase64,
+                mimeType = imageMimeType,
+                description = if (description.isNotBlank()) "$cleanName: $description" else cleanName
+            )
+            if (photoResult.isSuccess) {
+                val est = photoResult.getOrThrow()
+                val finalName = if (cleanName != "Custom Food") cleanName else est.mealSummary
+                return@withContext createCustomFood(
+                    name = finalName,
+                    brand = "Sparky AI",
+                    servingSize = if (est.servingSize > 0f) est.servingSize else 100f,
+                    servingUnit = est.servingUnit,
+                    calories = est.calories,
+                    protein = est.protein,
+                    carbs = est.carbs,
+                    fat = est.fat,
+                    fiber = est.fiber
+                )
+            }
+        }
+
+        // Path 2: Text / Name / Description via Sparky AI Agent (/api/chat)
+        val prompt = buildString {
+            append("Please analyze and estimate realistic nutritional values for 1 serving of: \"").append(cleanName).append("\"")
+            if (description.isNotBlank()) {
+                append(" (Details: ").append(description.trim()).append(")")
+            }
+            append(". Estimate realistic calories, protein, carbs, fat, fiber for 1 standard serving. ")
+            append("Then create it with create_food, and output the nutritional summary in this exact JSON format at the very end: ")
+            append("```json\n{\"name\":\"").append(cleanName.replace("\"", "\\\"")).append("\",\"serving_size\":100,\"serving_unit\":\"g\",\"calories\":250,\"protein\":15,\"carbs\":30,\"fat\":8,\"fiber\":3}\n```")
+        }
+
+        val chatResult = sparkyApiClient.sendChatMessage(
+            listOf(com.bytelog.app.data.remote.ChatMessageInput("user", prompt))
+        )
+        if (chatResult.isSuccess) {
+            val output = chatResult.getOrThrow()
+            val text = output.content
+
+            // Extract JSON from output
+            val jsonPattern = Regex("""```(?:json)?\s*(\{[\s\S]*?\})\s*```""")
+            val rawJson = jsonPattern.find(text)?.groupValues?.get(1)
+                ?: Regex("""(\{[\s\S]*?"calories"[\s\S]*?\})""").find(text)?.groupValues?.get(1)
+
+            var calories = 0f
+            var protein = 0f
+            var carbs = 0f
+            var fat = 0f
+            var fiber = 0f
+            var servingSize = 100f
+            var servingUnit = "g"
+            var parsedName = cleanName
+
+            if (rawJson != null) {
+                try {
+                    val element = Json.parseToJsonElement(rawJson).jsonObject
+                    calories = element["calories"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    protein = element["protein"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    carbs = element["carbs"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    fat = element["fat"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    fiber = element["fiber"]?.jsonPrimitive?.floatOrNull ?: 0f
+                    servingSize = element["serving_size"]?.jsonPrimitive?.floatOrNull ?: 100f
+                    servingUnit = element["serving_unit"]?.jsonPrimitive?.content ?: "g"
+                    parsedName = element["name"]?.jsonPrimitive?.content ?: cleanName
+                } catch (_: Exception) {}
+            }
+
+            // Fallback regex parsing if JSON block was absent or zeroed
+            if (calories == 0f && protein == 0f && carbs == 0f && fat == 0f) {
+                val calMatch = Regex("""(?:calories|kcal)[:\s]+(\d+(?:\.\d+)?)""", RegexOption.IGNORE_CASE).find(text)
+                val pMatch = Regex("""(?:protein)[:\s]+(\d+(?:\.\d+)?)\s*g?""", RegexOption.IGNORE_CASE).find(text)
+                val cMatch = Regex("""(?:carbs|carbohydrates)[:\s]+(\d+(?:\.\d+)?)\s*g?""", RegexOption.IGNORE_CASE).find(text)
+                val fMatch = Regex("""(?:fat)[:\s]+(\d+(?:\.\d+)?)\s*g?""", RegexOption.IGNORE_CASE).find(text)
+                val fibMatch = Regex("""(?:fiber)[:\s]+(\d+(?:\.\d+)?)\s*g?""", RegexOption.IGNORE_CASE).find(text)
+
+                calories = calMatch?.groupValues?.get(1)?.toFloatOrNull() ?: 180f
+                protein = pMatch?.groupValues?.get(1)?.toFloatOrNull() ?: 12f
+                carbs = cMatch?.groupValues?.get(1)?.toFloatOrNull() ?: 18f
+                fat = fMatch?.groupValues?.get(1)?.toFloatOrNull() ?: 6f
+                fiber = fibMatch?.groupValues?.get(1)?.toFloatOrNull() ?: 2f
+            }
+
+            return@withContext createCustomFood(
+                name = parsedName,
+                brand = "Sparky AI",
+                servingSize = servingSize,
+                servingUnit = servingUnit,
+                calories = calories,
+                protein = protein,
+                carbs = carbs,
+                fat = fat,
+                fiber = fiber
+            )
+        }
+
+        Result.failure(chatResult.exceptionOrNull() ?: java.io.IOException("AI food generation failed"))
     }
 }
