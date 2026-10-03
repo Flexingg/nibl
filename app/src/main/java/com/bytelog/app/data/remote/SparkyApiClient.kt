@@ -90,10 +90,70 @@ class SparkyApiClient(
         }
         .build()
 
+    private var cachedServiceConfigId: String? = null
+
     fun updateConfig(url: String, token: String?, key: String?) {
         this.baseUrl = url.trim().trimEnd('/')
         this.authToken = token?.takeIf { it.isNotBlank() }
         this.apiKey = key?.takeIf { it.isNotBlank() }
+        this.cachedServiceConfigId = null
+    }
+
+    /**
+     * Resolve active AI service configuration ID from Sparky Fitness Server.
+     * Queries /api/chat/ai-service-settings/active first, and falls back to
+     * the first configured provider in /api/chat/ai-service-settings.
+     */
+    suspend fun fetchActiveServiceConfigId(): String? = withContext(Dispatchers.IO) {
+        cachedServiceConfigId?.let { return@withContext it }
+
+        // 1. Try GET /api/chat/ai-service-settings/active
+        try {
+            val req = Request.Builder()
+                .url("$baseUrl/api/chat/ai-service-settings/active")
+                .get()
+                .build()
+
+            client.newCall(req).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string().orEmpty()
+                    try {
+                        val parsed = json.parseToJsonElement(body).jsonObject
+                        val id = parsed["id"]?.jsonPrimitive?.content
+                        if (!id.isNullOrBlank()) {
+                            cachedServiceConfigId = id
+                            return@withContext id
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 2. Fallback: Try GET /api/chat/ai-service-settings
+        try {
+            val req = Request.Builder()
+                .url("$baseUrl/api/chat/ai-service-settings")
+                .get()
+                .build()
+
+            client.newCall(req).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string().orEmpty()
+                    try {
+                        val arr = json.parseToJsonElement(body).jsonArray
+                        for (element in arr) {
+                            val id = element.jsonObject["id"]?.jsonPrimitive?.content
+                            if (!id.isNullOrBlank()) {
+                                cachedServiceConfigId = id
+                                return@withContext id
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        } catch (_: Exception) {}
+
+        null
     }
 
     /**
@@ -1533,6 +1593,13 @@ class SparkyApiClient(
      */
     suspend fun sendChatMessage(messages: List<ChatMessageInput>): Result<ChatMessageOutput> = withContext(Dispatchers.IO) {
         try {
+            val serviceConfigId = fetchActiveServiceConfigId()
+            if (serviceConfigId.isNullOrBlank()) {
+                return@withContext Result.failure(
+                    IOException("No active AI service configuration found on Sparky server. Please configure an AI service in Sparky Fitness web settings.")
+                )
+            }
+
             val jsonArray = kotlinx.serialization.json.buildJsonArray {
                 for (m in messages) {
                     add(kotlinx.serialization.json.buildJsonObject {
@@ -1561,6 +1628,7 @@ class SparkyApiClient(
             }
             val requestBodyObj = kotlinx.serialization.json.buildJsonObject {
                 put("messages", jsonArray)
+                put("service_config_id", kotlinx.serialization.json.JsonPrimitive(serviceConfigId))
             }
             val body = requestBodyObj.toString().toRequestBody("application/json".toMediaType())
 
@@ -1594,6 +1662,9 @@ class SparkyApiClient(
                         )
                     )
                 } else {
+                    if (response.code == 404) {
+                        cachedServiceConfigId = null
+                    }
                     var errorMsg = when (response.code) {
                         401 -> "Authentication error (HTTP 401). Please check your Sparky credentials in Settings."
                         403 -> "Access forbidden (HTTP 403)."
