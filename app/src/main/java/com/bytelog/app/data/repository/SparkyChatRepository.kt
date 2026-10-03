@@ -47,11 +47,15 @@ class SparkyChatRepository(
             val serverHistory = result.getOrNull().orEmpty()
             if (serverHistory.isNotEmpty()) {
                 val mapped = serverHistory.map { entry ->
+                    val askPrompt = if (entry.message_type != "user") {
+                        SparkyApiClient.extractAskUserPromptFromText(entry.content)
+                    } else null
                     ChatMessageOutput(
                         id = entry.id,
                         role = if (entry.message_type == "user") "user" else "assistant",
                         content = entry.content,
-                        createdAt = System.currentTimeMillis()
+                        createdAt = System.currentTimeMillis(),
+                        askUserPrompt = askPrompt
                     )
                 }
                 _messages.value = mapped

@@ -43,9 +43,9 @@ class SparkyApiClient(
     }
 
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         })
@@ -89,6 +89,19 @@ class SparkyApiClient(
             chain.proceed(builder.build())
         }
         .build()
+ 
+    /**
+     * Dedicated OkHttpClient for AI interactions (LLM multi-step tool calls, multimodal vision),
+     * matching Sparky Fitness Server's 5-minute timeout window to prevent premature socket timeouts.
+     */
+    private val aiClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(180, TimeUnit.SECONDS)
+            .writeTimeout(180, TimeUnit.SECONDS)
+            .callTimeout(180, TimeUnit.SECONDS)
+            .build()
+    }
 
     private var cachedServiceConfigId: String? = null
 
@@ -1637,19 +1650,47 @@ class SparkyApiClient(
                 .post(body)
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            aiClient.newCall(request).execute().use { response ->
                 val respBody = response.body?.string().orEmpty()
                 if (response.isSuccessful) {
                     val root = json.parseToJsonElement(respBody).jsonObject
                     val replyContent = root["content"]?.jsonPrimitive?.content ?: ""
                     val action = root["action"]?.jsonPrimitive?.content
                     val executedToolsArray = root["executedTools"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
-                    val executedToolsList = executedToolsArray.mapNotNull {
-                        if (it is kotlinx.serialization.json.JsonObject) {
-                            it["name"]?.jsonPrimitive?.content
-                        } else {
-                            it.jsonPrimitive.content
+                    val executedToolsList = mutableListOf<String>()
+                    var askUserPrompt: ChatAskUserPrompt? = null
+
+                    for (el in executedToolsArray) {
+                        if (el is kotlinx.serialization.json.JsonObject) {
+                            val toolName = el["name"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content.orEmpty()
+                            if (toolName.isNotBlank()) {
+                                executedToolsList.add(toolName)
+                            }
+                            if (toolName == "sparky_ask_user") {
+                                val argsObj = el["args"]?.takeIf { it is kotlinx.serialization.json.JsonObject }?.jsonObject
+                                if (argsObj != null) {
+                                    val question = argsObj["question"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content
+                                    val mode = argsObj["mode"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content
+                                    val optionsArray = argsObj["options"]?.takeIf { it is kotlinx.serialization.json.JsonArray }?.jsonArray
+                                    val options = optionsArray?.mapNotNull { opt ->
+                                        opt.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content
+                                    } ?: emptyList()
+                                    if (options.isNotEmpty()) {
+                                        askUserPrompt = ChatAskUserPrompt(
+                                            question = question,
+                                            options = options,
+                                            mode = mode
+                                        )
+                                    }
+                                }
+                            }
+                        } else if (el is kotlinx.serialization.json.JsonPrimitive) {
+                            executedToolsList.add(el.content)
                         }
+                    }
+
+                    if (askUserPrompt == null) {
+                        askUserPrompt = extractAskUserPromptFromText(replyContent)
                     }
 
                     Result.success(
@@ -1658,7 +1699,8 @@ class SparkyApiClient(
                             role = "assistant",
                             content = replyContent,
                             action = action,
-                            executedTools = executedToolsList
+                            executedTools = executedToolsList,
+                            askUserPrompt = askUserPrompt
                         )
                     )
                 } else {
@@ -1774,7 +1816,7 @@ class SparkyApiClient(
                 .post(body)
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            aiClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val content = response.body?.string().orEmpty()
                     val root = json.parseToJsonElement(content).jsonObject
@@ -1808,6 +1850,70 @@ class SparkyApiClient(
             Result.failure(e)
         }
     }
+
+    companion object {
+        /**
+         * Fallback extractor for ask-user prompts / options:
+         * 1) Server chat history replay: `(options offered: opt1 | opt2)`
+         * 2) Text formatted choices at the end of assistant message (2 to 4 options)
+         */
+        fun extractAskUserPromptFromText(content: String): ChatAskUserPrompt? {
+            if (content.isBlank()) return null
+
+            // 1. Check for (options offered: opt1 | opt2)
+            val offeredMatch = Regex("""(?i)\(options offered:\s*(.+?)\)""").find(content)
+            if (offeredMatch != null) {
+                val raw = offeredMatch.groupValues[1]
+                val opts = raw.split('|').map { it.trim() }.filter { it.isNotBlank() }
+                if (opts.size >= 2) {
+                    val q = content.substringBefore(offeredMatch.value).trim().ifBlank { null }
+                    return ChatAskUserPrompt(
+                        question = q,
+                        options = opts,
+                        mode = "choose"
+                    )
+                }
+            }
+
+            // 2. Check for numbered or bulleted options (2 to 4 items) at the end of the text
+            val lines = content.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            if (lines.size >= 3) {
+                for (count in 4 downTo 2) {
+                    if (lines.size > count) {
+                        val candidateLines = lines.takeLast(count)
+                        val isNumbered = candidateLines.mapIndexed { idx, line ->
+                            line.matches(Regex("""^${idx + 1}[.)]\s+.+"""))
+                        }.all { it }
+                        val isBulleted = candidateLines.all { line ->
+                            line.matches(Regex("""^[-*•]\s+.+"""))
+                        }
+                        if (isNumbered || isBulleted) {
+                            val opts = candidateLines.map { line ->
+                                line.replace(Regex("""^(\d+[.)]|[-*•])\s+"""), "").trim()
+                            }
+                            if (opts.all { it.length in 1..60 }) {
+                                val question = lines.dropLast(count).joinToString(" ").trim()
+                                if (question.endsWith("?") ||
+                                    question.contains("select", ignoreCase = true) ||
+                                    question.contains("choose", ignoreCase = true) ||
+                                    question.contains("which", ignoreCase = true) ||
+                                    question.contains("prefer", ignoreCase = true)
+                                ) {
+                                    return ChatAskUserPrompt(
+                                        question = question.ifBlank { null },
+                                        options = opts,
+                                        mode = if (isNumbered) "choose" else "ask"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return null
+        }
+    }
 }
 
 @kotlinx.serialization.Serializable
@@ -1820,6 +1926,13 @@ data class FoodPhotoEstimateResult(
     val fiber: Float = 0f,
     val servingSize: Float = 100f,
     val servingUnit: String = "g"
+)
+
+@kotlinx.serialization.Serializable
+data class ChatAskUserPrompt(
+    val question: String? = null,
+    val options: List<String> = emptyList(),
+    val mode: String? = null
 )
 
 @kotlinx.serialization.Serializable
@@ -1836,7 +1949,8 @@ data class ChatMessageOutput(
     val imageBase64: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val action: String? = null,
-    val executedTools: List<String> = emptyList()
+    val executedTools: List<String> = emptyList(),
+    val askUserPrompt: ChatAskUserPrompt? = null
 )
 
 @kotlinx.serialization.Serializable

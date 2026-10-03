@@ -13,6 +13,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -527,8 +529,16 @@ fun SparkyChatScreen(
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
             items(messages, key = { it.id }) { message ->
+                val isLastAssistantMessage = !isLoading &&
+                    message.role == "assistant" &&
+                    message == messages.lastOrNull { it.role == "assistant" }
+
                 ChatMessageBubble(
                     message = message,
+                    isLastAssistantMessage = isLastAssistantMessage,
+                    onOptionSelected = { option ->
+                        viewModel.sendMessage(option)
+                    },
                     onCopy = { text ->
                         clipboardManager.setText(AnnotatedString(text))
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -556,15 +566,22 @@ fun SparkyChatScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatMessageBubble(
     message: ChatMessageOutput,
+    isLastAssistantMessage: Boolean = false,
+    onOptionSelected: (String) -> Unit = {},
     onCopy: (String) -> Unit,
     onEdit: (ChatMessageOutput) -> Unit
 ) {
     val isUser = message.role == "user"
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val attachedBitmap = remember(message.imageBase64) {
         message.imageBase64?.let { ImageUtils.decodeBase64ToBitmap(it) }
+    }
+    val displayContent = remember(message.content) {
+        message.content.replace(Regex("""(?i)\s*\(options offered:\s*.+?\)"""), "").trim()
     }
 
     Row(
@@ -633,12 +650,76 @@ fun ChatMessageBubble(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    Text(
-                        text = message.content,
-                        color = ByteCream,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
+                    if (displayContent.isNotBlank()) {
+                        Text(
+                            text = displayContent,
+                            color = ByteCream,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                    } else if (message.askUserPrompt?.question != null) {
+                        Text(
+                            text = message.askUserPrompt.question,
+                            color = ByteCream,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
+
+                    // Render quick-reply choices/options if present (from sparky_ask_user tool or assistant prompt)
+                    val askPrompt = message.askUserPrompt
+                    if (!isUser && askPrompt != null && askPrompt.options.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (!askPrompt.question.isNullOrBlank() &&
+                            !displayContent.contains(askPrompt.question, ignoreCase = true) &&
+                            displayContent.isNotBlank()
+                        ) {
+                            Text(
+                                text = askPrompt.question,
+                                color = ByteCreamMuted,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                        }
+
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            askPrompt.options.forEach { option ->
+                                val enabled = isLastAssistantMessage
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(
+                                            if (enabled) ByteInkDark.copy(alpha = 0.85f)
+                                            else ByteInkDark.copy(alpha = 0.35f)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (enabled) ByteTomato.copy(alpha = 0.7f)
+                                            else ByteSurfaceVariantDark.copy(alpha = 0.4f),
+                                            RoundedCornerShape(20.dp)
+                                        )
+                                        .clickable(enabled = enabled) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onOptionSelected(option)
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                                ) {
+                                    Text(
+                                        text = option,
+                                        color = if (enabled) ByteCream else ByteCreamMuted.copy(alpha = 0.5f),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -698,14 +779,15 @@ fun ChatMessageBubble(
                 }
             }
 
-            // Executed tool execution badges
-            if (!isUser && (message.executedTools.isNotEmpty() || !message.action.isNullOrBlank())) {
+            // Executed tool execution badges (excluding sparky_ask_user which renders interactive chips)
+            val visibleTools = message.executedTools.filter { it != "sparky_ask_user" }
+            if (!isUser && (visibleTools.isNotEmpty() || !message.action.isNullOrBlank())) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    message.executedTools.forEach { tool ->
+                    visibleTools.forEach { tool ->
                         val friendlyTool = when {
                             tool.contains("food") -> "Logged Food"
                             tool.contains("checkin") -> "Weight Updated"
