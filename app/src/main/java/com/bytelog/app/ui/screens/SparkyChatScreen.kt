@@ -1,6 +1,11 @@
 package com.bytelog.app.ui.screens
 
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -28,15 +34,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -49,13 +65,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,6 +90,8 @@ import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.viewmodel.SparkyChatViewModel
+import com.bytelog.app.util.ImageUtils
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,13 +99,44 @@ fun SparkyChatScreen(
     viewModel: SparkyChatViewModel,
     onNavigateBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+
     var inputText by remember { mutableStateOf("") }
+    var attachedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var editingMessageId by remember { mutableStateOf<String?>(null) }
+
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showImageSourceDialog by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
-    val haptic = LocalHapticFeedback.current
+
+    // Camera launcher
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        if (bitmap != null) {
+            attachedBitmap = bitmap
+        }
+    }
+
+    // Gallery launcher
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val bmp = ImageUtils.loadBitmapFromUri(context, uri)
+            if (bmp != null) {
+                attachedBitmap = bmp
+            }
+        }
+    }
 
     // Auto-scroll to the newest message
     LaunchedEffect(messages.size, isLoading) {
@@ -90,6 +145,66 @@ fun SparkyChatScreen(
         }
     }
 
+    // Image Source Picker Dialog
+    if (showImageSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showImageSourceDialog = false },
+            title = {
+                Text("Attach Image for Sparky AI", color = ByteCream, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Sparky can analyze meal photos, food nutrition labels, or body check-in photos directly on the backend.",
+                        color = ByteCreamMuted,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                showImageSourceDialog = false
+                                cameraLauncher.launch(null)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Camera", fontSize = 12.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                showImageSourceDialog = false
+                                galleryLauncher.launch("image/*")
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
+                        ) {
+                            Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Gallery", fontSize = 12.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showImageSourceDialog = false }) {
+                    Text("Cancel", color = ByteCreamMuted)
+                }
+            },
+            containerColor = ByteSurfaceDark
+        )
+    }
+
+    // Clear History Dialog
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
@@ -115,6 +230,7 @@ fun SparkyChatScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = ByteInkDark,
         topBar = {
             TopAppBar(
@@ -182,31 +298,124 @@ fun SparkyChatScreen(
                     .navigationBarsPadding()
                     .imePadding()
             ) {
-                // Quick suggested prompts row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    viewModel.suggestedPrompts.forEach { prompt ->
+                // Quick suggested prompts row (hidden while editing)
+                if (editingMessageId == null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        viewModel.suggestedPrompts.forEach { prompt ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(ByteSurfaceDark)
+                                    .border(1.dp, ByteSurfaceVariantDark, RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        viewModel.sendMessage(prompt)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = prompt,
+                                    color = ByteCream,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Editing banner indicator
+                AnimatedVisibility(visible = editingMessageId != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(ByteSurfaceDark)
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = ByteTomato,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Editing previous message",
+                                color = ByteTomato,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                editingMessageId = null
+                                inputText = ""
+                                attachedBitmap = null
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Cancel edit",
+                                tint = ByteCreamMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Attached image thumbnail preview strip
+                AnimatedVisibility(visible = attachedBitmap != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(ByteSurfaceDark)
-                                .border(1.dp, ByteSurfaceVariantDark, RoundedCornerShape(16.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    viewModel.sendMessage(prompt)
-                                }
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .size(50.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, ByteTomato, RoundedCornerShape(8.dp))
                         ) {
+                            attachedBitmap?.let { bmp ->
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = "Attachment preview",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = prompt,
+                                text = "Photo attached",
                                 color = ByteCream,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Sparky AI will inspect this image with vision",
+                                color = ByteCreamMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        IconButton(onClick = { attachedBitmap = null }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Remove photo",
+                                tint = ByteCreamMuted,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -219,12 +428,30 @@ fun SparkyChatScreen(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Image attachment icon button
+                    IconButton(
+                        onClick = { showImageSourceDialog = true },
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(if (attachedBitmap != null) ByteTomato.copy(alpha = 0.2f) else ByteSurfaceDark)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = "Attach Photo",
+                            tint = if (attachedBitmap != null) ByteTomato else ByteCreamMuted,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
                     TextField(
                         value = inputText,
                         onValueChange = { inputText = it },
                         placeholder = {
                             Text(
-                                text = "Ask Sparky or log food/weight...",
+                                text = if (attachedBitmap != null) "Describe or ask about this photo…" else "Ask Sparky or log food/weight…",
                                 color = ByteCreamMuted,
                                 fontSize = 14.sp
                             )
@@ -246,16 +473,28 @@ fun SparkyChatScreen(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
+                    val canSend = (inputText.isNotBlank() || attachedBitmap != null) && !isLoading
+
                     Box(
                         modifier = Modifier
                             .size(46.dp)
                             .clip(CircleShape)
-                            .background(if (inputText.isNotBlank() && !isLoading) ByteTomato else ByteSurfaceDark)
-                            .clickable(enabled = inputText.isNotBlank() && !isLoading) {
+                            .background(if (canSend) ByteTomato else ByteSurfaceDark)
+                            .clickable(enabled = canSend) {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 val textToSend = inputText
+                                val base64ToSend = attachedBitmap?.let { ImageUtils.convertBitmapToBase64(it) }
+
                                 inputText = ""
-                                viewModel.sendMessage(textToSend)
+                                attachedBitmap = null
+
+                                if (editingMessageId != null) {
+                                    val targetId = editingMessageId!!
+                                    editingMessageId = null
+                                    viewModel.editAndResend(targetId, textToSend, base64ToSend)
+                                } else {
+                                    viewModel.sendMessage(textToSend, base64ToSend)
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -269,7 +508,7 @@ fun SparkyChatScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send",
-                                tint = if (inputText.isNotBlank()) ByteCream else ByteCreamMuted,
+                                tint = if (canSend) ByteCream else ByteCreamMuted,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -288,7 +527,24 @@ fun SparkyChatScreen(
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
             items(messages, key = { it.id }) { message ->
-                ChatMessageBubble(message = message)
+                ChatMessageBubble(
+                    message = message,
+                    onCopy = { text ->
+                        clipboardManager.setText(AnnotatedString(text))
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Message copied to clipboard")
+                        }
+                    },
+                    onEdit = { msg ->
+                        editingMessageId = msg.id
+                        inputText = msg.content
+                        if (!msg.imageBase64.isNullOrBlank()) {
+                            attachedBitmap = ImageUtils.decodeBase64ToBitmap(msg.imageBase64)
+                        }
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                )
             }
 
             if (isLoading) {
@@ -301,8 +557,15 @@ fun SparkyChatScreen(
 }
 
 @Composable
-fun ChatMessageBubble(message: ChatMessageOutput) {
+fun ChatMessageBubble(
+    message: ChatMessageOutput,
+    onCopy: (String) -> Unit,
+    onEdit: (ChatMessageOutput) -> Unit
+) {
     val isUser = message.role == "user"
+    val attachedBitmap = remember(message.imageBase64) {
+        message.imageBase64?.let { ImageUtils.decodeBase64ToBitmap(it) }
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -329,8 +592,7 @@ fun ChatMessageBubble(message: ChatMessageOutput) {
         }
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth(0.85f),
+            modifier = Modifier.fillMaxWidth(0.85f),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
             Box(
@@ -356,12 +618,84 @@ fun ChatMessageBubble(message: ChatMessageOutput) {
                     )
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                Text(
-                    text = message.content,
-                    color = ByteCream,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
+                Column {
+                    // Display attached image if present in message
+                    if (attachedBitmap != null) {
+                        Image(
+                            bitmap = attachedBitmap.asImageBitmap(),
+                            contentDescription = "Attached food or workout photo",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 200.dp)
+                                .clip(RoundedCornerShape(10.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    Text(
+                        text = message.content,
+                        color = ByteCream,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+            }
+
+            // Action row below message (Copy & Edit)
+            Row(
+                modifier = Modifier
+                    .padding(top = 2.dp, start = if (isUser) 0.dp else 4.dp, end = if (isUser) 4.dp else 0.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Copy Action
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onCopy(message.content) }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy message",
+                        tint = ByteCreamMuted,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = "Copy",
+                        color = ByteCreamMuted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Edit Action (User messages only)
+                if (isUser) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onEdit(message) }
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit message",
+                            tint = ByteCreamMuted,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "Edit",
+                            color = ByteCreamMuted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
 
             // Executed tool execution badges

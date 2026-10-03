@@ -137,6 +137,13 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun clearSession() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(KEY_AUTH_TOKEN)
+            prefs.remove(KEY_USER_EMAIL)
+        }
+    }
+
     suspend fun saveServerConfig(
         url: String,
         token: String? = null,

@@ -22,9 +22,15 @@ class SparkyChatViewModel(
         "Give me a high protein snack under 200 calories"
     )
 
-    fun sendMessage(content: String) {
+    fun sendMessage(content: String, imageBase64: String? = null) {
         viewModelScope.launch {
-            chatRepository.sendMessage(content)
+            chatRepository.sendMessage(content, imageBase64)
+        }
+    }
+
+    fun editAndResend(targetMessageId: String, newContent: String, newImageBase64: String? = null) {
+        viewModelScope.launch {
+            chatRepository.editAndResend(targetMessageId, newContent, newImageBase64)
         }
     }
 

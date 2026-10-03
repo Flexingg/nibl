@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -101,7 +102,7 @@ fun SettingsScreen(
     val wPref by settingsRepository.targetWaterOz.collectAsState(initial = 64f)
 
     var serverUrl by remember { mutableStateOf(serverUrlPref) }
-    var apiKey by remember { mutableStateOf(apiKeyPref ?: authTokenPref ?: "") }
+    var apiKey by remember { mutableStateOf(apiKeyPref ?: "") }
     var email by remember { mutableStateOf(savedEmailPref ?: "") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -117,9 +118,9 @@ fun SettingsScreen(
     var isSigningIn by remember { mutableStateOf(false) }
     var isManualSyncing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(serverUrlPref, apiKeyPref, authTokenPref, savedEmailPref, calPref, pPref, cPref, fPref, wPref) {
+    LaunchedEffect(serverUrlPref, apiKeyPref, savedEmailPref, calPref, pPref, cPref, fPref, wPref) {
         serverUrl = serverUrlPref
-        apiKey = apiKeyPref ?: authTokenPref ?: ""
+        apiKey = apiKeyPref ?: ""
         if (email.isBlank() && !savedEmailPref.isNullOrBlank()) {
             email = savedEmailPref.orEmpty()
         }
@@ -361,9 +362,61 @@ fun SettingsScreen(
                     letterSpacing = 0.5.sp
                 )
 
+                if (!authTokenPref.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF064E3B).copy(alpha = 0.4f))
+                            .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF34D399))
+                                )
+                                Text(
+                                    text = "Active Sparky Session",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                text = savedEmailPref ?: "Connected Account",
+                                color = ByteCream,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    settingsRepository.clearSession()
+                                    connectionTestResult = null
+                                    snackbarHostState.showSnackbar("Signed out of Sparky account.")
+                                }
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteTomato)
+                        ) {
+                            Text("Sign Out", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 // Sign in with Email / Password directly
                 Text(
-                    text = "Sign in with Sparky Fitness Account",
+                    text = if (!authTokenPref.isNullOrBlank()) "Switch Account / Re-authenticate" else "Sign in with Sparky Fitness Account",
                     color = ByteCream,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
@@ -425,7 +478,6 @@ fun SettingsScreen(
                             loginResult.fold(
                                 onSuccess = { token ->
                                     settingsRepository.saveAuthTokenAndEmail(token, email)
-                                    apiKey = token
                                     password = ""
                                     snackbarHostState.showSnackbar("Logged in successfully! Token stored.")
                                     // Automatically test connection
@@ -466,7 +518,7 @@ fun SettingsScreen(
 
                 // Alternatively, manual API Key / Session Token
                 Text(
-                    text = "Or Direct API Key / Token",
+                    text = "Optional Direct API Key (Headless / Admin)",
                     color = ByteCreamMuted,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
@@ -475,7 +527,7 @@ fun SettingsScreen(
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
-                    label = { Text("API Key / Bearer Token", color = ByteCreamMuted) },
+                    label = { Text("API Key (leave blank if signed in above)", color = ByteCreamMuted) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = ByteCream,

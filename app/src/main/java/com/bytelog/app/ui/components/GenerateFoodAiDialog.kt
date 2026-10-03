@@ -98,14 +98,7 @@ fun GenerateFoodAiDialog(
     }
 
     fun convertBitmapToBase64(bitmap: Bitmap): String {
-        val outputStream = ByteArrayOutputStream()
-        val maxDim = 1024
-        val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
-            val scale = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height)
-            Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
-        } else bitmap
-        scaled.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
-        return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+        return com.bytelog.app.util.ImageUtils.convertBitmapToBase64(bitmap)
     }
 
     AlertDialog(

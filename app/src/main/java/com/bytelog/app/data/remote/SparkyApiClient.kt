@@ -60,19 +60,29 @@ class SparkyApiClient(
 
             // Session token authentication
             authToken?.let { token ->
-                val cleanToken = if (token.startsWith("better-auth.session_token=")) {
-                    token.substringAfter("better-auth.session_token=")
-                } else token
+                val cleanToken = when {
+                    token.startsWith("better-auth.session_token=") -> token.substringAfter("better-auth.session_token=")
+                    token.startsWith("sparky.session_token=") -> token.substringAfter("sparky.session_token=")
+                    token.startsWith("__Secure-sparky.session_token=") -> token.substringAfter("__Secure-sparky.session_token=")
+                    token.startsWith("__Secure-better-auth.session_token=") -> token.substringAfter("__Secure-better-auth.session_token=")
+                    else -> token
+                }.trim()
 
-                builder.header("Authorization", "Bearer $cleanToken")
-                builder.header("Cookie", "better-auth.session_token=$cleanToken")
+                if (cleanToken.isNotBlank()) {
+                    builder.header("Authorization", "Bearer $cleanToken")
+                }
             }
 
-            // API key authentication
-            apiKey?.takeIf { it.isNotBlank() }?.let { key ->
-                builder.header("X-API-Key", key.trim())
-                if (authToken == null) {
-                    builder.header("Authorization", "Bearer ${key.trim()}")
+            // API key authentication (only when session token is not present)
+            if (authToken.isNullOrBlank()) {
+                apiKey?.takeIf { it.isNotBlank() }?.let { key ->
+                    val cleanKey = key.trim()
+                    builder.header("Authorization", "Bearer $cleanKey")
+                    // Better Auth's API key plugin only accepts actual 64+ char API keys without dots.
+                    // Do not send shorter tokens as X-API-Key to avoid 401 failures.
+                    if (cleanKey.length >= 64 && !cleanKey.contains('.')) {
+                        builder.header("X-API-Key", cleanKey)
+                    }
                 }
             }
 
@@ -206,6 +216,8 @@ class SparkyApiClient(
             val request = Request.Builder()
                 .url("$baseUrl/api/auth/sign-in/email")
                 .header("Origin", baseUrl)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
                 .post(body)
                 .build()
 
@@ -216,17 +228,27 @@ class SparkyApiClient(
                     try {
                         val parsed = json.parseToJsonElement(respBody).jsonObject
                         token = parsed["token"]?.jsonPrimitive?.content
+                            ?: parsed["session"]?.jsonObject?.get("token")?.jsonPrimitive?.content
                     } catch (_: Exception) {}
 
                     if (token.isNullOrBlank()) {
-                        val cookieHeader = response.header("set-cookie").orEmpty()
-                        val match = Regex("""better-auth\.session_token=([^;]+)""").find(cookieHeader)
-                        token = match?.groupValues?.get(1)
+                        val cookieHeaders = response.headers("Set-Cookie")
+                        for (cookie in cookieHeaders) {
+                            val match = Regex("""(?:__Secure-)?(?:sparky|better-auth)\.session_token=([^;]+)""").find(cookie)
+                            if (match != null) {
+                                val fullVal = match.groupValues[1]
+                                token = if (fullVal.contains(".")) fullVal.substringBefore(".") else fullVal
+                                break
+                            }
+                        }
                     }
 
-                    val finalToken = token ?: "session_active"
-                    authToken = finalToken
-                    Result.success(finalToken)
+                    if (token.isNullOrBlank()) {
+                        return@use Result.failure(IOException("Sign-in succeeded, but no session token could be found in the server response."))
+                    }
+
+                    authToken = token
+                    Result.success(token)
                 } else {
                     var errorMsg = "Sign-in failed (HTTP ${response.code})"
                     try {
@@ -1516,6 +1538,24 @@ class SparkyApiClient(
                     add(kotlinx.serialization.json.buildJsonObject {
                         put("role", kotlinx.serialization.json.JsonPrimitive(m.role))
                         put("content", kotlinx.serialization.json.JsonPrimitive(m.content))
+                        if (!m.imageBase64.isNullOrBlank()) {
+                            val formattedImage = if (m.imageBase64.startsWith("data:")) {
+                                m.imageBase64
+                            } else {
+                                "data:image/jpeg;base64,${m.imageBase64}"
+                            }
+                            val partsArray = kotlinx.serialization.json.buildJsonArray {
+                                add(kotlinx.serialization.json.buildJsonObject {
+                                    put("type", kotlinx.serialization.json.JsonPrimitive("text"))
+                                    put("text", kotlinx.serialization.json.JsonPrimitive(m.content))
+                                })
+                                add(kotlinx.serialization.json.buildJsonObject {
+                                    put("type", kotlinx.serialization.json.JsonPrimitive("image"))
+                                    put("image", kotlinx.serialization.json.JsonPrimitive(formattedImage))
+                                })
+                            }
+                            put("parts", partsArray)
+                        }
                     })
                 }
             }
@@ -1530,9 +1570,9 @@ class SparkyApiClient(
                 .build()
 
             client.newCall(request).execute().use { response ->
+                val respBody = response.body?.string().orEmpty()
                 if (response.isSuccessful) {
-                    val content = response.body?.string().orEmpty()
-                    val root = json.parseToJsonElement(content).jsonObject
+                    val root = json.parseToJsonElement(respBody).jsonObject
                     val replyContent = root["content"]?.jsonPrimitive?.content ?: ""
                     val action = root["action"]?.jsonPrimitive?.content
                     val executedToolsArray = root["executedTools"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
@@ -1554,7 +1594,21 @@ class SparkyApiClient(
                         )
                     )
                 } else {
-                    Result.failure(IOException("Chat request failed: HTTP ${response.code}"))
+                    var errorMsg = when (response.code) {
+                        401 -> "Authentication error (HTTP 401). Please check your Sparky credentials in Settings."
+                        403 -> "Access forbidden (HTTP 403)."
+                        404 -> "AI service not configured or endpoint not found on server (HTTP 404)."
+                        else -> "Chat request failed: HTTP ${response.code}"
+                    }
+                    try {
+                        val parsed = json.parseToJsonElement(respBody).jsonObject
+                        val serverError = parsed["error"]?.jsonPrimitive?.content
+                            ?: parsed["message"]?.jsonPrimitive?.content
+                        if (!serverError.isNullOrBlank()) {
+                            errorMsg += " ($serverError)"
+                        }
+                    } catch (_: Exception) {}
+                    Result.failure(IOException(errorMsg))
                 }
             }
         } catch (e: Exception) {
@@ -1700,13 +1754,15 @@ data class FoodPhotoEstimateResult(
 @kotlinx.serialization.Serializable
 data class ChatMessageInput(
     val role: String,
-    val content: String
+    val content: String,
+    val imageBase64: String? = null
 )
 
 data class ChatMessageOutput(
     val id: String = UUID.randomUUID().toString(),
     val role: String = "assistant",
     val content: String,
+    val imageBase64: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val action: String? = null,
     val executedTools: List<String> = emptyList()

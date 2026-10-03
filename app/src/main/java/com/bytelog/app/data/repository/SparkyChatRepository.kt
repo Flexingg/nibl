@@ -65,14 +65,22 @@ class SparkyChatRepository(
         }
     }
 
-    suspend fun sendMessage(userText: String) {
+    suspend fun sendMessage(userText: String, imageBase64: String? = null) {
         val trimmed = userText.trim()
-        if (trimmed.isBlank() || _isLoading.value) return
+        if (trimmed.isBlank() && imageBase64.isNullOrBlank()) return
+        if (_isLoading.value) return
+
+        val displayContent = if (trimmed.isBlank() && !imageBase64.isNullOrBlank()) {
+            "Analyze attached image"
+        } else {
+            trimmed
+        }
 
         val userMessage = ChatMessageOutput(
             id = UUID.randomUUID().toString(),
             role = "user",
-            content = trimmed,
+            content = displayContent,
+            imageBase64 = imageBase64,
             createdAt = System.currentTimeMillis()
         )
 
@@ -87,7 +95,8 @@ class SparkyChatRepository(
         val payloadMessages = currentList.filter { it.id != "welcome" }.map {
             ChatMessageInput(
                 role = it.role,
-                content = it.content
+                content = it.content,
+                imageBase64 = it.imageBase64
             )
         }
 
@@ -130,13 +139,24 @@ class SparkyChatRepository(
             val errorBotMsg = ChatMessageOutput(
                 id = UUID.randomUUID().toString(),
                 role = "assistant",
-                content = "⚠️ Unable to get a response from Sparky AI ($errorMsg). Please check your AI service settings or backend connection in Settings.",
+                content = "⚠️ Unable to get a response from Sparky AI ($errorMsg). Please check your backend connection in Settings.",
                 createdAt = System.currentTimeMillis()
             )
             val updated = _messages.value.toMutableList()
             updated.add(errorBotMsg)
             _messages.value = updated
         }
+    }
+
+    suspend fun editAndResend(targetMessageId: String, newText: String, newImageBase64: String? = null) {
+        val current = _messages.value.toMutableList()
+        val index = current.indexOfFirst { it.id == targetMessageId }
+        if (index != -1) {
+            // Drop target message and all subsequent messages to branch/retry conversation
+            val trimmedList = current.subList(0, index)
+            _messages.value = trimmedList.toList()
+        }
+        sendMessage(newText, newImageBase64)
     }
 
     suspend fun clearHistory(): Boolean {
