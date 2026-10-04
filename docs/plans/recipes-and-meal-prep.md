@@ -1,6 +1,38 @@
 # Recipes, Cook Mode & Meal Prep Batches — Implementation Plan
 
-Status: proposal · Supersedes the "Meal Prep" feature draft (Pillars 1–3)
+Status: proof of concept built in ByteLog (v1.1.0) · Supersedes the "Meal Prep" feature draft (Pillars 1–3)
+
+## Decisions (Oct 4)
+
+1. **Prove it in ByteLog first.** Everything below, including the AI-assisted parsing (Phase 4) and the
+   recipe-details storage (Phase 5), is built client-side as a proof of concept. If it works well, the
+   server pieces become a SparkyFitness pull request and ByteLog switches over to them.
+2. **Batch snapshot foods are kept** in Sparky after a batch is finished, and hidden from ByteLog's local search.
+3. **Servings scale with the batch.** Cooking 3× a recipe that makes 10 servings gives a batch of 30 servings
+   (`portions = recipe servings × scale`). Logging "1 serving" of a template logs 1 of its `total_servings`:
+   ByteLog already sends `X-Meal-Model-Version: 2`, where Sparky computes the multiplier as
+   `quantity / total_servings`.
+
+## Proof of concept: what's built
+
+| Area | Status | Notes |
+| :--- | :--- | :--- |
+| Room safety | Done | Schema export on, `MIGRATION_3_4`, destructive fallback only on downgrade. Migration tested against a real v3 file. |
+| Unit-aware food math | Done | `UnitConverter` + density table; `FoodItem.*For()` now converts lb/oz/cup/… and treats "1 serving" as one reference serving. |
+| Meal-prep batches | Done | Fridge strip on the Diary (tap = 1 portion to the current meal, hold = custom amount/grams, freezer, toss, finish). Remaining amount derived from linked diary entries; delete/edit/undo keep it in sync. |
+| Recipe details & Cook mode | Done | Local `recipe_details`; directions also written to the Sparky template `notes` so the web app shows them. Cook mode: screen on, scaling, checklists, step timers. |
+| Recipe builder | Done | Search any food, edit amounts in any unit, directions/times/storage section. |
+| URL / share / paste import | Done | Jsoup JSON-LD + microdata extractor, "Share to ByteLog" intent, pasted-text parser, deterministic line parser, ingredient matching with remembered aliases, review screen with site-nutrition check. |
+| AI assist | POC | "Ask Sparky AI (beta)" re-parses unresolved lines through `/api/chat` restricted to read-only `reports` tools. The exchange shows up in Sparky chat history; a stateless `/api/foods/parse-ingredients` endpoint is the server PR. |
+| Expiry notification | Not built | Cards show "eat today" / "past best-by"; no push reminder yet. |
+| Background timers | Not built | Cook-mode timers alert (vibrate + sound) only while Cook mode is open. |
+| JS-protected sites | Gap | Some sites (AllRecipes, Food Network, Budget Bytes, Sally's) answered 403 to a cloud server; untested from a phone. A hidden-WebView fallback would cover bot challenges. |
+
+### Server pull request (after the POC)
+
+- `POST /api/foods/parse-ingredients`: stateless, schema-constrained, no tools, no chat history.
+- `meal_recipe_details` (or columns on `meals`): steps, times, source URL, image, fridge/freezer days.
+- Optionally a `prep_batches` table so batches sync across devices and the web.
 
 ## 0. Review of the original draft
 

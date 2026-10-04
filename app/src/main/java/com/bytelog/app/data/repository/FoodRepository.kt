@@ -26,8 +26,26 @@ class FoodRepository(
     private val mealTypeDao: MealTypeDao,
     private val sparkyApiClient: SparkyApiClient,
     private val settingsRepository: SettingsRepository,
-    private val appScope: CoroutineScope
+    private val appScope: CoroutineScope,
+    private val prepBatchDao: com.bytelog.app.data.local.db.PrepBatchDao? = null
 ) {
+
+    /**
+     * Replaces a pending entry with its server-assigned id. Batch links follow the new id
+     * so a meal-prep portion stays attached to its diary entry after sync.
+     */
+    // Batch links of recently deleted entries, so the diary's Undo can re-attach them.
+    private val deletedBatchLinks = java.util.concurrent.ConcurrentHashMap<String, com.bytelog.app.data.local.model.BatchConsumption>()
+
+    private suspend fun detachBatchLinks(entryIds: List<String>) {
+        prepBatchDao?.onEntriesDeleted(entryIds)?.forEach { deletedBatchLinks[it.foodEntryId] = it }
+    }
+
+    private suspend fun rekeyEntry(entry: FoodEntry, serverId: String) {
+        foodEntryDao.deleteEntryById(entry.id)
+        foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_SYNCED))
+        prepBatchDao?.remapEntryId(entry.id, serverId)
+    }
 
     // --- Food Queries ---
 
@@ -135,6 +153,9 @@ class FoodRepository(
 
         // 1. Instant local persistence
         foodEntryDao.insertEntries(entries)
+        entries.forEach { entry ->
+            deletedBatchLinks.remove(entry.id)?.let { link -> prepBatchDao?.insertConsumption(link) }
+        }
 
         // 2. Update food usage statistics for intelligent ranking
         val now = System.currentTimeMillis()
@@ -151,8 +172,7 @@ class FoodRepository(
                 if (syncResult.isSuccess) {
                     val serverId = syncResult.getOrNull()
                     if (!serverId.isNullOrBlank() && serverId != entry.id) {
-                        foodEntryDao.deleteEntryById(entry.id)
-                        foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_SYNCED))
+                        rekeyEntry(entry, serverId)
                     } else {
                         foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
                     }
@@ -168,6 +188,7 @@ class FoodRepository(
      */
     suspend fun updateEntry(entry: FoodEntry) = withContext(Dispatchers.IO) {
         foodEntryDao.updateEntry(entry.copy(syncStatus = FoodEntry.SYNC_STATUS_PENDING_UPDATE))
+        prepBatchDao?.onEntryQuantityChanged(entry.id, entry.quantity)
         appScope.launch(Dispatchers.IO) {
             val updateRes = sparkyApiClient.updateFoodEntry(entry)
             if (updateRes.isSuccess) {
@@ -178,8 +199,7 @@ class FoodRepository(
                 if (createRes.isSuccess) {
                     val serverId = createRes.getOrNull()
                     if (!serverId.isNullOrBlank() && serverId != entry.id) {
-                        foodEntryDao.deleteEntryById(entry.id)
-                        foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_SYNCED))
+                        rekeyEntry(entry, serverId)
                     } else {
                         foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
                     }
@@ -215,6 +235,7 @@ class FoodRepository(
      */
     suspend fun deleteEntry(entry: FoodEntry) = withContext(Dispatchers.IO) {
         foodEntryDao.deleteEntryById(entry.id)
+        detachBatchLinks(listOf(entry.id))
         appScope.launch(Dispatchers.IO) {
             sparkyApiClient.deleteFoodEntry(entry.id)
         }
@@ -227,6 +248,7 @@ class FoodRepository(
         if (entries.isEmpty()) return@withContext
         val ids = entries.map { it.id }
         foodEntryDao.deleteEntriesByIds(ids)
+        detachBatchLinks(ids)
         appScope.launch(Dispatchers.IO) {
             entries.forEach { entry ->
                 sparkyApiClient.deleteFoodEntry(entry.id)
@@ -357,8 +379,7 @@ class FoodRepository(
                     if (pushResult.isSuccess) {
                         val serverId = pushResult.getOrNull()
                         if (!serverId.isNullOrBlank() && serverId != entry.id) {
-                            foodEntryDao.deleteEntryById(entry.id)
-                            foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_SYNCED))
+                            rekeyEntry(entry, serverId)
                         } else {
                             foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
                         }

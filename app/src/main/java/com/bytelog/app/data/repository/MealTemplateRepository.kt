@@ -53,7 +53,8 @@ class MealTemplateRepository(
         servingSize: Float = 1f,
         servingUnit: String = "serving",
         totalServings: Float = 1f,
-        foods: List<TemplateIngredient>
+        foods: List<TemplateIngredient>,
+        notes: String? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         val result = sparkyApiClient.createMealTemplate(
             name = name,
@@ -61,7 +62,8 @@ class MealTemplateRepository(
             servingSize = servingSize,
             servingUnit = servingUnit,
             totalServings = totalServings,
-            foods = foods
+            foods = foods,
+            notes = notes
         )
         if (result.isSuccess) {
             refreshTemplates()

@@ -27,7 +27,8 @@ class ByteLogApplication : Application() {
             mealTypeDao = database.mealTypeDao(),
             sparkyApiClient = sparkyApiClient,
             settingsRepository = settingsRepository,
-            appScope = applicationScope
+            appScope = applicationScope,
+            prepBatchDao = database.prepBatchDao()
         )
     }
 
@@ -52,6 +53,26 @@ class ByteLogApplication : Application() {
     val mealTemplateRepository by lazy {
         com.bytelog.app.data.repository.MealTemplateRepository(
             mealTemplateDao = database.mealTemplateDao(),
+            sparkyApiClient = sparkyApiClient,
+            appScope = applicationScope
+        )
+    }
+
+    val recipeRepository by lazy {
+        com.bytelog.app.data.repository.RecipeRepository(
+            recipeDetailsDao = database.recipeDetailsDao(),
+            ingredientAliasDao = database.ingredientAliasDao(),
+            foodDao = database.foodDao(),
+            foodRepository = foodRepository,
+            mealTemplateRepository = mealTemplateRepository,
+            sparkyApiClient = sparkyApiClient
+        )
+    }
+
+    val mealPrepRepository by lazy {
+        com.bytelog.app.data.repository.MealPrepRepository(
+            prepBatchDao = database.prepBatchDao(),
+            foodRepository = foodRepository,
             sparkyApiClient = sparkyApiClient,
             appScope = applicationScope
         )
