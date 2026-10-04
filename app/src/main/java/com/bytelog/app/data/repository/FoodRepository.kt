@@ -221,6 +221,120 @@ class FoodRepository(
     }
 
     /**
+     * Delete multiple entries locally and sync deletion to Sparky in background.
+     */
+    suspend fun deleteEntries(entries: List<FoodEntry>) = withContext(Dispatchers.IO) {
+        if (entries.isEmpty()) return@withContext
+        val ids = entries.map { it.id }
+        foodEntryDao.deleteEntriesByIds(ids)
+        appScope.launch(Dispatchers.IO) {
+            entries.forEach { entry ->
+                sparkyApiClient.deleteFoodEntry(entry.id)
+            }
+        }
+    }
+
+    /**
+     * Delete an entire meal (all entries matching date and meal name) and sync deletion to Sparky.
+     * Returns deleted entries so caller can perform Undo.
+     */
+    suspend fun deleteMeal(date: String, mealName: String): List<FoodEntry> = withContext(Dispatchers.IO) {
+        val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+        val entries = foodEntryDao.getEntriesForDateOnce(cleanDate)
+            .filter { it.mealName.trim().equals(mealName.trim(), ignoreCase = true) }
+        if (entries.isNotEmpty()) {
+            deleteEntries(entries)
+        }
+        entries
+    }
+
+    /**
+     * Move entries to a new date and/or meal category.
+     */
+    suspend fun moveEntries(
+        entries: List<FoodEntry>,
+        targetDate: String,
+        targetMealTypeId: String,
+        targetMealName: String
+    ) = withContext(Dispatchers.IO) {
+        if (entries.isEmpty()) return@withContext
+        val cleanDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
+        val cleanMealName = targetMealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+        val updatedEntries = entries.map { entry ->
+            entry.copy(
+                entryDate = cleanDate,
+                mealTypeId = targetMealTypeId,
+                mealName = cleanMealName,
+                syncStatus = FoodEntry.SYNC_STATUS_PENDING_UPDATE
+            )
+        }
+        foodEntryDao.insertEntries(updatedEntries)
+        appScope.launch(Dispatchers.IO) {
+            updatedEntries.forEach { entry ->
+                sparkyApiClient.updateFoodEntry(entry)
+            }
+        }
+    }
+
+    /**
+     * Copy entries to a new date and/or meal category.
+     */
+    suspend fun copyEntries(
+        entries: List<FoodEntry>,
+        targetDate: String,
+        targetMealTypeId: String,
+        targetMealName: String
+    ) = withContext(Dispatchers.IO) {
+        if (entries.isEmpty()) return@withContext
+        val cleanDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
+        val cleanMealName = targetMealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+        val copiedEntries = entries.map { entry ->
+            entry.copy(
+                id = UUID.randomUUID().toString(),
+                entryDate = cleanDate,
+                mealTypeId = targetMealTypeId,
+                mealName = cleanMealName,
+                syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT,
+                createdAt = System.currentTimeMillis()
+            )
+        }
+        commitMultiAdd(copiedEntries)
+    }
+
+    /**
+     * Move an entire meal to a new date and/or meal category.
+     */
+    suspend fun moveMeal(
+        sourceDate: String,
+        sourceMealName: String,
+        targetDate: String,
+        targetMealName: String
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val sDate = if (sourceDate.contains("T")) sourceDate.substringBefore("T") else sourceDate
+        val tDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
+        val allTypes = mealTypeDao.getAllMealTypesList()
+        val targetTypeObj = allTypes.find { it.name.trim().equals(targetMealName.trim(), ignoreCase = true) }
+        val targetTypeId = targetTypeObj?.id ?: targetMealName.lowercase()
+        val cleanTargetMealName = targetMealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+        val entries = foodEntryDao.getEntriesForDateOnce(sDate)
+            .filter { it.mealName.trim().equals(sourceMealName.trim(), ignoreCase = true) }
+
+        if (entries.isEmpty()) {
+            return@withContext Result.success(0)
+        }
+
+        moveEntries(entries, tDate, targetTypeId, cleanTargetMealName)
+        syncDateWithServer(tDate)
+        if (sDate != tDate) {
+            syncDateWithServer(sDate)
+        }
+        Result.success(entries.size)
+    }
+
+    /**
      * Fully sync daily entries with Sparky Fitness Server:
      * 1. Push any local pending un-synced entries (inserts or updates).
      * 2. Pull latest entries from Sparky for this date and reconcile local DB.

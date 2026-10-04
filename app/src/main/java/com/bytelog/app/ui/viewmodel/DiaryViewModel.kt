@@ -415,6 +415,59 @@ class DiaryViewModel(
         }
     }
 
+    fun moveMeal(sourceDate: String, sourceMeal: String, targetDate: String, targetMeal: String) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val res = foodRepository.moveMeal(sourceDate, sourceMeal, targetDate, targetMeal)
+            _isSyncing.value = false
+            if (res.isSuccess) {
+                val count = res.getOrNull() ?: 0
+                _syncMessage.emit("Moved $sourceMeal ($count foods) to $targetMeal on $targetDate")
+            } else {
+                _syncMessage.emit("Failed to move $sourceMeal: ${res.exceptionOrNull()?.message ?: "Error"}")
+            }
+        }
+    }
+
+    fun deleteMeal(date: String, mealName: String, onDeleted: ((List<FoodEntry>) -> Unit)? = null) {
+        viewModelScope.launch {
+            val deleted = foodRepository.deleteMeal(date, mealName)
+            if (deleted.isNotEmpty()) {
+                _syncMessage.emit("Cleared $mealName (${deleted.size} items)")
+                onDeleted?.invoke(deleted)
+            }
+        }
+    }
+
+    fun moveEntries(entries: List<FoodEntry>, targetDate: String, targetMealTypeId: String, targetMealName: String) {
+        viewModelScope.launch {
+            foodRepository.moveEntries(entries, targetDate, targetMealTypeId, targetMealName)
+            _syncMessage.emit("Moved ${entries.size} item(s) to $targetMealName")
+        }
+    }
+
+    fun copyEntries(entries: List<FoodEntry>, targetDate: String, targetMealTypeId: String, targetMealName: String) {
+        viewModelScope.launch {
+            foodRepository.copyEntries(entries, targetDate, targetMealTypeId, targetMealName)
+            _syncMessage.emit("Copied ${entries.size} item(s) to $targetMealName")
+        }
+    }
+
+    fun deleteEntries(entries: List<FoodEntry>, onDeleted: ((List<FoodEntry>) -> Unit)? = null) {
+        viewModelScope.launch {
+            foodRepository.deleteEntries(entries)
+            _syncMessage.emit("Deleted ${entries.size} item(s)")
+            onDeleted?.invoke(entries)
+        }
+    }
+
+    fun restoreEntries(entries: List<FoodEntry>) {
+        viewModelScope.launch {
+            foodRepository.commitMultiAdd(entries)
+            _syncMessage.emit("Restored ${entries.size} item(s)")
+        }
+    }
+
     fun copyAllFromYesterday() {
         viewModelScope.launch {
             _isSyncing.value = true

@@ -18,14 +18,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,6 +55,8 @@ import com.bytelog.app.ui.theme.ByteTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroFat
 import com.bytelog.app.ui.theme.MacroProtein
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 @Composable
@@ -59,9 +65,14 @@ fun EditFoodEntrySheet(
     availableMealTypes: List<MealType>,
     onSave: (updatedEntry: FoodEntry) -> Unit,
     onDelete: (entry: FoodEntry) -> Unit,
+    onCopy: ((entry: FoodEntry) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd") }
+    val today = remember { LocalDate.now().format(dateFormatter) }
+    val tomorrow = remember { LocalDate.now().plusDays(1).format(dateFormatter) }
+    val yesterday = remember { LocalDate.now().minusDays(1).format(dateFormatter) }
 
     var quantityText by remember {
         mutableStateOf(
@@ -69,6 +80,7 @@ fun EditFoodEntrySheet(
         )
     }
     var selectedUnit by remember { mutableStateOf(entry.unit) }
+    var selectedDate by remember { mutableStateOf(entry.entryDate) }
     var selectedMealTypeId by remember { mutableStateOf(entry.mealTypeId) }
     var selectedMealName by remember { mutableStateOf(entry.mealName) }
 
@@ -161,6 +173,71 @@ fun EditFoodEntrySheet(
             }
             Spacer(modifier = Modifier.height(14.dp))
         }
+
+        // Date Selector Chips & Field (Move to date)
+        Text(
+            text = "DATE",
+            color = ByteCreamMuted,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            listOf(
+                "Today" to today,
+                "Tomorrow" to tomorrow,
+                "Yesterday" to yesterday,
+                "Logged Date" to entry.entryDate
+            ).distinctBy { it.second }.forEach { (label, dateVal) ->
+                val isSelected = selectedDate == dateVal
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            selectedDate = dateVal
+                        }
+                        .padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isSelected) ByteCream else ByteCreamMuted,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        OutlinedTextField(
+            value = selectedDate,
+            onValueChange = { selectedDate = it },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.CalendarToday,
+                    contentDescription = null,
+                    tint = ByteCreamMuted,
+                    modifier = Modifier.size(16.dp)
+                )
+            },
+            label = { Text("Date (YYYY-MM-DD)", color = ByteCreamMuted, fontSize = 11.sp) },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = ByteCream,
+                unfocusedTextColor = ByteCream,
+                focusedBorderColor = ByteTomato,
+                unfocusedBorderColor = ByteSurfaceVariantDark
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(14.dp))
 
         // Live Calculated Calories & Macros
         Row(
@@ -276,10 +353,10 @@ fun EditFoodEntrySheet(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Action Buttons: Delete & Save Changes
+        // Action Buttons: Delete, Copy & Save Changes
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Delete Entry Button
             OutlinedButton(
@@ -294,21 +371,67 @@ fun EditFoodEntrySheet(
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = Color(0xFFEF4444)
                 ),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f))
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Delete",
                     tint = Color(0xFFEF4444),
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(17.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "Delete",
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFEF4444)
                 )
+            }
+
+            // Copy Entry Button
+            onCopy?.let { copyCallback ->
+                OutlinedButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val finalQty = quantityText.toFloatOrNull() ?: entry.quantity
+                        val updated = entry.copy(
+                            quantity = finalQty,
+                            unit = selectedUnit,
+                            entryDate = selectedDate.trim(),
+                            mealTypeId = selectedMealTypeId,
+                            mealName = selectedMealName,
+                            calories = calculatedCalories,
+                            protein = calculatedProtein,
+                            carbs = calculatedCarbs,
+                            fat = calculatedFat
+                        )
+                        copyCallback(updated)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MacroProtein
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MacroProtein.copy(alpha = 0.5f)),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy",
+                        tint = MacroProtein,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Copy",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MacroProtein
+                    )
+                }
             }
 
             // Save Changes Button
@@ -319,6 +442,7 @@ fun EditFoodEntrySheet(
                     val updated = entry.copy(
                         quantity = finalQty,
                         unit = selectedUnit,
+                        entryDate = selectedDate.trim(),
                         mealTypeId = selectedMealTypeId,
                         mealName = selectedMealName,
                         calories = calculatedCalories,
@@ -329,10 +453,11 @@ fun EditFoodEntrySheet(
                     onSave(updated)
                 },
                 modifier = Modifier
-                    .weight(2f)
+                    .weight(if (onCopy != null) 1.6f else 2f)
                     .height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
+                colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Check,
@@ -342,9 +467,9 @@ fun EditFoodEntrySheet(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Save Changes",
+                    text = "Save",
                     color = ByteCream,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
             }

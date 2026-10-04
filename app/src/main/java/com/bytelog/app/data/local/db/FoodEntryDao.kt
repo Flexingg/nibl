@@ -34,6 +34,12 @@ interface FoodEntryDao {
     @Query("DELETE FROM food_entries WHERE id = :id")
     suspend fun deleteEntryById(id: String)
 
+    @Query("DELETE FROM food_entries WHERE id IN (:ids)")
+    suspend fun deleteEntriesByIds(ids: List<String>)
+
+    @Query("DELETE FROM food_entries WHERE entryDate = :date AND LOWER(TRIM(mealName)) = LOWER(TRIM(:mealName))")
+    suspend fun deleteMealEntries(date: String, mealName: String)
+
     @Query("UPDATE food_entries SET syncStatus = :status WHERE id = :id")
     suspend fun updateSyncStatus(id: String, status: String)
 
