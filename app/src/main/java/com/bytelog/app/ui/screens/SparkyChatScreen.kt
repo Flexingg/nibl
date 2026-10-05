@@ -168,7 +168,7 @@ fun SparkyChatScreen(
                     Spacer(Modifier.height(8.dp))
                     Text(action.argsPreview, color = ByteCreamMuted, fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text("The assistant wants to change your Sparky data.", color = ByteCreamMuted, fontSize = 12.sp)
+                    Text(action.note ?: "The assistant wants to change your Sparky data.", color = ByteCreamMuted, fontSize = 12.sp)
                 }
             },
             confirmButton = { TextButton(onClick = { viewModel.resolvePendingAction(true) }) { Text("Allow", color = ByteTomato, fontWeight = FontWeight.Bold) } },
@@ -877,6 +877,7 @@ fun ChatMessageBubble(
                 ) {
                     visibleTools.forEach { tool ->
                         val friendlyTool = when {
+                            tool.startsWith("sparky_ai:") -> "Sparky AI · " + tool.removePrefix("sparky_ai:").removePrefix("sparky_").replace('_', ' ')
                             tool.contains("food") -> if (message.viaWeb) "Used food data" else "Logged Food"
                             tool.contains("checkin") -> "Weight Updated"
                             tool.contains("exercise") -> "Exercise Logged"

@@ -24,7 +24,9 @@ class SparkyChatRepository(
     private val webFetcher: com.bytelog.app.research.WebFetcher = com.bytelog.app.research.WebFetcher(),
     private val providerHttp: com.bytelog.app.research.ProviderHttp = com.bytelog.app.research.ProviderHttp(),
     /** Replaces the AI providers' web address (tests). */
-    private val providerBaseUrl: String? = null
+    private val providerBaseUrl: String? = null,
+    /** Replaces the hand-off to Sparky's AI (tests). */
+    private val sparkyAiBackend: com.bytelog.app.research.SparkyAiBackend? = null
 ) {
     private val _messages = MutableStateFlow<List<ChatMessageOutput>>(emptyList())
     val messages: StateFlow<List<ChatMessageOutput>> = _messages.asStateFlow()
@@ -206,7 +208,9 @@ class SparkyChatRepository(
             enabledCategories = enabledTools,
             askBeforeWriting = config.askBeforeWriting,
             confirm = { action -> askUser(action) },
-            onProgress = { _researchStatus.value = it }
+            onProgress = { _researchStatus.value = it },
+            // Logging goes through Sparky's own AI, which the assistant can talk to as often as it needs.
+            sparkyAi = sparkyAiBackend ?: com.bytelog.app.research.ChatSparkyAiBackend(sparkyApiClient)
         )
         val history = priorMessages.filter { it.id != "welcome" && it.content.isNotBlank() }.takeLast(12)
             .map { com.bytelog.app.research.ChatTurn(fromUser = it.role == "user", text = it.content) }
@@ -223,7 +227,7 @@ class SparkyChatRepository(
         result.fold(
             onSuccess = { r ->
                 val body = if (r.notice != null && r.text != r.notice) r.text + "\n\n_${r.notice}_" else r.text
-                addAssistant(body, viaWeb = true, sources = r.sources, tools = r.sparkyToolsRun)
+                addAssistant(body, viaWeb = true, sources = r.sources, tools = r.sparkyToolsRun + r.delegatedTools.map { "sparky_ai:$it" })
                 if (r.wroteData) {
                     val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                     appScope.launch(Dispatchers.IO) {

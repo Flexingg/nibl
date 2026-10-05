@@ -4,7 +4,7 @@ import kotlinx.serialization.json.JsonObject
 
 /** The LLM providers the web research assistant can use. The API key is the user's own and stays on the phone. */
 enum class ProviderId(val label: String, val defaultModel: String, val keyHint: String) {
-    ANTHROPIC("Claude (Anthropic)", "claude-opus-5-5", "sk-ant-…"),
+    ANTHROPIC("Claude (Anthropic)", "claude-sonnet-5-5", "sk-ant-…"),
     GEMINI("Gemini (Google)", "gemini-3.8-flash", "AIza…"),
     DEEPSEEK("DeepSeek", "deepseek-flash", "sk-…");
 

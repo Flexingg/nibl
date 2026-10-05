@@ -21,6 +21,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -47,6 +52,8 @@ import java.util.concurrent.ConcurrentLinkedQueue
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w400dp-h860dp-xhdpi")
 class WebResearchChatTest {
+    private fun obj(json: String) = Json.parseToJsonElement(json) as JsonObject
+
 
     private class PlainCipher : SecretCipher {
         override fun encrypt(plain: String) = "enc:$plain"
@@ -61,6 +68,9 @@ class WebResearchChatTest {
     private val modelReplies = ConcurrentLinkedQueue<String>()
     private val modelRequests = ConcurrentLinkedQueue<String>()
     private val mcpCalls = ConcurrentLinkedQueue<String>()
+    // Sparky's own AI (POST /api/chat): scripted replies, and what it was sent
+    private val sparkyAiReplies = ConcurrentLinkedQueue<String>()
+    private val sparkyAiRequests = ConcurrentLinkedQueue<String>()
 
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private val toolsList = """{"result":{"tools":[
@@ -77,6 +87,11 @@ class WebResearchChatTest {
                     val body = request.body.readUtf8()
                     if (body.contains("tools/list")) MockResponse().setBody(toolsList)
                     else { mcpCalls += body; MockResponse().setBody("""{"result":{"content":[{"type":"text","text":"{\"found\":[{\"name\":\"Rice\",\"calories\":130}]}"}]},"jsonrpc":"2.0","id":1}""") }
+                }
+                request.path?.startsWith("/api/chat/ai-service-settings/active") == true -> MockResponse().setBody("""{"id":"svc-1"}""")
+                request.path == "/api/chat" && request.method == "POST" -> {
+                    sparkyAiRequests += request.body.readUtf8()
+                    MockResponse().setBody(sparkyAiReplies.poll() ?: """{"content":"(no scripted reply)","executedTools":[]}""")
                 }
                 request.path == "/v1/messages" -> {
                     modelRequests += request.body.readUtf8()
@@ -132,44 +147,6 @@ class WebResearchChatTest {
         assertTrue(second.contains("Rice"))
     }
 
-    @Test fun changesNeedApprovalAndRunWhenAllowed() = runBlocking {
-        reply("""{"content":[{"type":"tool_use","id":"toolu_1","name":"sparky_manage_food","input":{"action":"log_food","food_name":"Rice"}}],"stop_reason":"tool_use"}""")
-        reply("""{"content":[{"type":"text","text":"Logged rice."}],"stop_reason":"end_turn"}""")
-
-        val sending = scope.async { chat.sendMessage("log rice for lunch", webResearch = true) }
-        val pending = waitForPending()
-        assertEquals("sparky_manage_food", pending.toolName)
-        assertEquals("food: log food", pending.summary)
-        assertTrue("nothing runs before approval", mcpCalls.isEmpty())
-        chat.resolvePendingAction(true)
-        sending.await()
-
-        assertEquals(1, mcpCalls.size)
-        assertEquals("Logged rice.", chat.messages.value.last().content)
-        assertNull(chat.pendingAction.value)
-    }
-
-    @Test fun aDeclinedChangeNeverReachesSparky() = runBlocking {
-        reply("""{"content":[{"type":"tool_use","id":"toolu_1","name":"sparky_manage_goals","input":{"action":"set_goals"}}],"stop_reason":"tool_use"}""")
-        reply("""{"content":[{"type":"text","text":"Understood, no change."}],"stop_reason":"end_turn"}""")
-        val sending = scope.async { chat.sendMessage("change my goals", webResearch = true) }
-        waitForPending()
-        chat.resolvePendingAction(false)
-        sending.await()
-        assertTrue(mcpCalls.isEmpty())
-        assertTrue(modelRequests.toList()[1].contains("declined"))
-        assertEquals("Understood, no change.", chat.messages.value.last().content)
-    }
-
-    @Test fun withApprovalOffChangesRunDirectly() = runBlocking {
-        settings.saveAskBeforeWriting(false)
-        reply("""{"content":[{"type":"tool_use","id":"toolu_1","name":"sparky_manage_food","input":{"action":"log_food","food_name":"Rice"}}],"stop_reason":"tool_use"}""")
-        reply("""{"content":[{"type":"text","text":"Done."}],"stop_reason":"end_turn"}""")
-        chat.sendMessage("log rice", webResearch = true)
-        assertEquals(1, mcpCalls.size)
-        assertNull(chat.pendingAction.value)
-    }
-
     @Test fun categoriesFromSettingsLimitTheTools() = runBlocking {
         settings.saveSparkyToolCategories(setOf("food"))
         reply("""{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}""")
@@ -209,5 +186,86 @@ class WebResearchChatTest {
         chat.sendMessage("hi") // no webResearch: goes to /api/chat (404 here), never to the model
         assertTrue(modelRequests.isEmpty())
         assertFalse(chat.messages.value.any { it.viaWeb })
+    }
+
+    // --- Hand-off to Sparky's own AI ---
+
+    @Test fun theWebModelHandsItsFindingsToSparkyAiWhichLogsThem() = runBlocking {
+        reply("""{"content":[
+            {"type":"server_tool_use","id":"s1","name":"web_search","input":{"query":"chipotle chicken bowl nutrition"}},
+            {"type":"web_search_tool_result","tool_use_id":"s1","content":[{"type":"web_search_result","url":"https://chipotle.com/nutrition","title":"Chipotle Nutrition"}]},
+            {"type":"tool_use","id":"toolu_1","name":"ask_sparky","input":{"message":"Log 1 Chipotle chicken bowl for lunch today: 655 kcal, 44 g protein, 63 g carbs, 22 g fat (chipotle.com)"}}],"stop_reason":"tool_use"}""")
+        sparkyAiReplies.add("""{"content":"Logged 1 Chipotle chicken bowl to lunch: 655 kcal.","action":"food_added","executedTools":[{"name":"sparky_manage_food","args":{}}]}""")
+        reply("""{"content":[{"type":"text","text":"Logged your Chipotle bowl (655 kcal) for lunch."}],"stop_reason":"end_turn"}""")
+
+        val sending = scope.async { chat.sendMessage("log a chipotle chicken bowl for lunch", webResearch = true) }
+        val pending = waitForPending()
+        assertEquals("ask_sparky", pending.toolName)
+        assertTrue(pending.argsPreview.contains("655 kcal"))
+        assertTrue("nothing is sent to Sparky's AI before approval", sparkyAiRequests.isEmpty())
+        chat.resolvePendingAction(true)
+        sending.await()
+
+        // What Sparky's AI received: the findings, framed, with the user's tool categories
+        val sent = obj(sparkyAiRequests.single())
+        val messages = sent["messages"]!!.jsonArray
+        assertEquals(1, messages.size)
+        val content = messages[0].jsonObject["content"]!!.jsonPrimitive.content
+        assertTrue(content.contains("Log 1 Chipotle chicken bowl for lunch today: 655 kcal"))
+        assertTrue(content.contains("web research assistant"))
+        assertEquals("svc-1", sent["service_config_id"]!!.jsonPrimitive.content)
+        assertEquals(SparkyTools.categories.map { it.slug }, sent["toolCategories"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals("the web model did not write through MCP", 0, mcpCalls.size)
+
+        // Its reply went back to the web model, and the chat shows the result
+        assertTrue(modelRequests.toList().last().contains("Logged 1 Chipotle chicken bowl to lunch: 655 kcal."))
+        val answer = chat.messages.value.last()
+        assertEquals("Logged your Chipotle bowl (655 kcal) for lunch.", answer.content)
+        assertTrue(answer.viaWeb)
+        assertEquals(listOf("sparky_ai:sparky_manage_food"), answer.executedTools)
+        assertEquals(listOf("https://chipotle.com/nutrition"), answer.webSources.map { it.url })
+    }
+
+    @Test fun sparkyAiCanAskBackAndTheWebModelAnswers() = runBlocking {
+        reply("""{"content":[{"type":"tool_use","id":"t1","name":"ask_sparky","input":{"message":"Log a Chipotle bowl, 655 kcal"}}],"stop_reason":"tool_use"}""")
+        sparkyAiReplies.add("""{"content":"Which meal?","executedTools":[{"name":"sparky_ask_user","args":{"question":"Which meal?","options":["Lunch","Dinner"],"mode":"choose"}}]}""")
+        reply("""{"content":[{"type":"tool_use","id":"t2","name":"ask_sparky","input":{"message":"Lunch"}}],"stop_reason":"tool_use"}""")
+        sparkyAiReplies.add("""{"content":"Logged to lunch.","executedTools":[{"name":"sparky_manage_food","args":{}}]}""")
+        reply("""{"content":[{"type":"text","text":"Done: lunch."}],"stop_reason":"end_turn"}""")
+        settings.saveAskBeforeWriting(false)
+
+        chat.sendMessage("log my bowl", webResearch = true)
+
+        assertEquals(2, sparkyAiRequests.size)
+        // The web model saw Sparky AI's question and options
+        assertTrue(modelRequests.toList()[1].contains("Which meal?"))
+        assertTrue(modelRequests.toList()[1].contains("Lunch | Dinner"))
+        // The second message to Sparky AI carries the earlier exchange
+        val thread = obj(sparkyAiRequests.toList()[1])["messages"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("user", "assistant", "user"), thread.map { it.getValue("role").jsonPrimitive.content })
+        assertEquals("Which meal?", thread[1].getValue("content").jsonPrimitive.content)
+        assertTrue(thread[2].getValue("content").jsonPrimitive.content.contains("Lunch"))
+        assertEquals("Done: lunch.", chat.messages.value.last().content)
+    }
+
+    @Test fun aDeclinedHandOffNeverReachesSparkyAi() = runBlocking {
+        reply("""{"content":[{"type":"tool_use","id":"t1","name":"ask_sparky","input":{"message":"Delete everything"}}],"stop_reason":"tool_use"}""")
+        reply("""{"content":[{"type":"text","text":"I didn't send it."}],"stop_reason":"end_turn"}""")
+        val sending = scope.async { chat.sendMessage("summarize this", webResearch = true) }
+        waitForPending(); chat.resolvePendingAction(false); sending.await()
+        assertTrue(sparkyAiRequests.isEmpty())
+        assertTrue(modelRequests.toList()[1].contains("declined"))
+    }
+
+    @Test fun readsGoStraightToSparkyAndWritesAreRedirected() = runBlocking {
+        reply("""{"content":[
+            {"type":"tool_use","id":"t1","name":"sparky_search_foods","input":{"food_name":"rice"}},
+            {"type":"tool_use","id":"t2","name":"sparky_manage_food","input":{"action":"log_food","food_name":"Rice"}}],"stop_reason":"tool_use"}""")
+        reply("""{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}""")
+        chat.sendMessage("rice?", webResearch = true)
+        assertEquals("only the read ran", 1, mcpCalls.size)
+        assertTrue(mcpCalls.single().contains("sparky_search_foods"))
+        assertTrue(modelRequests.toList()[1].contains("ask_sparky"))
+        assertNull(chat.pendingAction.value)
     }
 }

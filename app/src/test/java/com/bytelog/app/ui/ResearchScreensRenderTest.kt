@@ -79,6 +79,8 @@ class ResearchScreensRenderTest {
                 "/mcp" -> if (request.body.readUtf8().contains("tools/list"))
                     MockResponse().setBody("""{"result":{"tools":[{"name":"sparky_manage_food","description":"Food","inputSchema":{"type":"object","properties":{"action":{"type":"string"}}}}]},"jsonrpc":"2.0","id":1}""")
                 else MockResponse().setBody("""{"result":{"content":[{"type":"text","text":"ok"}]},"jsonrpc":"2.0","id":1}""")
+                "/api/chat/ai-service-settings/active" -> MockResponse().setBody("""{"id":"svc-1"}""")
+                "/api/chat" -> MockResponse().setBody("""{"content":"Logged 1 Chipotle chicken bowl to lunch: 655 kcal, 44 g protein, 63 g carbs, 22 g fat.","action":"food_added","executedTools":[{"name":"sparky_manage_food","args":{}}]}""")
                 "/v1/messages" -> MockResponse().setBody(replies.poll() ?: """{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}""")
                 else -> MockResponse().setResponseCode(404)
             }
@@ -150,14 +152,16 @@ class ResearchScreensRenderTest {
         shot("09-chat-web-answer")
 
         // A change the assistant wants to make asks first
-        replies.add("""{"content":[{"type":"tool_use","id":"t1","name":"sparky_manage_food","input":{"action":"log_food","food_name":"Chipotle chicken bowl","quantity":1,"meal_type":"lunch"}}],"stop_reason":"tool_use"}""")
-        replies.add("""{"content":[{"type":"text","text":"Logged."}],"stop_reason":"end_turn"}""")
+        replies.add("""{"content":[{"type":"tool_use","id":"t1","name":"ask_sparky","input":{"message":"Log 1 Chipotle chicken bowl for lunch today: 655 kcal, 44 g protein, 63 g carbs, 22 g fat (source: chipotle.com/nutrition)"}}],"stop_reason":"tool_use"}""")
+        replies.add("""{"content":[{"type":"text","text":"Done. Sparky AI logged the Chipotle chicken bowl to lunch: 655 kcal, 44 g protein."}],"stop_reason":"end_turn"}""")
         val sending = scope.async { chat.sendMessage("Log it for lunch", webResearch = true) }
         waitFor { chat.pendingAction.value != null }
         waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Allow this change?"), true).fetchSemanticsNodes().isNotEmpty() }
         shot("10-chat-approval")
         compose.onNodeWithText("Allow", useUnmergedTree = true).performClick()
         runBlocking { sending.await() }
-        assertTrue(chat.messages.value.last().content == "Logged.")
+        assertTrue(chat.messages.value.last().content.startsWith("Done. Sparky AI logged"))
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Sparky AI · manage food", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("11-chat-handoff-logged")
     }
 }

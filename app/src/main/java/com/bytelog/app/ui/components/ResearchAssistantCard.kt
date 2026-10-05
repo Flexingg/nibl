@@ -72,8 +72,9 @@ fun ResearchAssistantCard(settings: SettingsRepository, modifier: Modifier = Mod
     ) {
         Text("WEB RESEARCH ASSISTANT", color = ByteTomato, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
         Text(
-            "In Sparky chat, switch on \"Web search\" to let a model search the internet and also use your Sparky food library, " +
-                "diary and tools. It uses your own API key, stored encrypted on this phone and sent only to the provider you pick. " +
+            "In Sparky chat, switch on \"Web search\" to let a model search the internet and read your Sparky food library and diary. " +
+                "To log what it finds, it hands the details to Sparky's own AI, and the two can go back and forth. " +
+                "It uses your own API key, stored encrypted on this phone and sent only to the provider you pick. " +
                 "Your messages, and the Sparky data it looks up to answer, go to that provider.",
             color = ByteCreamMuted, fontSize = 12.sp
         )
@@ -162,7 +163,7 @@ fun ResearchAssistantCard(settings: SettingsRepository, modifier: Modifier = Mod
             Column(Modifier.weight(1f)) {
                 Text("Ask before changing my data", color = ByteCream, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Recommended. Web pages can contain text meant to trick an AI, so each change to your food log, goals or profile needs your approval.",
+                    "Recommended. Web pages can contain text meant to trick an AI, so each message it sends to Sparky's AI to log or change something needs your approval.",
                     color = ByteCreamMuted, fontSize = 11.sp
                 )
             }

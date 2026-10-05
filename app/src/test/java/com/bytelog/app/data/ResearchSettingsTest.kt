@@ -44,7 +44,7 @@ class ResearchSettingsTest {
         assertEquals(ProviderId.ANTHROPIC, cfg.provider)
         assertTrue("asks before changing data by default", cfg.askBeforeWriting)
         assertFalse(cfg.isConfigured)
-        assertEquals("claude-opus-5-5", cfg.modelFor(ProviderId.ANTHROPIC))
+        assertEquals("claude-sonnet-5-5", cfg.modelFor(ProviderId.ANTHROPIC))
     }
 
     @Test fun keysAreStoredEncryptedPerProvider() = runBlocking {

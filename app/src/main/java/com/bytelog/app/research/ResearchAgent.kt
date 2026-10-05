@@ -5,7 +5,7 @@ import java.net.URI
 import java.time.LocalDate
 
 /** A change to the user's data that the assistant wants to make, shown for approval. */
-data class PendingAction(val toolName: String, val summary: String, val argsPreview: String)
+data class PendingAction(val toolName: String, val summary: String, val argsPreview: String, val note: String? = null)
 
 data class ResearchResult(
     val text: String,
@@ -14,7 +14,9 @@ data class ResearchResult(
     val sparkyToolsRun: List<String>,
     /** True when at least one change to the user's data succeeded. */
     val wroteData: Boolean,
-    val notice: String?
+    val notice: String?,
+    /** Tools Sparky's own AI used when the assistant handed it work (`ask_sparky`). */
+    val delegatedTools: List<String> = emptyList()
 )
 
 /**
@@ -35,9 +37,21 @@ class ResearchAgent(
     private val confirm: suspend (PendingAction) -> Boolean,
     private val onProgress: (String) -> Unit = {},
     private val today: () -> LocalDate = { LocalDate.now() },
-    private val maxSteps: Int = MAX_STEPS
+    private val maxSteps: Int = MAX_STEPS,
+    /**
+     * Sparky's own AI. When present, the assistant researches and reads the user's data, but anything that changes data
+     * is handed to it with `ask_sparky` (it has the food lookup steps and does the logging), and the two can go back
+     * and forth. When null, the assistant may change data itself, with approval.
+     */
+    private val sparkyAi: SparkyAiBackend? = null
 ) {
+    // One agent runs one question, so this state belongs to that run.
+    private val sparkyThread = mutableListOf<ChatTurn>()
+    private val delegated = mutableListOf<String>()
+    private var wroteData = false
+
     suspend fun run(history: List<ChatTurn>, userText: String): Result<ResearchResult> {
+        sparkyThread.clear(); delegated.clear(); wroteData = false
         var notice: String? = null
         val sparkyTools = sparky.listTools().getOrElse { e ->
             notice = "Your Sparky tools weren't available (${e.message}), so I could only use the web."
@@ -48,12 +62,12 @@ class ResearchAgent(
         val clientTools = mutableListOf<ToolSpec>()
         if (search != null && !provider.searchesWebNatively) clientTools += WEB_SEARCH_TOOL
         clientTools += FETCH_URL_TOOL
+        if (sparkyAi != null) clientTools += ASK_SPARKY_TOOL
         val tools = sparkyTools + clientTools
 
-        val session = provider.newSession(systemPrompt(sparkyTools.isNotEmpty()), history, userText, tools)
+        val session = provider.newSession(systemPrompt(sparkyTools.isNotEmpty(), sparkyAi != null), history, userText, tools)
         val sources = linkedMapOf<String, WebSource>()
         val sparkyRun = mutableListOf<String>()
-        var wrote = false
         val text = StringBuilder()
         var results: List<ToolResult> = emptyList()
 
@@ -69,22 +83,23 @@ class ResearchAgent(
             turn.notice?.let { notice = it }
 
             if (turn.toolCalls.isEmpty()) {
-                return Result.success(ResearchResult(text.toString().trim().ifBlank { notice ?: "I couldn't come up with an answer." }, sources.values.toList(), sparkyRun, wrote, notice))
+                return Result.success(ResearchResult(text.toString().trim().ifBlank { notice ?: "I couldn't come up with an answer." },
+                    sources.values.toList(), sparkyRun, wroteData, notice, delegated.distinct()))
             }
             // The model's visible text so far belongs to this step; a final answer comes after the tools.
             results = turn.toolCalls.map { call ->
                 val r = execute(call, sparkyNames, sources)
                 if (call.name in sparkyNames && !r.isError && r.ran) {
                     sparkyRun += call.name
-                    if (r.wrote) wrote = true
+                    if (r.wrote) wroteData = true
                 }
                 r.result
             }
             // Only the last step's text is the answer; earlier narration was shown as progress.
             text.setLength(0)
         }
-        return Result.success(ResearchResult(text.toString().trim().ifBlank { "I ran out of steps before finishing." }, sources.values.toList(), sparkyRun, wrote,
-            "Stopped after $maxSteps steps. Ask me to continue if you want more."))
+        return Result.success(ResearchResult(text.toString().trim().ifBlank { "I ran out of steps before finishing." }, sources.values.toList(), sparkyRun, wroteData,
+            "Stopped after $maxSteps steps. Ask me to continue if you want more.", delegated.distinct()))
     }
 
     private class Executed(val result: ToolResult, val ran: Boolean = false, val wrote: Boolean = false) {
@@ -120,6 +135,7 @@ class ResearchAgent(
                     onFailure = { error("Couldn't read that page: ${it.message}") }
                 )
             }
+            ASK_SPARKY_TOOL.name -> if (sparkyAi == null) error("Unknown tool ${call.name}.") else askSparky(call, sparkyAi)
             in sparkyNames -> callSparky(call)
             else -> error("Unknown tool ${call.name}.")
         }
@@ -128,6 +144,12 @@ class ResearchAgent(
     private suspend fun callSparky(call: ToolCall): Executed {
         val read = SparkyToolCatalog.isRead(call.name, call.args)
         val summary = SparkyToolCatalog.describe(call.name, call.args)
+        if (!read && sparkyAi != null) {
+            // Logging and edits are Sparky AI's job: it checks for existing foods and knows its own lookup steps.
+            return Executed(ToolResult(call.id, call.name,
+                "Don't change the user's data directly. Use ask_sparky: send Sparky's AI everything it needs (what, how much, which meal and date, the nutrition and its source) and it will do it.",
+                isError = true))
+        }
         if (!read && askBeforeWriting) {
             val approved = confirm(PendingAction(call.name, summary, preview(call.args)))
             if (!approved) {
@@ -142,7 +164,45 @@ class ResearchAgent(
         )
     }
 
-    private fun systemPrompt(hasSparkyTools: Boolean): String = buildString {
+    /** Hands work to Sparky's own AI and returns what it said, so the assistant can follow up or answer the user. */
+    private suspend fun askSparky(call: ToolCall, ai: SparkyAiBackend): Executed {
+        fun error(msg: String) = Executed(ToolResult(call.id, call.name, msg, isError = true))
+        val message = call.args.str("message")?.trim().orEmpty()
+        if (message.isBlank()) return error("ask_sparky needs a message.")
+        if (askBeforeWriting) {
+            val approved = confirm(PendingAction(call.name, "Send to Sparky AI", message.take(MAX_PREVIEW),
+                "Sparky AI will carry this out with its own tools, which can log, edit or delete your data."))
+            if (!approved) {
+                return error("The user declined this. Don't send it again; tell them what you would have asked Sparky AI to do and ask how they'd like to proceed.")
+            }
+        }
+        onProgress("Asking Sparky AI: ${message.take(60)}${if (message.length > 60) "…" else ""}")
+        val framed = "(From the user's web research assistant. It researched this for them and they approved sending it. Today is ${today()}.)\n" +
+            "$message\n\n" +
+            "Do this with your tools. Check whether a food already exists before creating one. Reply with exactly what you did " +
+            "(food, amount, meal, date, calories and macros), or say what you still need to know."
+        return ai.ask(sparkyThread.toList(), framed, enabledCategories).fold(
+            onSuccess = { reply ->
+                sparkyThread += ChatTurn(true, framed)
+                sparkyThread += ChatTurn(false, reply.text)
+                delegated += reply.executedTools
+                if (reply.executedTools.isNotEmpty()) wroteData = true
+                val out = buildString {
+                    append(reply.text.ifBlank { "(Sparky AI replied with no text.)" })
+                    if (reply.executedTools.isNotEmpty()) append("\n\n[Sparky AI used: ${reply.executedTools.joinToString(", ")}]")
+                    if (reply.question != null || reply.options.isNotEmpty()) {
+                        append("\n\n[Sparky AI is asking: ${reply.question ?: ""}")
+                        if (reply.options.isNotEmpty()) append(" Options: ${reply.options.joinToString(" | ")}")
+                        append("] Answer it with another ask_sparky message, or ask the user if you don't know.")
+                    }
+                }
+                Executed(ToolResult(call.id, call.name, out.take(MAX_TOOL_OUTPUT)))
+            },
+            onFailure = { error("Sparky AI couldn't answer: ${it.message}") }
+        )
+    }
+
+    private fun systemPrompt(hasSparkyTools: Boolean, canAskSparky: Boolean): String = buildString {
         append("You are Sparky's research assistant inside the ByteLog nutrition app. Today is ${today()}.\n")
         if (hasSparkyTools) {
             append("You can use the user's own Sparky data with your tools: their food library, diary history, goals and more. ")
@@ -153,7 +213,14 @@ class ResearchAgent(
         append("\nRules:\n")
         append("- For anything about the user's own history, foods, goals or diary, use their data first, not the web.\n")
         append("- For numbers from the web, name the source and say when something is an estimate. Give nutrition per serving.\n")
-        if (hasSparkyTools) {
+        if (canAskSparky) {
+            append("- You do the research and read the user's data; Sparky's own AI does the logging. To log or change anything, call ask_sparky.\n")
+            append("  Put everything it needs in one clear message: the food (brand, serving size), the amount eaten, meal and date, calories/protein/carbs/fat ")
+            append("(and fiber, sugar, sodium if you have them), and where the numbers came from. It checks for an existing food, creates one if needed, logs it, and tells you what it did.\n")
+            append("- You can go back and forth with it: ask it what the user usually eats or what they logged, send corrections, and answer its questions with another ask_sparky message.\n")
+            append("- Look things up in the user's data yourself with the read tools; those need no approval. Don't try to change data any other way.\n")
+            append("- Only send ask_sparky when the user asked you to log or change something. The app shows them each message to approve.\n")
+        } else if (hasSparkyTools) {
             append("- Before creating a food or logging, check whether it already exists in their library; follow any lookup steps the tools describe.\n")
             append("- Only change the user's data when they asked for it. The app asks them to approve each change.\n")
         }
@@ -175,6 +242,16 @@ class ResearchAgent(
     companion object {
         const val MAX_STEPS = 14
         const val MAX_TOOL_OUTPUT = 30_000
+        const val MAX_PREVIEW = 1500
+
+        val ASK_SPARKY_TOOL = ToolSpec(
+            "ask_sparky",
+            "Send a message to Sparky's own AI, which knows the user's food library and does the logging with its own tools. " +
+                "Use it to log food or change the user's data, handing over what you found (food, brand, serving, amount eaten, meal, date, " +
+                "calories and macros, source). It replies with what it did or asks you a question; reply with another message if needed. " +
+                "To only look something up, use the read tools instead.",
+            schema("message", "Everything Sparky's AI needs, written as you would tell a person.")
+        )
 
         val WEB_SEARCH_TOOL = ToolSpec(
             "web_search",

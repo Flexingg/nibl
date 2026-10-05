@@ -70,6 +70,8 @@ class AnthropicProvider(
     ) : LlmSession {
         // If the account or model rejects the fallback option, drop it for the rest of the conversation.
         private var useFallbacks = true
+        // Same for the effort setting, which only some models accept.
+        private var useEffort = supportsEffort(model)
 
         override suspend fun next(toolResults: List<ToolResult>): LlmTurn {
             if (toolResults.isNotEmpty()) {
@@ -138,11 +140,17 @@ class AnthropicProvider(
                     put("messages", JsonArray(messages))
                     put("tools", tools)
                     if (useFallbacks) put("fallbacks", JsonPrimitive("default"))
+                    // Multi-step tool use doesn't need the default depth of thinking: "medium" keeps answers quick and cheap.
+                    if (useEffort) put("output_config", buildJsonObject { put("effort", JsonPrimitive("medium")) })
                 }
                 val r = http.postJson("$baseUrl/v1/messages", headers(useFallbacks), body)
                 if (r.code == 200 && r.body != null) return r.body
                 if (useFallbacks && r.code == 400 && r.raw.contains("fallback", ignoreCase = true)) {
                     useFallbacks = false
+                    continue
+                }
+                if (useEffort && r.code == 400 && (r.raw.contains("effort", ignoreCase = true) || r.raw.contains("output_config", ignoreCase = true))) {
+                    useEffort = false
                     continue
                 }
                 throw ProviderException(ProviderHttp.errorMessage("Claude", r), r.code)
@@ -179,5 +187,9 @@ class AnthropicProvider(
 
     companion object {
         const val MAX_CONTINUATIONS = 5
+
+        /** Models that take `output_config.effort` (Opus 4.6+, Sonnet 4.6+, the Fable/Mythos line); Haiku 4.5 and older don't. */
+        fun supportsEffort(model: String): Boolean =
+            Regex("""^claude-(opus-(5|4-[678])|sonnet-(5|4-6)|fable|mythos)""").containsMatchIn(model.trim())
     }
 }

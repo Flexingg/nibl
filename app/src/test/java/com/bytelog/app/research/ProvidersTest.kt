@@ -147,6 +147,35 @@ class AnthropicProviderTest {
         assertEquals(401, e.code)
     }
 
+    @Test fun sonnet55IsTheDefaultAndRunsAtMediumEffort() = runBlocking {
+        assertEquals("claude-sonnet-5-5", ProviderId.ANTHROPIC.defaultModel)
+        reply("""{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}""")
+        AnthropicProvider("k", ProviderId.ANTHROPIC.defaultModel, baseUrl = server.url("").toString().trimEnd('/'))
+            .newSession("S", emptyList(), "q", emptyList()).next()
+        val body = server.takeRequest().json()
+        assertEquals("claude-sonnet-5-5", body["model"]!!.jsonPrimitive.content)
+        assertEquals("medium", body["output_config"]!!.jsonObject["effort"]!!.jsonPrimitive.content)
+        // Sonnet 5.5 rejects disabled thinking and forced tool use, so neither is sent
+        assertFalse(body.containsKey("thinking")); assertFalse(body.containsKey("tool_choice"))
+        assertFalse(body.containsKey("temperature"))
+    }
+
+    @Test fun effortIsOnlySentToModelsThatTakeIt() = runBlocking {
+        listOf("claude-opus-5-5", "claude-sonnet-5-5", "claude-sonnet-4-6", "claude-opus-4-8", "claude-fable-5-1").forEach { assertTrue(it, AnthropicProvider.supportsEffort(it)) }
+        listOf("claude-haiku-4-5", "claude-sonnet-4-5", "claude-3-5-sonnet").forEach { assertFalse(it, AnthropicProvider.supportsEffort(it)) }
+        reply("""{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}""")
+        AnthropicProvider("k", "claude-haiku-4-5", baseUrl = server.url("").toString().trimEnd('/')).newSession("S", emptyList(), "q", emptyList()).next()
+        assertFalse(server.takeRequest().json().containsKey("output_config"))
+    }
+
+    @Test fun effortIsDroppedWhenTheApiRejectsIt() = runBlocking {
+        reply("""{"type":"error","error":{"type":"invalid_request_error","message":"output_config.effort: not supported for this model"}}""", 400)
+        reply("""{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}""")
+        assertEquals("ok", provider().newSession("S", emptyList(), "q", emptyList()).next().text)
+        val first = server.takeRequest(); val retry = server.takeRequest()
+        assertTrue(first.json().containsKey("output_config")); assertFalse(retry.json().containsKey("output_config"))
+    }
+
     @Test fun listsClaudeModels() = runBlocking {
         reply("""{"data":[{"id":"claude-opus-5-5","type":"model"},{"id":"claude-sonnet-5-5","type":"model"},{"id":"other","type":"model"}]}""")
         assertEquals(listOf("claude-opus-5-5", "claude-sonnet-5-5"), provider().listModels().getOrThrow())
