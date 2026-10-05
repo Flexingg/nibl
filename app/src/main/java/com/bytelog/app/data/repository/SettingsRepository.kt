@@ -33,6 +33,7 @@ class SettingsRepository(private val context: Context) {
         val KEY_CALORIE_GOAL_MODE = stringPreferencesKey("calorie_goal_mode")
         val KEY_CALORIE_GOAL_OFFSET = floatPreferencesKey("calorie_goal_offset")
         val KEY_LAST_ADAPTIVE_TDEE = floatPreferencesKey("last_adaptive_tdee")
+        val KEY_SPARKY_TOOLS = androidx.datastore.preferences.core.stringSetPreferencesKey("sparky_tool_categories")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
@@ -97,6 +98,18 @@ class SettingsRepository(private val context: Context) {
 
     val lastAdaptiveTdee: Flow<Float?> = context.dataStore.data.map { prefs ->
         prefs[KEY_LAST_ADAPTIVE_TDEE]
+    }
+
+    /** Tool categories Sparky AI may use from this app. Default: every category, read and write. */
+    val sparkyToolCategories: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[KEY_SPARKY_TOOLS]?.let { stored -> stored.intersect(com.bytelog.app.data.remote.SparkyTools.allSlugs) }
+            ?: com.bytelog.app.data.remote.SparkyTools.allSlugs
+    }
+
+    suspend fun saveSparkyToolCategories(slugs: Set<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_SPARKY_TOOLS] = slugs.intersect(com.bytelog.app.data.remote.SparkyTools.allSlugs)
+        }
     }
 
     suspend fun saveAutoAdjustCalories(enabled: Boolean) {

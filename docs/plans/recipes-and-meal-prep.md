@@ -23,10 +23,11 @@ Status: proof of concept built in ByteLog (v1.1.0) · Supersedes the "Meal Prep"
 | Recipe details & Cook mode | Done | Local `recipe_details`; directions also written to the Sparky template `notes` so the web app shows them. Cook mode: screen on, scaling, checklists, step timers. |
 | Recipe builder | Done | Search any food, edit amounts in any unit, directions/times/storage section. |
 | URL / share / paste import | Done | Jsoup JSON-LD + microdata extractor, "Share to ByteLog" intent, pasted-text parser, deterministic line parser, ingredient matching with remembered aliases, review screen with site-nutrition check. |
-| AI assist | POC | "Ask Sparky AI (beta)" re-parses unresolved lines through `/api/chat` restricted to read-only `reports` tools. The exchange shows up in Sparky chat history; a stateless `/api/foods/parse-ingredients` endpoint is the server PR. |
+| AI assist | POC | "Ask Sparky AI (beta)" re-parses unresolved lines through `/api/chat` with the `food` tools: Sparky searches the user's library (read) and creates foods that don't exist (write); the review screen still confirms every match. The exchange shows up in Sparky chat history; a stateless `/api/foods/parse-ingredients` endpoint is the server PR. |
 | Expiry notification | Not built | Cards show "eat today" / "past best-by"; no push reminder yet. |
 | Background timers | Not built | Cook-mode timers alert (vibrate + sound) only while Cook mode is open. |
-| JS-protected sites | Gap | Some sites (AllRecipes, Food Network, Budget Bytes, Sally's) answered 403 to a cloud server; untested from a phone. A hidden-WebView fallback would cover bot challenges. |
+| JS-protected sites | Built | When the quick import gets a bot wall (401/403/405/406/429/503), an empty page or no recipe data, ByteLog offers a built-in browser (WebView). It loads the page like a normal browser, reads the rendered DOM after each page load and imports as soon as a recipe appears; people can pass human checks, browse to the recipe, or tap "Import this page". No app credentials or JavaScript bridge are exposed to the site. Verified: the JS-built-page path (real Chromium DOM capture) and the fallback flow in tests; the live WebView itself needs a check on a phone. |
+| Sparky AI tools | Built | Settings → "Sparky AI tools" picks which of the server's nine tool categories the chat and recipe assist may use (default: all, read and write; `reports` is read-only). The choice is sent as `toolCategories` on `/api/chat`. |
 
 ### Server pull request (after the POC)
 

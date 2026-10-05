@@ -6,6 +6,7 @@ import com.bytelog.app.data.remote.SparkyApiClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -17,7 +18,8 @@ class SparkyChatRepository(
     private val sparkyApiClient: SparkyApiClient,
     private val foodRepository: FoodRepository,
     private val weightRepository: WeightRepository,
-    private val appScope: CoroutineScope
+    private val appScope: CoroutineScope,
+    private val settingsRepository: SettingsRepository? = null
 ) {
     private val _messages = MutableStateFlow<List<ChatMessageOutput>>(emptyList())
     val messages: StateFlow<List<ChatMessageOutput>> = _messages.asStateFlow()
@@ -104,7 +106,9 @@ class SparkyChatRepository(
             )
         }
 
-        val result = sparkyApiClient.sendChatMessage(payloadMessages)
+        // Tools Sparky may use: the user's selection in Settings (default: all, read and write).
+        val categories = settingsRepository?.sparkyToolCategories?.first()?.let { com.bytelog.app.data.remote.SparkyTools.normalize(it) }
+        val result = sparkyApiClient.sendChatMessage(payloadMessages, toolCategories = categories)
         _isLoading.value = false
 
         if (result.isSuccess) {
@@ -119,7 +123,7 @@ class SparkyChatRepository(
                 val action = response.action.orEmpty()
                 val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
-                if (executedTools.any { it.contains("food") } || action == "food_added") {
+                if (executedTools.any { t -> listOf("food", "meal", "diary", "entry", "water").any { t.contains(it, ignoreCase = true) } } || action == "food_added") {
                     appScope.launch(Dispatchers.IO) {
                         try {
                             foodRepository.syncDateWithServer(today)

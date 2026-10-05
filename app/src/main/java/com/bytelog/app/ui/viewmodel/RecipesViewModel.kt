@@ -10,6 +10,7 @@ import com.bytelog.app.data.repository.FoodRepository
 import com.bytelog.app.data.repository.MealPrepRepository
 import com.bytelog.app.data.repository.MealTemplateRepository
 import com.bytelog.app.data.repository.RecipeDraft
+import com.bytelog.app.data.repository.RecipeFetchException
 import com.bytelog.app.data.repository.RecipeRepository
 import com.bytelog.app.data.repository.RecipeView
 import com.bytelog.app.recipes.ImportedRecipe
@@ -38,7 +39,13 @@ import java.time.LocalTime
 sealed interface ImportState {
     data object Idle : ImportState
     data class Loading(val message: String) : ImportState
-    data class Error(val message: String) : ImportState
+    data class Error(val message: String, val url: String? = null) : ImportState
+
+    /** The quick import failed in a way a real browser may get past: offer the in-app browser. */
+    data class NeedsBrowser(val url: String, val reason: String) : ImportState
+
+    /** The in-app browser is open on [url]; its page is read once a recipe shows up. */
+    data class Browsing(val url: String) : ImportState
     data class Review(
         val recipe: ImportedRecipe,
         val name: String,
@@ -100,7 +107,12 @@ class RecipesViewModel(
             val recipe = if (url != null && input.trim().length < url.length + 200) {
                 _importState.value = ImportState.Loading("Reading recipe from ${hostOf(url)}…")
                 recipeRepository.fetchRecipe(url).getOrElse {
-                    _importState.value = ImportState.Error(it.message ?: "Couldn't read that page.")
+                    val canBrowse = (it as? RecipeFetchException)?.canTryBrowser == true
+                    _importState.value = if (canBrowse) {
+                        ImportState.NeedsBrowser(url, it.message ?: "Couldn't read that page.")
+                    } else {
+                        ImportState.Error(it.message ?: "Couldn't read that page.", url)
+                    }
                     return@launch
                 }
             } else {
@@ -111,15 +123,34 @@ class RecipesViewModel(
                     }
                 }
             }
-            _importState.value = ImportState.Loading("Matching ${recipe.ingredientLines.size} ingredients to foods…")
-            val matches = recipeRepository.matchIngredients(recipe.ingredientLines)
-            _importState.value = ImportState.Review(
-                recipe = recipe,
-                name = recipe.name,
-                servings = (recipe.yieldServings ?: 4.0).toFloat().coerceAtLeast(1f),
-                matches = matches
-            )
+            matchAndReview(recipe)
         }
+    }
+
+    /** Opens the in-app browser on [url] (from the failure prompt, or straight from a link). */
+    fun openBrowser(url: String) {
+        _importState.value = ImportState.Browsing(url)
+    }
+
+    /** Leaves the in-app browser and returns to the prompt with the original reason. */
+    fun closeBrowser(url: String) {
+        _importState.value = ImportState.NeedsBrowser(url, "You can try again, or paste the recipe text instead.")
+    }
+
+    /** Called with a recipe read from the page the in-app browser is showing. */
+    fun onBrowserRecipe(recipe: ImportedRecipe) {
+        viewModelScope.launch { matchAndReview(recipe) }
+    }
+
+    private suspend fun matchAndReview(recipe: ImportedRecipe) {
+        _importState.value = ImportState.Loading("Matching ${recipe.ingredientLines.size} ingredients to foods…")
+        val matches = recipeRepository.matchIngredients(recipe.ingredientLines)
+        _importState.value = ImportState.Review(
+            recipe = recipe,
+            name = recipe.name,
+            servings = (recipe.yieldServings ?: 4.0).toFloat().coerceAtLeast(1f),
+            matches = matches
+        )
     }
 
     private fun updateReview(transform: (ImportState.Review) -> ImportState.Review) {

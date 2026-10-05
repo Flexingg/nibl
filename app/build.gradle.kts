@@ -21,8 +21,8 @@ android {
         applicationId = "com.bytelog.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.1.0"
+        versionCode = 18
+        versionName = "1.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -134,6 +134,7 @@ dependencies {
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.room.testing)
     testImplementation(platform(libs.androidx.compose.bom))

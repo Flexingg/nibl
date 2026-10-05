@@ -64,6 +64,9 @@ data class RecipeDraft(
     val siteNutrition: SiteNutrition? = null
 )
 
+/** A failed recipe page fetch. [canTryBrowser] means loading the page in the in-app browser may work. */
+class RecipeFetchException(message: String, val canTryBrowser: Boolean, cause: Throwable? = null) : IOException(message, cause)
+
 /** A template joined with its local recipe extras and whole-recipe totals. */
 data class RecipeView(
     val template: MealTemplate,
@@ -112,7 +115,7 @@ class RecipeRepository(
         try {
             val clean = url.trim()
             if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
-                return@withContext Result.failure(IOException("That doesn't look like a web link."))
+                return@withContext Result.failure(RecipeFetchException("That doesn't look like a web link.", canTryBrowser = false))
             }
             val request = Request.Builder()
                 .url(clean)
@@ -126,21 +129,23 @@ class RecipeRepository(
                 .build()
             webClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("The site answered HTTP ${response.code}."))
+                    // Bot walls answer 401/403/405/429/503 to plain HTTP clients; a real browser often gets through.
+                    val blocked = response.code in setOf(401, 403, 405, 406, 429, 503)
+                    return@withContext Result.failure(
+                        RecipeFetchException(
+                            if (blocked) "This site blocked the quick import (HTTP ${response.code})." else "The site answered HTTP ${response.code}.",
+                            canTryBrowser = blocked
+                        )
+                    )
                 }
-                val body = response.body ?: return@withContext Result.failure(IOException("The page was empty."))
+                val body = response.body ?: return@withContext Result.failure(RecipeFetchException("The page was empty.", canTryBrowser = true))
                 val bytes = body.byteStream().use { readCapped(it, MAX_PAGE_BYTES) }
                 val html = String(bytes, body.contentType()?.charset() ?: Charsets.UTF_8)
                 val finalUrl = response.request.url.toString()
-                val recipe = RecipeExtractor.extract(html, finalUrl)
-                    ?: return@withContext Result.failure(IOException("No recipe data found on this page. Try pasting the recipe text instead."))
-                if (recipe.ingredientLines.isEmpty()) {
-                    return@withContext Result.failure(IOException("Found \"${recipe.name}\" but no ingredient list. Try pasting the recipe text instead."))
-                }
-                Result.success(recipe)
+                recipeFromHtml(html, finalUrl)
             }
         } catch (e: Exception) {
-            Result.failure(IOException("Couldn't load the page: ${e.message ?: e.javaClass.simpleName}", e))
+            Result.failure(RecipeFetchException("Couldn't load the page: ${e.message ?: e.javaClass.simpleName}", canTryBrowser = false, cause = e))
         }
     }
 
@@ -196,21 +201,25 @@ class RecipeRepository(
     }
 
     /**
-     * Proof of concept: asks Sparky's AI to normalise ingredient lines the deterministic parser
-     * could not resolve. Uses the chat endpoint restricted to read-only report tools so it cannot
-     * log anything. Note: the exchange appears in the user's Sparky chat history.
+     * Asks Sparky AI to normalise ingredient lines the deterministic parser could not resolve.
+     * Uses the chat endpoint with the `food` tools: Sparky may search the user's food library and
+     * create foods that don't exist yet (so the match step finds them by name). The review screen
+     * still shows every match before anything is saved as a recipe. The exchange appears in the
+     * user's Sparky chat history.
      */
     suspend fun aiParseIngredients(lines: List<String>): Result<List<ParsedIngredient>> = withContext(Dispatchers.IO) {
         if (lines.isEmpty()) return@withContext Result.success(emptyList())
         val prompt = buildString {
-            append("You are a recipe ingredient parser. Do not call any tools and do not log anything. ")
-            append("For each ingredient line below, return the core food name (no prep words), the quantity as a number, ")
-            append("the unit (g, kg, oz, lb, ml, l, tsp, tbsp, cup, or a count word like clove/can/piece), and your best estimate of the weight in grams. ")
-            append("Reply with ONLY a JSON array, one object per line in the same order, like ")
-            append("[{\"raw\":\"...\",\"name\":\"chicken breast\",\"quantity\":1.5,\"unit\":\"lb\",\"grams\":680}].\n\nLines:\n")
+            append("You are helping import a recipe into the user's food library. Do not log anything to the diary. ")
+            append("For each ingredient line below: search the user's foods with your food tools; if there is no good match, ")
+            append("create a food for it (nutrition per 100 g, realistic values) so it exists in the library. ")
+            append("Then reply with ONLY a JSON array, one object per line in the same order, with the exact name of the food you matched or created, ")
+            append("the quantity as a number, the unit (g, kg, oz, lb, ml, l, tsp, tbsp, cup, or a count word like clove/can/piece), ")
+            append("and your best estimate of the weight in grams: ")
+            append("[{\"raw\":\"...\",\"name\":\"Chicken Breast\",\"quantity\":1.5,\"unit\":\"lb\",\"grams\":680}].\n\nLines:\n")
             lines.forEachIndexed { i, l -> append(i + 1).append(". ").append(l).append('\n') }
         }
-        val res = sparkyApiClient.sendChatMessage(listOf(ChatMessageInput("user", prompt)), toolCategories = listOf("reports"))
+        val res = sparkyApiClient.sendChatMessage(listOf(ChatMessageInput("user", prompt)), toolCategories = listOf("food"))
         res.mapCatching { output ->
             val text = output.content
             val jsonText = Regex("""```(?:json)?\s*(\[[\s\S]*?])\s*```""").find(text)?.groupValues?.get(1)
@@ -368,6 +377,16 @@ class RecipeRepository(
 
     companion object {
         private const val MAX_PAGE_BYTES = 3 * 1024 * 1024
+
+        /** Extracts a usable recipe (name + ingredients) from page HTML, or a failure that says what was missing. */
+        fun recipeFromHtml(html: String, pageUrl: String): Result<ImportedRecipe> {
+            val recipe = RecipeExtractor.extract(html, pageUrl)
+                ?: return Result.failure(RecipeFetchException("No recipe data found on this page.", canTryBrowser = true))
+            if (recipe.ingredientLines.isEmpty()) {
+                return Result.failure(RecipeFetchException("Found \"${recipe.name}\" but no ingredient list.", canTryBrowser = true))
+            }
+            return Result.success(recipe)
+        }
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
         private val uuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
