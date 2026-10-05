@@ -257,15 +257,22 @@ class WebResearchChatTest {
         assertTrue(modelRequests.toList()[1].contains("declined"))
     }
 
-    @Test fun readsGoStraightToSparkyAndWritesAreRedirected() = runBlocking {
+    @Test fun readsRunStraightAwayAndDirectWritesWaitForApproval() = runBlocking {
         reply("""{"content":[
             {"type":"tool_use","id":"t1","name":"sparky_search_foods","input":{"food_name":"rice"}},
-            {"type":"tool_use","id":"t2","name":"sparky_manage_food","input":{"action":"log_food","food_name":"Rice"}}],"stop_reason":"tool_use"}""")
-        reply("""{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}""")
-        chat.sendMessage("rice?", webResearch = true)
-        assertEquals("only the read ran", 1, mcpCalls.size)
-        assertTrue(mcpCalls.single().contains("sparky_search_foods"))
-        assertTrue(modelRequests.toList()[1].contains("ask_sparky"))
-        assertNull(chat.pendingAction.value)
+            {"type":"tool_use","id":"t2","name":"sparky_manage_food","input":{"action":"log_food","food_name":"Rice","quantity":2}}],"stop_reason":"tool_use"}""")
+        reply("""{"content":[{"type":"text","text":"Logged 2 servings of rice."}],"stop_reason":"end_turn"}""")
+        val sending = scope.async { chat.sendMessage("log 2 rice", webResearch = true) }
+        val pending = waitForPending()
+        assertEquals("sparky_manage_food", pending.toolName)
+        assertTrue(pending.argsPreview.contains("log_food"))
+        assertEquals("the read already ran, the write waits", 1, mcpCalls.size)
+        chat.resolvePendingAction(true)
+        sending.await()
+        assertEquals(2, mcpCalls.size)
+        assertTrue(mcpCalls.last().contains("log_food"))
+        assertTrue("Sparky's AI wasn't needed", sparkyAiRequests.isEmpty())
+        assertEquals("Logged 2 servings of rice.", chat.messages.value.last().content)
+        assertTrue(chat.messages.value.last().executedTools.contains("sparky_manage_food"))
     }
 }

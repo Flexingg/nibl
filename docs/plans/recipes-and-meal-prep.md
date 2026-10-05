@@ -35,7 +35,7 @@ Status: proof of concept built in ByteLog (v1.1.0) · Supersedes the "Meal Prep"
 - `meal_recipe_details` (or columns on `meals`): steps, times, source URL, image, fridge/freezer days.
 - Optionally a `prep_batches` table so batches sync across devices and the web.
 
-## Web research assistant (v1.2.0, hand-off to Sparky AI in v1.3.0)
+## Web research assistant (v1.2.0; Sparky AI hand-off v1.3.0; direct writes again in v1.4.0)
 
 Sparky's own AI can't search the internet. Instead of changing the server, ByteLog runs the conversation itself:
 a web-capable model (the user's own API key, kept on the phone) gets Sparky's tools through Sparky's MCP endpoint
@@ -45,15 +45,20 @@ a web-capable model (the user's own API key, kept on the phone) gets Sparky's to
 - **Providers:** Claude (built-in web search, Claude Sonnet 5.5 by default at medium effort), Gemini (Google Search grounding, run as a
   separate call so it mixes with function calling), DeepSeek (no search of its own: searches go through a Gemini key,
   a Tavily key, or DuckDuckGo as a best-effort fallback, which is often blocked).
-- **Division of labour (v1.3.0):** the web model researches and reads the user's data directly (read tools, no approval).
-  Anything that changes data goes through an `ask_sparky` tool that hands the findings to **Sparky's own AI**
-  (`/api/chat`), which has the food-lookup steps and does the logging. The two can go back and forth: Sparky's AI can
-  ask a question (with options) and the web model answers with another message; the exchange is kept as one thread per
-  request. Direct writes by the web model are refused with a pointer to `ask_sparky`.
-- **Safety:** web text is wrapped as untrusted and the model is told never to follow it. Every message to Sparky's AI
-  shows the exact text for approval, unless the user turns that off (Sparky's tools carry no read-only flag and its AI
-  can't be restricted to reads, so every hand-off counts as a possible change; reads use the direct tools). `fetch_url` only reads public addresses: not localhost, the home network, or the
-  Sparky server. The category switches from Settings → "Sparky AI tools" also limit this assistant.
+- **Direct tools first (v1.4.0):** the web model reads *and* changes the user's data directly through Sparky's MCP tools:
+  structured calls, one model, no server-side AI needed. Each change shows its exact arguments for approval (default on).
+  The prompt tells it how to log: search the library first, reuse a match, otherwise create the food per one serving,
+  then log in servings of that food's own serving size.
+- **`ask_sparky` is secondary:** an optional tool that sends a message to **Sparky's own AI** (`/api/chat`), for what the
+  direct tools can't do or when the user wants Sparky's AI involved. The two can go back and forth (one thread per
+  request; Sparky's AI can ask a question with options). Every message is shown for approval, because Sparky's AI can't
+  be restricted to reads. (v1.3.0 made this the only write path; v1.4.0 reverted that, as direct calls are cheaper,
+  show exactly what will be written, and work without Sparky's AI configured.)
+- **Safety:** web text is wrapped as untrusted and the model is told never to follow it. Every change, direct or via
+  Sparky's AI, needs approval unless the user turns that off. Sparky's tools carry no read-only flag, so the app
+  classifies reads by tool name and `action`; unknown tools count as changes. `fetch_url` only reads public addresses:
+  not localhost, the home network, or the Sparky server. The category switches from Settings → "Sparky AI tools" also
+  limit this assistant.
 - **Keys:** encrypted with an Android Keystore AES-GCM key; the plaintext never reaches disk or a backup.
 - **Not done:** answers aren't saved to Sparky's chat history; no streaming (answers appear when finished); photos
   aren't supported in web mode.
