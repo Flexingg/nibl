@@ -83,7 +83,8 @@ class ByteLogApplication : Application() {
             sparkyApiClient = sparkyApiClient,
             foodRepository = foodRepository,
             weightRepository = weightRepository,
-            appScope = applicationScope
+            appScope = applicationScope,
+            settingsRepository = settingsRepository
         )
     }
 

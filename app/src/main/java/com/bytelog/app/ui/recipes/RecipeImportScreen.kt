@@ -97,7 +97,7 @@ fun RecipeImportScreen(
                 )
             }
             when (val s = state) {
-                ImportState.Idle -> ImportInput(onSubmit = viewModel::startImport)
+                ImportState.Idle -> ImportInput(onSubmit = viewModel::startImport, onBrowse = viewModel::openBrowser)
                 is ImportState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = ByteTomato)
@@ -105,10 +105,33 @@ fun RecipeImportScreen(
                         Text(s.message, color = ByteTextSecondary)
                     }
                 }
+                is ImportState.NeedsBrowser -> Column {
+                    Text(s.reason, color = ByteTomato, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Open the page in ByteLog's built-in browser instead. It loads the site like a normal browser, so " +
+                            "\"are you human\" checks and cookie walls work, and the recipe is read once it appears.",
+                        color = ByteTextSecondary, fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { viewModel.openBrowser(s.url) },
+                        colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(50.dp)
+                    ) { Text("Open in built-in browser", color = ByteCream, fontWeight = FontWeight.Bold) }
+                    Spacer(Modifier.height(16.dp))
+                    ImportInput(onSubmit = viewModel::startImport, onBrowse = viewModel::openBrowser)
+                }
+                is ImportState.Browsing -> RecipeBrowser(
+                    url = s.url,
+                    onRecipe = viewModel::onBrowserRecipe,
+                    onClose = { viewModel.closeBrowser(s.url) }
+                )
                 is ImportState.Error -> Column {
                     Text(s.message, color = ByteTomato, fontSize = 14.sp)
                     Spacer(Modifier.height(12.dp))
-                    ImportInput(onSubmit = viewModel::startImport)
+                    ImportInput(onSubmit = viewModel::startImport, onBrowse = viewModel::openBrowser)
                 }
                 is ImportState.Review -> ImportReview(s, viewModel, onSaved)
             }
@@ -117,7 +140,7 @@ fun RecipeImportScreen(
 }
 
 @Composable
-private fun ImportInput(onSubmit: (String) -> Unit) {
+private fun ImportInput(onSubmit: (String) -> Unit, onBrowse: (String) -> Unit = {}) {
     val clipboard = LocalClipboardManager.current
     var text by remember { mutableStateOf("") }
     Column {
@@ -136,6 +159,8 @@ private fun ImportInput(onSubmit: (String) -> Unit) {
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Pill("Paste", MacroProtein) { clipboard.getText()?.text?.let { text = it } }
+            val link = com.bytelog.app.recipes.RecipeExtractor.findUrl(text)
+            if (link != null) Pill("Open in browser", MacroCarbs) { onBrowse(link) }
         }
         Spacer(Modifier.height(16.dp))
         Button(

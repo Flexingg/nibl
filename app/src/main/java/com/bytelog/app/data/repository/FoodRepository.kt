@@ -609,7 +609,8 @@ class FoodRepository(
         }
 
         val chatResult = sparkyApiClient.sendChatMessage(
-            listOf(com.bytelog.app.data.remote.ChatMessageInput("user", prompt))
+            listOf(com.bytelog.app.data.remote.ChatMessageInput("user", prompt)),
+            toolCategories = listOf("food")
         )
         if (chatResult.isSuccess) {
             val output = chatResult.getOrThrow()

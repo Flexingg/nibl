@@ -583,6 +583,13 @@ fun SettingsScreen(
                 }
             }
 
+            // Sparky AI tool access (read & write categories)
+            val sparkyTools by settingsRepository.sparkyToolCategories.collectAsState(initial = com.bytelog.app.data.remote.SparkyTools.allSlugs)
+            com.bytelog.app.ui.components.SparkyToolsCard(
+                enabled = sparkyTools,
+                onChange = { scope.launch { settingsRepository.saveSparkyToolCategories(it) } }
+            )
+
             // 4. Macro Targets Section
             Column(
                 modifier = Modifier

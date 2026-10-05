@@ -252,4 +252,59 @@ class RecipeScreensRenderTest {
         }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("5.2 of 6 left").fetchSemanticsNodes().isNotEmpty() }
     }
+
+    private fun resource(name: String) = javaClass.classLoader!!.getResource("recipes/$name")!!.readText()
+
+    @Test
+    fun blockedSiteFallsBackToTheInAppBrowser() {
+        val server = okhttp3.mockwebserver.MockWebServer()
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse = when (request.path) {
+                "/blocked" -> okhttp3.mockwebserver.MockResponse().setResponseCode(403)
+                "/js" -> okhttp3.mockwebserver.MockResponse().setBody(resource("js-rendered-source.html"))
+                else -> okhttp3.mockwebserver.MockResponse().setResponseCode(404)
+            }
+        }
+        server.start()
+        try {
+            val base = server.url("").toString().trimEnd('/')
+            compose.setContent { ByteLogTheme(darkTheme = true) { RecipeImportScreen(recipesVm, null, {}, {}) } }
+
+            // A plain 404 is a real failure: no browser offer.
+            recipesVm.startImport("$base/gone")
+            waitFor { recipesVm.importState.value is ImportState.Error }
+
+            // A bot wall (403) offers the browser.
+            recipesVm.startImport("$base/blocked")
+            waitFor { recipesVm.importState.value is ImportState.NeedsBrowser }
+            compose.waitForIdle()
+            compose.onNodeWithText("Open in built-in browser").assertExists()
+            shot("06-needs-browser")
+
+            // So does a page whose recipe is built with JavaScript (nothing in the raw HTML).
+            recipesVm.startImport("$base/js")
+            waitFor { recipesVm.importState.value is ImportState.NeedsBrowser }
+            val needs = recipesVm.importState.value as ImportState.NeedsBrowser
+            assertEquals("$base/js", needs.url)
+
+            compose.waitForIdle()
+            compose.onNodeWithText("Open in built-in browser").performClick()
+            waitFor { recipesVm.importState.value is ImportState.Browsing }
+            compose.waitForIdle()
+            compose.onNodeWithText("Import this page", useUnmergedTree = true).assertExists()
+            shot("07-in-app-browser")
+
+            // The browser reads the rendered DOM and hands the recipe over.
+            val html = com.bytelog.app.recipes.WebPageCapture.decodeJsResult(resource("webview-result.json"))!!
+            val recipe = RecipeRepository.recipeFromHtml(html, "$base/js").getOrThrow()
+            recipesVm.onBrowserRecipe(recipe)
+            waitFor { recipesVm.importState.value is ImportState.Review }
+            val review = recipesVm.importState.value as ImportState.Review
+            assertEquals("Rendered Chili & Beans", review.name)
+            assertEquals(4f, review.servings)
+            assertEquals(2, review.matches.size)
+        } finally {
+            server.shutdown()
+        }
+    }
 }

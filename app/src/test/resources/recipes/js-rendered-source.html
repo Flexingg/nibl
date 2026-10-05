@@ -1,0 +1,14 @@
+<!doctype html><html><head><title>JS Recipe</title></head><body><div id="app">Loading…</div>
+<script>
+// Simulates a site that builds its recipe markup with JavaScript after load.
+setTimeout(function () {
+  var s = document.createElement('script');
+  s.type = 'application/ld+json';
+  s.text = JSON.stringify({"@context":"https://schema.org","@type":"Recipe","name":"Rendered Chili &amp; Beans",
+    "recipeYield":"4 servings","prepTime":"PT10M","cookTime":"PT30M",
+    "recipeIngredient":["1 lb ground turkey","1 (15 oz) can black beans"],
+    "recipeInstructions":[{"@type":"HowToStep","text":"Brown the turkey 8 minutes."},{"@type":"HowToStep","text":"Add beans, simmer 20 minutes."}]});
+  document.head.appendChild(s);
+  document.getElementById('app').textContent = 'Ready';
+}, 800);
+</script></body></html>
