@@ -29,6 +29,11 @@ class SettingsRepository(private val context: Context) {
         val KEY_DEFAULT_CONTAINER_NAME = stringPreferencesKey("default_container_name")
         val KEY_WEIGHT_UNIT = stringPreferencesKey("weight_unit")
 
+        val KEY_NOTIFICATIONS_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("notifications_enabled")
+        val KEY_REMINDER_HOUR = androidx.datastore.preferences.core.intPreferencesKey("reminder_hour")
+        val KEY_REMINDER_MINUTE = androidx.datastore.preferences.core.intPreferencesKey("reminder_minute")
+        val KEY_REMINDER_SMART_NUDGE = androidx.datastore.preferences.core.booleanPreferencesKey("reminder_smart_nudge")
+
         val KEY_AUTO_ADJUST_CALORIES = androidx.datastore.preferences.core.booleanPreferencesKey("auto_adjust_calories")
         val KEY_CALORIE_GOAL_MODE = stringPreferencesKey("calorie_goal_mode")
         val KEY_CALORIE_GOAL_OFFSET = floatPreferencesKey("calorie_goal_offset")
@@ -73,11 +78,29 @@ class SettingsRepository(private val context: Context) {
     }
 
     val defaultContainerOz: Flow<Float> = context.dataStore.data.map { prefs ->
-        prefs[KEY_DEFAULT_CONTAINER_OZ] ?: 8f
+        val stored = prefs[KEY_DEFAULT_CONTAINER_OZ]
+        if (stored == null || stored == 8f) 20f else stored
     }
 
     val defaultContainerName: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_DEFAULT_CONTAINER_NAME] ?: "Glass"
+        val stored = prefs[KEY_DEFAULT_CONTAINER_NAME]
+        if (stored == null || stored == "Glass") "Bottle" else stored
+    }
+
+    val notificationsEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_NOTIFICATIONS_ENABLED] ?: false
+    }
+
+    val reminderHour: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[KEY_REMINDER_HOUR] ?: 20
+    }
+
+    val reminderMinute: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[KEY_REMINDER_MINUTE] ?: 0
+    }
+
+    val reminderSmartNudge: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_REMINDER_SMART_NUDGE] ?: true
     }
 
     val weightUnit: Flow<String> = context.dataStore.data.map { prefs ->
@@ -206,6 +229,20 @@ class SettingsRepository(private val context: Context) {
             if (waterGoalOz != null && waterGoalOz > 0f) {
                 prefs[KEY_TARGET_WATER_OZ] = waterGoalOz
             }
+        }
+    }
+
+    suspend fun saveNotificationSettings(
+        enabled: Boolean,
+        hour: Int,
+        minute: Int,
+        smartNudge: Boolean = true
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_NOTIFICATIONS_ENABLED] = enabled
+            prefs[KEY_REMINDER_HOUR] = hour
+            prefs[KEY_REMINDER_MINUTE] = minute
+            prefs[KEY_REMINDER_SMART_NUDGE] = smartNudge
         }
     }
 }

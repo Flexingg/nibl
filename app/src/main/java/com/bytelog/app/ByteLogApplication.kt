@@ -106,5 +106,17 @@ class ByteLogApplication : Application() {
                 sparkyApiClient.updateConfig(url, token, key)
             }.collect()
         }
+
+        // 3. Initialize daily reminder notification channel and active schedule
+        com.bytelog.app.notifications.DailyReminderScheduler.createNotificationChannel(this)
+        applicationScope.launch {
+            try {
+                if (kotlinx.coroutines.flow.first(settingsRepository.notificationsEnabled)) {
+                    val hour = kotlinx.coroutines.flow.first(settingsRepository.reminderHour)
+                    val minute = kotlinx.coroutines.flow.first(settingsRepository.reminderMinute)
+                    com.bytelog.app.notifications.DailyReminderScheduler.scheduleDailyReminder(this@ByteLogApplication, hour, minute)
+                }
+            } catch (_: Exception) {}
+        }
     }
 }

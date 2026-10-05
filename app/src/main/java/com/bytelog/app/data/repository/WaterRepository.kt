@@ -73,7 +73,10 @@ class WaterRepository(
             null
         }
 
-        val displayName = containerName ?: "${amountOz.roundToInt()} oz"
+        val rawDisplayName = containerName ?: "${amountOz.roundToInt()} oz"
+        val displayName = rawDisplayName
+            .replace("591 ml", "20 oz", ignoreCase = true)
+            .replace("591ml", "20 oz", ignoreCase = true)
 
         val entry = WaterLogEntry(
             id = UUID.randomUUID().toString(),
@@ -93,9 +96,10 @@ class WaterRepository(
                 if (containerId != null) {
                     sparkyApiClient.upsertWaterIntake(cleanDate, 1, containerId)
                 } else {
-                    // Check if matching container already exists on Sparky
+                    // Check if matching container already exists on Sparky (20 oz maps to 591 ml)
                     val existingContainer = _containers.value.find { container ->
                         abs(container.volume - amountMl) < 5f ||
+                        (abs(amountOz - 20f) < 0.1f && abs(container.volume - 591f) < 5f) ||
                         (container.unit.equals("oz", ignoreCase = true) && abs(container.volume - amountOz) < 0.2f)
                     }
 
@@ -181,8 +185,17 @@ class WaterRepository(
                 // If primary container exists, adopt its name and volume if user hasn't set custom
                 val primary = list.find { it.isPrimary }
                 if (primary != null) {
-                    val oz = if (primary.unit.equals("oz", ignoreCase = true)) primary.volume else primary.volume / ML_PER_FL_OZ
-                    settingsRepository.saveDefaultContainer(oz, primary.name)
+                    val oz = if (primary.unit.equals("oz", ignoreCase = true)) {
+                        primary.volume
+                    } else if (abs(primary.volume - 591f) < 5f) {
+                        20f
+                    } else {
+                        primary.volume / ML_PER_FL_OZ
+                    }
+                    val name = primary.name
+                        .replace("591 ml", "20 oz", ignoreCase = true)
+                        .replace("591ml", "20 oz", ignoreCase = true)
+                    settingsRepository.saveDefaultContainer(oz, name)
                 }
             }
         } catch (_: Exception) {}
@@ -206,8 +219,11 @@ class WaterRepository(
             if (logsRes.isSuccess) {
                 val serverDtos = logsRes.getOrNull().orEmpty()
                 val serverEntries = serverDtos.map { dto ->
-                    val oz = dto.waterMl / ML_PER_FL_OZ
-                    val name = dto.containerName ?: "${oz.roundToInt()} oz"
+                    val oz = if (abs(dto.waterMl - 591f) < 5f) 20f else dto.waterMl / ML_PER_FL_OZ
+                    val rawName = dto.containerName ?: "${oz.roundToInt()} oz"
+                    val name = rawName
+                        .replace("591 ml", "20 oz", ignoreCase = true)
+                        .replace("591ml", "20 oz", ignoreCase = true)
                     WaterLogEntry(
                         id = dto.id,
                         entryDate = dto.entryDate,

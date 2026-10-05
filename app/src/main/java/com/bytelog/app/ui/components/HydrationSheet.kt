@@ -153,10 +153,16 @@ fun HydrationSheet(
                     items(containers) { container ->
                         val containerOz = if (container.unit.equals("oz", ignoreCase = true)) {
                             container.volume
+                        } else if (kotlin.math.abs(container.volume - 591f) < 5f) {
+                            20f
                         } else {
                             container.volume / ML_PER_FL_OZ
                         }
-                        val isCurrentDefault = defaultContainerName.equals(container.name, ignoreCase = true)
+                        val cleanName = container.name
+                            .replace("591 ml", "20 oz", ignoreCase = true)
+                            .replace("591ml", "20 oz", ignoreCase = true)
+                        val isCurrentDefault = defaultContainerName.equals(cleanName, ignoreCase = true) ||
+                            defaultContainerName.equals(container.name, ignoreCase = true)
 
                         Box(
                             modifier = Modifier
@@ -170,13 +176,13 @@ fun HydrationSheet(
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     customAmountText = containerOz.roundToInt().toString()
-                                    selectedContainerName = container.name
+                                    selectedContainerName = cleanName
                                     selectedContainerId = container.id
                                 }
                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Text(
-                                text = "${container.name} (${containerOz.roundToInt()} oz)",
+                                text = "$cleanName (${containerOz.roundToInt()} oz)",
                                 color = ByteCream,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -216,12 +222,12 @@ fun HydrationSheet(
                 )
             }
 
-            // Quick Amount Presets in oz: +4, +8, +12, +16, +24, +32
+            // Quick Amount Presets in oz: +8, +12, +16, +20, +24, +32
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf(4f, 8f, 12f, 16f, 24f, 32f).forEach { preset ->
+                listOf(8f, 12f, 16f, 20f, 24f, 32f).forEach { preset ->
                     Box(
                         modifier = Modifier
                             .weight(1f)

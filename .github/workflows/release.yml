@@ -76,10 +76,11 @@ jobs:
             
             *Speed is the feature.*
             
+            - **Customizable Daily Logging Reminders**: Configurable reminder times, quick meal presets, smart streak checking, and instant notification testing.
+            - **Default 20 oz Bottle Hydration**: App-wide water logging bottle standardized to 20 oz (eliminating 591 ml artifacts) with 1-tap quick logging.
             - **Meal Prep & Batch Cooking**: Log multi-portion batches, scale by servings or cooked grams, and track prepped containers in your Fridge strip with 1-tap logging.
             - **Online Recipe Importer**: Paste recipe URLs or share directly from your browser to extract ingredients, steps, and yields via Schema.org JSON-LD and in-app web fallback.
             - **Interactive Cook Mode**: Step-by-step cooking directions with step checkboxes and automatic cooking timer detection.
-            - **Sparky AI Tools**: AI-assisted ingredient parsing and recipe estimation.
             - Built deterministically with consistent release signing for seamless in-place updates.
             
             ### 📱 Downloadable APK:

@@ -51,8 +51,8 @@ private val HydrationCyanSubtle = Color(0x2638BDF8)
 fun HydrationCard(
     currentOz: Float,
     targetOz: Float,
-    defaultOz: Float = 8f,
-    defaultContainerName: String = "Glass",
+    defaultOz: Float = 20f,
+    defaultContainerName: String = "Bottle",
     onLogDefault: () -> Unit,
     onOpenCustom: () -> Unit,
     onUndoLast: () -> Unit,
