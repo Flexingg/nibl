@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -63,7 +64,10 @@ fun MealTemplatesSheet(
     onDismiss: () -> Unit,
     onLogTemplate: (template: MealTemplate) -> Unit,
     onDeleteTemplate: (templateId: String) -> Unit,
-    onOpenRecipeBuilder: () -> Unit
+    onOpenRecipeBuilder: () -> Unit,
+    perServing: Map<String, com.bytelog.app.recipes.Macros?> = emptyMap(),
+    onOpenRecipe: (templateId: String) -> Unit = {},
+    onImportRecipe: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
 
@@ -126,31 +130,48 @@ fun MealTemplatesSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Action: Create New Recipe Button
-            Button(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onOpenRecipeBuilder()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(46.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ByteSurfaceVariantDark)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    tint = ByteCream,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Build New Recipe Template",
-                    color = ByteCream,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            // Actions: import a recipe from the web, or build one from foods
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onImportRecipe()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Language,
+                        contentDescription = null,
+                        tint = ByteCream,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "Import Recipe", color = ByteCream, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onOpenRecipeBuilder()
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ByteSurfaceVariantDark)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        tint = ByteCream,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "Build Recipe", color = ByteCream, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -185,11 +206,13 @@ fun MealTemplatesSheet(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(templates, key = { it.id }) { template ->
+                        val macros = perServing[template.id]
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(ByteCardDark)
+                                .clickable { onOpenRecipe(template.id) }
                                 .padding(14.dp)
                         ) {
                             Column {
@@ -241,25 +264,25 @@ fun MealTemplatesSheet(
                                 ) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                         Text(
-                                            text = "${String.format(Locale.US, "%.0f", template.calories)} kcal",
+                                            text = "${String.format(Locale.US, "%.0f", macros?.calories ?: template.calories)} kcal",
                                             color = ByteTomato,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "P: ${String.format(Locale.US, "%.0f", template.protein)}g",
+                                            text = "P: ${String.format(Locale.US, "%.0f", macros?.protein ?: template.protein)}g",
                                             color = MacroProtein,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium
                                         )
                                         Text(
-                                            text = "C: ${String.format(Locale.US, "%.0f", template.carbs)}g",
+                                            text = "C: ${String.format(Locale.US, "%.0f", macros?.carbs ?: template.carbs)}g",
                                             color = MacroCarbs,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium
                                         )
                                         Text(
-                                            text = "F: ${String.format(Locale.US, "%.0f", template.fat)}g",
+                                            text = "F: ${String.format(Locale.US, "%.0f", macros?.fat ?: template.fat)}g",
                                             color = MacroFat,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium
@@ -278,7 +301,7 @@ fun MealTemplatesSheet(
                                             .padding(horizontal = 14.dp, vertical = 6.dp)
                                     ) {
                                         Text(
-                                            text = "Log Meal",
+                                            text = "Log 1 Serving",
                                             color = ByteCardDark,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold

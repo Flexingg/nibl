@@ -21,8 +21,8 @@ android {
         applicationId = "com.bytelog.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.0.15"
+        versionCode = 17
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -72,6 +72,17 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric tests (Room migration, Compose screens) need resources and the merged manifest.
+            isIncludeAndroidResources = true
+            all { test ->
+                // ./gradlew testDebugUnitTest -Pbytelog.screenshots=/some/dir saves screen renders as PNGs.
+                project.findProperty("bytelog.screenshots")?.let { test.systemProperty("bytelog.screenshots", it) }
+            }
+        }
+    }
 }
 
 dependencies {
@@ -117,8 +128,17 @@ dependencies {
     implementation(libs.androidx.datastore)
     implementation(libs.androidx.work)
 
+    // Recipe import (Schema.org JSON-LD / microdata)
+    implementation(libs.jsoup)
+
     // Testing
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.room.testing)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
+    debugImplementation(libs.androidx.ui.test.manifest)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

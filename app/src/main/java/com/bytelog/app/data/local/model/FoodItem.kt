@@ -3,6 +3,7 @@ package com.bytelog.app.data.local.model
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.bytelog.app.recipes.UnitConverter
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -34,25 +35,17 @@ data class FoodItem(
     val mealTypeAffinity: String? = null // e.g. "breakfast", "dinner"
 ) {
     /**
-     * Calculates scaled calories for a given quantity in the given unit.
+     * Ratio of [quantity] [unit] to this food's reference serving, converting units
+     * (oz → g, cup → ml, …) where possible. "1 serving" means one reference serving.
      */
-    fun caloriesFor(quantity: Float, unit: String): Float {
-        val ratio = if (servingSize > 0f) quantity / servingSize else 1f
-        return calories * ratio
-    }
+    fun servingRatio(quantity: Float, unit: String): Float =
+        UnitConverter.servingRatio(quantity, unit, servingSize, servingUnit, name)
 
-    fun proteinFor(quantity: Float, unit: String): Float {
-        val ratio = if (servingSize > 0f) quantity / servingSize else 1f
-        return protein * ratio
-    }
+    fun caloriesFor(quantity: Float, unit: String): Float = calories * servingRatio(quantity, unit)
 
-    fun carbsFor(quantity: Float, unit: String): Float {
-        val ratio = if (servingSize > 0f) quantity / servingSize else 1f
-        return carbs * ratio
-    }
+    fun proteinFor(quantity: Float, unit: String): Float = protein * servingRatio(quantity, unit)
 
-    fun fatFor(quantity: Float, unit: String): Float {
-        val ratio = if (servingSize > 0f) quantity / servingSize else 1f
-        return fat * ratio
-    }
+    fun carbsFor(quantity: Float, unit: String): Float = carbs * servingRatio(quantity, unit)
+
+    fun fatFor(quantity: Float, unit: String): Float = fat * servingRatio(quantity, unit)
 }

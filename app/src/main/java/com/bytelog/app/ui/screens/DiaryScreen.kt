@@ -111,6 +111,9 @@ import kotlin.math.roundToInt
 @Composable
 fun DiaryScreen(
     viewModel: DiaryViewModel,
+    recipesViewModel: com.bytelog.app.ui.viewmodel.RecipesViewModel,
+    onOpenRecipe: (templateId: String) -> Unit,
+    onImportRecipe: () -> Unit,
     onNavigateToSearch: (mealTypeId: String, mealName: String, date: String) -> Unit,
     onNavigateToBarcode: (mealTypeId: String, mealName: String, date: String) -> Unit,
     onNavigateToChat: () -> Unit,
@@ -151,6 +154,17 @@ fun DiaryScreen(
             snackbarHostState.showSnackbar(message)
         }
     }
+    LaunchedEffect(Unit) {
+        recipesViewModel.messages.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    val activeBatches by recipesViewModel.activeBatches.collectAsState()
+    val recipeViews by recipesViewModel.recipes.collectAsState()
+    var openBatch by remember { mutableStateOf<com.bytelog.app.data.repository.BatchStatus?>(null) }
+    // Not remembered: the right meal changes with the time of day while the app stays open.
+    val quickLogMeal = com.bytelog.app.ui.viewmodel.RecipesViewModel.mealForNow(mealTypes)
 
     val isToday = remember(selectedDate) {
         selectedDate == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
@@ -370,6 +384,20 @@ fun DiaryScreen(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                if (activeBatches.isNotEmpty()) {
+                    item(key = "fridge") {
+                        com.bytelog.app.ui.recipes.FridgeStrip(
+                            batches = activeBatches,
+                            targetMealName = quickLogMeal?.name ?: "your diary",
+                            onQuickLog = { status ->
+                                quickLogMeal?.let { meal ->
+                                    recipesViewModel.logFromBatch(status, selectedDate, meal, portions = 1f)
+                                }
+                            },
+                            onOpen = { openBatch = it }
+                        )
+                    }
+                }
                 if (loggedMealGroups.isEmpty()) {
                     item {
                         Column(
@@ -898,6 +926,25 @@ fun DiaryScreen(
         )
     }
 
+    openBatch?.let { opened ->
+        // Show live numbers: the batch may change while the sheet is open.
+        val status = activeBatches.firstOrNull { it.batch.id == opened.batch.id } ?: opened
+        com.bytelog.app.ui.recipes.BatchSheet(
+            status = status,
+            mealTypes = mealTypes,
+            defaultMeal = quickLogMeal,
+            onLog = { meal, portions, grams ->
+                recipesViewModel.logFromBatch(status, selectedDate, meal, portions, grams)
+                openBatch = null
+            },
+            onMove = { location, days -> recipesViewModel.moveBatch(status.batch.id, location, days); openBatch = null },
+            onDiscard = { recipesViewModel.discardBatch(status.batch.id); openBatch = null },
+            onArchive = { recipesViewModel.archiveBatch(status.batch.id); openBatch = null },
+            onDelete = { recipesViewModel.deleteBatch(status.batch.id); openBatch = null },
+            onDismiss = { openBatch = null }
+        )
+    }
+
     // Meal Templates & Recipes Sheet
     if (showTemplatesSheet) {
         val targetName = templateTargetMeal?.mealName ?: mealTypes.firstOrNull()?.name ?: "Meal"
@@ -917,6 +964,15 @@ fun DiaryScreen(
             onOpenRecipeBuilder = {
                 showTemplatesSheet = false
                 showRecipeBuilderSheet = true
+            },
+            perServing = remember(recipeViews) { recipeViews.associate { it.template.id to it.perServing } },
+            onOpenRecipe = { id ->
+                showTemplatesSheet = false
+                onOpenRecipe(id)
+            },
+            onImportRecipe = {
+                showTemplatesSheet = false
+                onImportRecipe()
             }
         )
     }
@@ -925,17 +981,10 @@ fun DiaryScreen(
     if (showRecipeBuilderSheet) {
         RecipeBuilderSheet(
             sheetState = recipeBuilderSheetState,
-            availableFoods = availableFoods,
+            searchFoods = recipesViewModel::searchFoods,
             onDismiss = { showRecipeBuilderSheet = false },
-            onSaveRecipe = { name, desc, servingSize, servingUnit, totalServings, ingredients ->
-                viewModel.createRecipeTemplate(
-                    name = name,
-                    description = desc,
-                    servingSize = servingSize,
-                    servingUnit = servingUnit,
-                    totalServings = totalServings,
-                    foods = ingredients
-                )
+            onSaveRecipe = { built ->
+                recipesViewModel.saveBuiltRecipe(built)
                 showRecipeBuilderSheet = false
             }
         )

@@ -1246,35 +1246,41 @@ class SparkyApiClient(
         servingSize: Float = 1f,
         servingUnit: String = "serving",
         totalServings: Float = 1f,
-        foods: List<TemplateIngredient>
+        foods: List<TemplateIngredient>,
+        notes: String? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val foodsJsonArray = buildString {
-                append("[")
-                foods.forEachIndexed { i, ing ->
-                    if (i > 0) append(",")
-                    append("{")
-                    append("\"item_type\":\"food\",")
-                    append("\"food_id\":\"").append(ing.foodId).append("\",")
-                    append("\"quantity\":").append(ing.quantity).append(",")
-                    append("\"unit\":\"").append(ing.unit.replace("\"", "\\\"")).append("\"")
-                    append("}")
-                }
-                append("]")
-            }
-
-            val payload = buildString {
-                append("{\"mealData\":{")
-                append("\"name\":\"").append(name.replace("\"", "\\\"")).append("\",")
-                if (!description.isNullOrBlank()) {
-                    append("\"description\":\"").append(description.replace("\"", "\\\"")).append("\",")
-                }
-                append("\"serving_size\":").append(servingSize).append(",")
-                append("\"serving_unit\":\"").append(servingUnit.replace("\"", "\\\"")).append("\",")
-                append("\"total_servings\":").append(totalServings).append(",")
-                append("\"foods\":").append(foodsJsonArray)
-                append("}}")
-            }
+            // Each ingredient carries a nutrition snapshot for its own quantity. Sparky scales
+            // row nutrients by quantity / serving_size, so serving_size = quantity makes the
+            // stored calories the row total, independent of the food's variants.
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("mealData", kotlinx.serialization.json.buildJsonObject {
+                    put("name", kotlinx.serialization.json.JsonPrimitive(name))
+                    if (!description.isNullOrBlank()) put("description", kotlinx.serialization.json.JsonPrimitive(description))
+                    if (!notes.isNullOrBlank()) put("notes", kotlinx.serialization.json.JsonPrimitive(notes))
+                    put("serving_size", kotlinx.serialization.json.JsonPrimitive(servingSize))
+                    put("serving_unit", kotlinx.serialization.json.JsonPrimitive(servingUnit))
+                    put("total_servings", kotlinx.serialization.json.JsonPrimitive(totalServings))
+                    put("foods", kotlinx.serialization.json.buildJsonArray {
+                        foods.forEach { ing ->
+                            add(kotlinx.serialization.json.buildJsonObject {
+                                put("item_type", kotlinx.serialization.json.JsonPrimitive("food"))
+                                put("food_id", kotlinx.serialization.json.JsonPrimitive(ing.foodId))
+                                put("quantity", kotlinx.serialization.json.JsonPrimitive(ing.quantity))
+                                put("unit", kotlinx.serialization.json.JsonPrimitive(ing.unit))
+                                if (ing.calories > 0f || ing.protein > 0f || ing.carbs > 0f || ing.fat > 0f) {
+                                    put("serving_size", kotlinx.serialization.json.JsonPrimitive(ing.quantity))
+                                    put("serving_unit", kotlinx.serialization.json.JsonPrimitive(ing.unit))
+                                    put("calories", kotlinx.serialization.json.JsonPrimitive(ing.calories))
+                                    put("protein", kotlinx.serialization.json.JsonPrimitive(ing.protein))
+                                    put("carbs", kotlinx.serialization.json.JsonPrimitive(ing.carbs))
+                                    put("fat", kotlinx.serialization.json.JsonPrimitive(ing.fat))
+                                }
+                            })
+                        }
+                    })
+                })
+            }.toString()
 
             val body = payload.toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
@@ -1604,7 +1610,10 @@ class SparkyApiClient(
      * The Sparky server runs the LLM, executes fitness tools (food logging, weight recording, checkins),
      * and returns the assistant reply along with executed tools.
      */
-    suspend fun sendChatMessage(messages: List<ChatMessageInput>): Result<ChatMessageOutput> = withContext(Dispatchers.IO) {
+    suspend fun sendChatMessage(
+        messages: List<ChatMessageInput>,
+        toolCategories: List<String>? = null
+    ): Result<ChatMessageOutput> = withContext(Dispatchers.IO) {
         try {
             val serviceConfigId = fetchActiveServiceConfigId()
             if (serviceConfigId.isNullOrBlank()) {
@@ -1642,6 +1651,11 @@ class SparkyApiClient(
             val requestBodyObj = kotlinx.serialization.json.buildJsonObject {
                 put("messages", jsonArray)
                 put("service_config_id", kotlinx.serialization.json.JsonPrimitive(serviceConfigId))
+                if (!toolCategories.isNullOrEmpty()) {
+                    put("toolCategories", kotlinx.serialization.json.buildJsonArray {
+                        toolCategories.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
+                    })
+                }
             }
             val body = requestBodyObj.toString().toRequestBody("application/json".toMediaType())
 
