@@ -22,15 +22,21 @@ class SparkyChatViewModel(
         "Give me a high protein snack under 200 calories"
     )
 
-    fun sendMessage(content: String, imageBase64: String? = null) {
+    val researchStatus: StateFlow<String?> = chatRepository.researchStatus
+    val pendingAction: StateFlow<com.bytelog.app.research.PendingAction?> = chatRepository.pendingAction
+    val researchConfig = chatRepository.researchConfig
+
+    fun resolvePendingAction(approved: Boolean) = chatRepository.resolvePendingAction(approved)
+
+    fun sendMessage(content: String, imageBase64: String? = null, webResearch: Boolean = false) {
         viewModelScope.launch {
-            chatRepository.sendMessage(content, imageBase64)
+            chatRepository.sendMessage(content, imageBase64, webResearch)
         }
     }
 
-    fun editAndResend(targetMessageId: String, newContent: String, newImageBase64: String? = null) {
+    fun editAndResend(targetMessageId: String, newContent: String, newImageBase64: String? = null, webResearch: Boolean = false) {
         viewModelScope.launch {
-            chatRepository.editAndResend(targetMessageId, newContent, newImageBase64)
+            chatRepository.editAndResend(targetMessageId, newContent, newImageBase64, webResearch)
         }
     }
 

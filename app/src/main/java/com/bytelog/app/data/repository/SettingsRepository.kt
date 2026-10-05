@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.map
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "bytelog_settings")
 
-class SettingsRepository(private val context: Context) {
+class SettingsRepository(
+    private val context: Context,
+    private val cipher: com.bytelog.app.research.SecretCipher = com.bytelog.app.research.KeystoreSecretCipher()
+) {
 
     companion object {
         val KEY_SERVER_URL = stringPreferencesKey("server_url")
@@ -39,6 +42,12 @@ class SettingsRepository(private val context: Context) {
         val KEY_CALORIE_GOAL_OFFSET = floatPreferencesKey("calorie_goal_offset")
         val KEY_LAST_ADAPTIVE_TDEE = floatPreferencesKey("last_adaptive_tdee")
         val KEY_SPARKY_TOOLS = androidx.datastore.preferences.core.stringSetPreferencesKey("sparky_tool_categories")
+
+        val KEY_RESEARCH_PROVIDER = stringPreferencesKey("research_provider")
+        val KEY_RESEARCH_TAVILY = stringPreferencesKey("research_tavily_key")
+        val KEY_RESEARCH_ASK_WRITES = androidx.datastore.preferences.core.booleanPreferencesKey("research_ask_before_writing")
+        fun researchKeyPref(p: com.bytelog.app.research.ProviderId) = stringPreferencesKey("research_key_${p.name.lowercase()}")
+        fun researchModelPref(p: com.bytelog.app.research.ProviderId) = stringPreferencesKey("research_model_${p.name.lowercase()}")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
@@ -133,6 +142,47 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[KEY_SPARKY_TOOLS] = slugs.intersect(com.bytelog.app.data.remote.SparkyTools.allSlugs)
         }
+    }
+
+    /**
+     * Web research assistant settings. API keys are stored encrypted (Android Keystore) and only on this phone.
+     */
+    val researchConfig: Flow<com.bytelog.app.research.ResearchConfig> = context.dataStore.data.map { prefs ->
+        val providers = com.bytelog.app.research.ProviderId.entries
+        com.bytelog.app.research.ResearchConfig(
+            provider = com.bytelog.app.research.ProviderId.fromName(prefs[KEY_RESEARCH_PROVIDER]),
+            apiKeys = providers.mapNotNull { p -> prefs[researchKeyPref(p)]?.let(cipher::decrypt)?.let { p to it } }.toMap(),
+            models = providers.mapNotNull { p -> prefs[researchModelPref(p)]?.takeIf { it.isNotBlank() }?.let { p to it } }.toMap(),
+            tavilyKey = prefs[KEY_RESEARCH_TAVILY]?.let(cipher::decrypt),
+            askBeforeWriting = prefs[KEY_RESEARCH_ASK_WRITES] ?: true
+        )
+    }
+
+    suspend fun saveResearchProvider(provider: com.bytelog.app.research.ProviderId) {
+        context.dataStore.edit { it[KEY_RESEARCH_PROVIDER] = provider.name }
+    }
+
+    /** Saves (or clears, when blank) a provider's API key. */
+    suspend fun saveResearchKey(provider: com.bytelog.app.research.ProviderId, key: String) {
+        context.dataStore.edit { prefs ->
+            if (key.isBlank()) prefs.remove(researchKeyPref(provider)) else prefs[researchKeyPref(provider)] = cipher.encrypt(key.trim())
+        }
+    }
+
+    suspend fun saveResearchModel(provider: com.bytelog.app.research.ProviderId, model: String) {
+        context.dataStore.edit { prefs ->
+            if (model.isBlank()) prefs.remove(researchModelPref(provider)) else prefs[researchModelPref(provider)] = model.trim()
+        }
+    }
+
+    suspend fun saveTavilyKey(key: String) {
+        context.dataStore.edit { prefs ->
+            if (key.isBlank()) prefs.remove(KEY_RESEARCH_TAVILY) else prefs[KEY_RESEARCH_TAVILY] = cipher.encrypt(key.trim())
+        }
+    }
+
+    suspend fun saveAskBeforeWriting(ask: Boolean) {
+        context.dataStore.edit { it[KEY_RESEARCH_ASK_WRITES] = ask }
     }
 
     suspend fun saveAutoAdjustCalories(enabled: Boolean) {

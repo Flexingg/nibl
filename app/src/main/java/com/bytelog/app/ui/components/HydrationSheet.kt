@@ -151,13 +151,7 @@ fun HydrationSheet(
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(containers) { container ->
-                        val containerOz = if (container.unit.equals("oz", ignoreCase = true)) {
-                            container.volume
-                        } else if (kotlin.math.abs(container.volume - 591f) < 5f) {
-                            20f
-                        } else {
-                            container.volume / ML_PER_FL_OZ
-                        }
+                        val containerOz = container.volumeOz
                         val cleanName = container.name
                             .replace("591 ml", "20 oz", ignoreCase = true)
                             .replace("591ml", "20 oz", ignoreCase = true)
