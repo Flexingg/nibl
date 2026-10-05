@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class ByteLogApplication : Application() {
@@ -111,9 +112,9 @@ class ByteLogApplication : Application() {
         com.bytelog.app.notifications.DailyReminderScheduler.createNotificationChannel(this)
         applicationScope.launch {
             try {
-                if (kotlinx.coroutines.flow.first(settingsRepository.notificationsEnabled)) {
-                    val hour = kotlinx.coroutines.flow.first(settingsRepository.reminderHour)
-                    val minute = kotlinx.coroutines.flow.first(settingsRepository.reminderMinute)
+                if (settingsRepository.notificationsEnabled.first()) {
+                    val hour = settingsRepository.reminderHour.first()
+                    val minute = settingsRepository.reminderMinute.first()
                     com.bytelog.app.notifications.DailyReminderScheduler.scheduleDailyReminder(this@ByteLogApplication, hour, minute)
                 }
             } catch (_: Exception) {}
