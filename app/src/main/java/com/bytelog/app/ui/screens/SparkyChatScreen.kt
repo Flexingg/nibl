@@ -67,6 +67,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -89,6 +90,8 @@ import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
 import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
+import com.bytelog.app.ui.theme.MacroProtein
+import androidx.compose.material.icons.filled.Language
 import com.bytelog.app.ui.theme.ByteTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.viewmodel.SparkyChatViewModel
@@ -116,6 +119,12 @@ fun SparkyChatScreen(
 
     var showClearConfirm by remember { mutableStateOf(false) }
     var showImageSourceDialog by remember { mutableStateOf(false) }
+
+    // Web research: the user's own model searches the web and can use their Sparky data.
+    var webMode by rememberSaveable { mutableStateOf(false) }
+    val researchStatus by viewModel.researchStatus.collectAsState()
+    val pendingAction by viewModel.pendingAction.collectAsState()
+    val researchConfig by viewModel.researchConfig.collectAsState(initial = com.bytelog.app.research.ResearchConfig())
 
     val listState = rememberLazyListState()
 
@@ -145,6 +154,26 @@ fun SparkyChatScreen(
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
+    }
+
+    // Approval for a change the web research assistant wants to make to the user's data
+    pendingAction?.let { action ->
+        AlertDialog(
+            onDismissRequest = { viewModel.resolvePendingAction(false) },
+            containerColor = ByteSurfaceDark,
+            title = { Text("Allow this change?", color = ByteCream, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(action.summary, color = ByteCream, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(action.argsPreview, color = ByteCreamMuted, fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("The assistant wants to change your Sparky data.", color = ByteCreamMuted, fontSize = 12.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewModel.resolvePendingAction(true) }) { Text("Allow", color = ByteTomato, fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { viewModel.resolvePendingAction(false) }) { Text("Don't allow", color = ByteCreamMuted) } }
+        )
     }
 
     // Image Source Picker Dialog
@@ -423,6 +452,47 @@ fun SparkyChatScreen(
                     }
                 }
 
+                // Web search toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val canUseWeb = attachedBitmap == null
+                    val active = webMode && canUseWeb
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (active) MacroProtein else ByteSurfaceDark)
+                            .border(1.dp, if (active) MacroProtein else ByteSurfaceVariantDark, RoundedCornerShape(50))
+                            .clickable(enabled = canUseWeb) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                webMode = !webMode
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Language, contentDescription = null, tint = if (active) ByteSurfaceDark else ByteCreamMuted, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (active) "Web search on · ${researchConfig.provider.label.substringBefore(' ')}" else "Web search",
+                            color = if (active) ByteSurfaceDark else ByteCreamMuted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = when {
+                            !canUseWeb -> "Not available with a photo"
+                            active && !researchConfig.isConfigured -> "Add an API key in Settings first"
+                            active -> "Uses your ${researchConfig.provider.label.substringBefore(' ')} key"
+                            else -> ""
+                        },
+                        color = if (active && !researchConfig.isConfigured) ByteTomato else ByteCreamMuted,
+                        fontSize = 11.sp
+                    )
+                }
+
                 // Chat text input box
                 Row(
                     modifier = Modifier
@@ -493,9 +563,9 @@ fun SparkyChatScreen(
                                 if (editingMessageId != null) {
                                     val targetId = editingMessageId!!
                                     editingMessageId = null
-                                    viewModel.editAndResend(targetId, textToSend, base64ToSend)
+                                    viewModel.editAndResend(targetId, textToSend, base64ToSend, webMode)
                                 } else {
-                                    viewModel.sendMessage(textToSend, base64ToSend)
+                                    viewModel.sendMessage(textToSend, base64ToSend, webResearch = webMode)
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -559,7 +629,7 @@ fun SparkyChatScreen(
 
             if (isLoading) {
                 item {
-                    SparkyThinkingIndicator()
+                    SparkyThinkingIndicator(status = researchStatus)
                 }
             }
         }
@@ -779,6 +849,24 @@ fun ChatMessageBubble(
                 }
             }
 
+            // Pages the web research assistant used
+            if (!isUser && message.webSources.isNotEmpty()) {
+                val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Sources", color = ByteCreamMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                message.webSources.take(8).forEach { src ->
+                    Text(
+                        text = "🔗 ${src.title.take(70)}",
+                        color = MacroProtein,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .padding(vertical = 2.dp)
+                            .clickable { runCatching { uriHandler.openUri(src.url) } }
+                    )
+                }
+            }
+
             // Executed tool execution badges (excluding sparky_ask_user which renders interactive chips)
             val visibleTools = message.executedTools.filter { it != "sparky_ask_user" }
             if (!isUser && (visibleTools.isNotEmpty() || !message.action.isNullOrBlank())) {
@@ -789,7 +877,7 @@ fun ChatMessageBubble(
                 ) {
                     visibleTools.forEach { tool ->
                         val friendlyTool = when {
-                            tool.contains("food") -> "Logged Food"
+                            tool.contains("food") -> if (message.viaWeb) "Used food data" else "Logged Food"
                             tool.contains("checkin") -> "Weight Updated"
                             tool.contains("exercise") -> "Exercise Logged"
                             else -> tool
@@ -815,7 +903,7 @@ fun ChatMessageBubble(
 }
 
 @Composable
-fun SparkyThinkingIndicator() {
+fun SparkyThinkingIndicator(status: String? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
@@ -853,7 +941,7 @@ fun SparkyThinkingIndicator() {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Sparky is thinking & executing tools on server…",
+                    text = status ?: "Sparky is thinking & executing tools on server…",
                     color = ByteCreamMuted,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium

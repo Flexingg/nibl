@@ -55,7 +55,8 @@ class SparkyApiClient(
 
             // Better Auth and Express CORS compatibility
             builder.header("Origin", baseUrl)
-            builder.header("Accept", "application/json")
+            // Callers that need another Accept (the MCP endpoint wants "application/json, text/event-stream") set their own.
+            if (original.header("Accept") == null) builder.header("Accept", "application/json")
             builder.header("X-Meal-Model-Version", "2")
 
             // Session token authentication
@@ -1606,6 +1607,49 @@ class SparkyApiClient(
     }
 
     /**
+     * One JSON-RPC call to Sparky's MCP endpoint (`POST /mcp`, stateless Streamable HTTP). Returns the `result`
+     * object; a JSON-RPC `error` becomes a failure. The server answers with plain JSON; an event-stream reply
+     * is handled too. `tools/list` and `tools/call` need no `initialize` first.
+     */
+    suspend fun mcpRequest(method: String, params: kotlinx.serialization.json.JsonObject? = null): Result<kotlinx.serialization.json.JsonObject> = withContext(Dispatchers.IO) {
+        try {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("jsonrpc", kotlinx.serialization.json.JsonPrimitive("2.0"))
+                put("id", kotlinx.serialization.json.JsonPrimitive(1))
+                put("method", kotlinx.serialization.json.JsonPrimitive(method))
+                if (params != null) put("params", params)
+            }
+            val request = Request.Builder()
+                .url("$baseUrl/mcp")
+                .header("Accept", "application/json, text/event-stream")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            aiClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val hint = when (response.code) {
+                        401, 403 -> " Sign in again or check your API key in Settings."
+                        404 -> " This Sparky server has no MCP endpoint."
+                        else -> ""
+                    }
+                    return@use Result.failure(IOException("Sparky MCP request failed: HTTP ${response.code}.$hint"))
+                }
+                val root = parseMcpBody(body, response.header("Content-Type"))
+                    ?: return@use Result.failure(IOException("Sparky MCP sent a reply that isn't JSON-RPC."))
+                val error = root["error"] as? kotlinx.serialization.json.JsonObject
+                if (error != null) {
+                    return@use Result.failure(IOException("Sparky MCP error: ${error["message"]?.jsonPrimitive?.content ?: "unknown"}"))
+                }
+                val result = root["result"] as? kotlinx.serialization.json.JsonObject
+                    ?: return@use Result.failure(IOException("Sparky MCP reply had no result."))
+                Result.success(result)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Send chat messages to Sparky Fitness AI Chatbot (/api/chat).
      * The Sparky server runs the LLM, executes fitness tools (food logging, weight recording, checkins),
      * and returns the assistant reply along with executed tools.
@@ -1866,6 +1910,18 @@ class SparkyApiClient(
     }
 
     companion object {
+        /** Reads a JSON-RPC reply that is either plain JSON or a Server-Sent Events stream (last `data:` event wins). */
+        fun parseMcpBody(body: String, contentType: String?): kotlinx.serialization.json.JsonObject? {
+            val text = if (contentType?.contains("text/event-stream", ignoreCase = true) == true || body.trimStart().startsWith("event:") || body.trimStart().startsWith("data:")) {
+                body.lines().filter { it.startsWith("data:") }.map { it.removePrefix("data:").trim() }.lastOrNull { it.isNotBlank() } ?: return null
+            } else body
+            return try {
+                Json { ignoreUnknownKeys = true }.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject
+            } catch (_: Exception) {
+                null
+            }
+        }
+
         /**
          * Fallback extractor for ask-user prompts / options:
          * 1) Server chat history replay: `(options offered: opt1 | opt2)`
@@ -1964,7 +2020,11 @@ data class ChatMessageOutput(
     val createdAt: Long = System.currentTimeMillis(),
     val action: String? = null,
     val executedTools: List<String> = emptyList(),
-    val askUserPrompt: ChatAskUserPrompt? = null
+    val askUserPrompt: ChatAskUserPrompt? = null,
+    /** Pages the web research assistant used. */
+    val webSources: List<com.bytelog.app.research.WebSource> = emptyList(),
+    /** True for answers from the web research assistant (not Sparky's own chat). */
+    val viaWeb: Boolean = false
 )
 
 @kotlinx.serialization.Serializable

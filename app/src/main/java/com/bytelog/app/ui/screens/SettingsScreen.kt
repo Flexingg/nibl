@@ -654,6 +654,9 @@ fun SettingsScreen(
                 onChange = { scope.launch { settingsRepository.saveSparkyToolCategories(it) } }
             )
 
+            // Web research assistant (own API key, web search + Sparky tools)
+            com.bytelog.app.ui.components.ResearchAssistantCard(settings = settingsRepository)
+
             // 4. Macro Targets Section
             Column(
                 modifier = Modifier

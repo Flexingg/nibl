@@ -1,0 +1,1 @@
+{"result":{"content":[{"type":"text","text":"MCP error -32602: Input validation error: Invalid arguments for tool sparky_search_foods: Invalid input: expected string, received undefined at food_name"}],"isError":true},"jsonrpc":"2.0","id":4}

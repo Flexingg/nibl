@@ -35,6 +35,24 @@ Status: proof of concept built in ByteLog (v1.1.0) · Supersedes the "Meal Prep"
 - `meal_recipe_details` (or columns on `meals`): steps, times, source URL, image, fridge/freezer days.
 - Optionally a `prep_batches` table so batches sync across devices and the web.
 
+## Web research assistant (v1.2.0)
+
+Sparky's own AI can't search the internet. Instead of changing the server, ByteLog runs the conversation itself:
+a web-capable model (the user's own API key, kept on the phone) gets Sparky's tools through Sparky's MCP endpoint
+(`POST /mcp`), so one conversation can search the web **and** use the food library, diary history and goals.
+
+- **Switch:** a "Web search" toggle above the chat input. Off = Sparky's normal chat; on = this assistant.
+- **Providers:** Claude (built-in web search, Claude Opus 5.5 by default), Gemini (Google Search grounding, run as a
+  separate call so it mixes with function calling), DeepSeek (no search of its own: searches go through a Gemini key,
+  a Tavily key, or DuckDuckGo as a best-effort fallback, which is often blocked).
+- **Safety:** web text is wrapped as untrusted and the model is told never to follow it. Every Sparky call that isn't
+  clearly a read (Sparky's tools carry no read-only flag, so this is decided by name and `action`) needs the user's
+  approval, unless they turn that off. `fetch_url` only reads public addresses: not localhost, the home network, or the
+  Sparky server. The category switches from Settings → "Sparky AI tools" also limit this assistant.
+- **Keys:** encrypted with an Android Keystore AES-GCM key; the plaintext never reaches disk or a backup.
+- **Not done:** answers aren't saved to Sparky's chat history; no streaming (answers appear when finished); photos
+  aren't supported in web mode.
+
 ## 0. Review of the original draft
 
 The vision is right: import → cook → batch → 1-tap log is the workflow people actually follow. On-device

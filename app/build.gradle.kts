@@ -21,8 +21,8 @@ android {
         applicationId = "com.bytelog.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "1.1.2"
+        versionCode = 20
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -80,6 +80,9 @@ android {
             all { test ->
                 // ./gradlew testDebugUnitTest -Pbytelog.screenshots=/some/dir saves screen renders as PNGs.
                 project.findProperty("bytelog.screenshots")?.let { test.systemProperty("bytelog.screenshots", it) }
+                // Optional live MCP server for McpClientTest (-Pbytelog.mcp.url=… -Pbytelog.mcp.token=…).
+                project.findProperty("bytelog.mcp.url")?.let { test.systemProperty("bytelog.mcp.url", it) }
+                project.findProperty("bytelog.mcp.token")?.let { test.systemProperty("bytelog.mcp.token", it) }
             }
         }
     }
