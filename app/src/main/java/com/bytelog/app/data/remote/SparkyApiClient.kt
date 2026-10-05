@@ -2004,11 +2004,16 @@ data class UserMacroGoals(
 data class WaterContainer(
     val id: Int,
     val name: String,
+    /** Always millilitres: Sparky converts to ml when saving, whatever [unit] says. */
     val volume: Float,
+    /** Display label only (ml, oz, liter). It does NOT change what [volume] is measured in. */
     val unit: String = "ml",
     val isPrimary: Boolean = false,
     val servingsPerContainer: Int = 1
-)
+) {
+    val volumeMl: Float get() = volume
+    val volumeOz: Float get() = volume / 29.5735f
+}
 
 @kotlinx.serialization.Serializable
 data class WaterLogDto(

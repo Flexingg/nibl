@@ -96,11 +96,10 @@ class WaterRepository(
                 if (containerId != null) {
                     sparkyApiClient.upsertWaterIntake(cleanDate, 1, containerId)
                 } else {
-                    // Check if matching container already exists on Sparky (20 oz maps to 591 ml)
+                    // Check if matching container already exists on Sparky
+                    // Container volumes are always in ml on Sparky, whatever their unit label says.
                     val existingContainer = _containers.value.find { container ->
-                        abs(container.volume - amountMl) < 5f ||
-                        (abs(amountOz - 20f) < 0.1f && abs(container.volume - 591f) < 5f) ||
-                        (container.unit.equals("oz", ignoreCase = true) && abs(container.volume - amountOz) < 0.2f)
+                        abs(container.volumeMl - amountMl) < 5f
                     }
 
                     if (existingContainer != null) {
@@ -185,17 +184,10 @@ class WaterRepository(
                 // If primary container exists, adopt its name and volume if user hasn't set custom
                 val primary = list.find { it.isPrimary }
                 if (primary != null) {
-                    val oz = if (primary.unit.equals("oz", ignoreCase = true)) {
-                        primary.volume
-                    } else if (abs(primary.volume - 591f) < 5f) {
-                        20f
-                    } else {
-                        primary.volume / ML_PER_FL_OZ
-                    }
                     val name = primary.name
                         .replace("591 ml", "20 oz", ignoreCase = true)
                         .replace("591ml", "20 oz", ignoreCase = true)
-                    settingsRepository.saveDefaultContainer(oz, name)
+                    settingsRepository.saveDefaultContainer(primary.volumeOz, name)
                 }
             }
         } catch (_: Exception) {}
