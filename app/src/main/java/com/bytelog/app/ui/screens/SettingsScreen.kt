@@ -200,7 +200,14 @@ fun SettingsScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = ByteInkDark
+        containerColor = ByteInkDark,
+        topBar = {
+            com.bytelog.app.ui.components.ScreenHeader(
+                title = "Settings",
+                subtitle = "Server, goals, reminders and AI",
+                onBack = onNavigateBack
+            )
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -210,25 +217,6 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header Row
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = ByteCream
-                    )
-                }
-                Text(
-                    text = "Settings & Connectivity",
-                    color = ByteCream,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-            }
-
             // 1. Sparky Fitness Backend & Diagnostic Connection Test
             Column(
                 modifier = Modifier
