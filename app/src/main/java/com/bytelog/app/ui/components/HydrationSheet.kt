@@ -58,8 +58,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
-private val HydrationCyan = Color(0xFF38BDF8)
-private val HydrationCyanSubtle = Color(0x2638BDF8)
+private val HydrationCyan: Color @Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.bytelog.app.ui.theme.MacroProtein
+private val HydrationCyanSubtle: Color @Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.bytelog.app.ui.theme.MacroProtein.copy(alpha = 0.15f)
 
 @Composable
 fun HydrationSheet(

@@ -47,6 +47,7 @@ import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import java.util.Locale
 
@@ -216,7 +217,7 @@ fun WeightLogDialog(
                 ) {
                     Text(
                         text = "Save Weight Check-In",
-                        color = ByteCream,
+                        color = ByteOnTomato,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )

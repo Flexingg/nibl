@@ -38,6 +38,7 @@ import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroProtein
 
 @Composable
@@ -152,7 +153,7 @@ fun SaveMealTemplateDialog(
                 ) {
                     Text(
                         text = "Create Template on Sparky",
-                        color = ByteCream,
+                        color = ByteOnTomato,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )

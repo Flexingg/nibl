@@ -43,6 +43,8 @@ class SettingsRepository(
         val KEY_LAST_ADAPTIVE_TDEE = floatPreferencesKey("last_adaptive_tdee")
         val KEY_SPARKY_TOOLS = androidx.datastore.preferences.core.stringSetPreferencesKey("sparky_tool_categories")
 
+        val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        val KEY_DEVICE_COLORS = androidx.datastore.preferences.core.booleanPreferencesKey("device_colors")
         val KEY_RESEARCH_PROVIDER = stringPreferencesKey("research_provider")
         val KEY_RESEARCH_TAVILY = stringPreferencesKey("research_tavily_key")
         val KEY_RESEARCH_ASK_WRITES = androidx.datastore.preferences.core.booleanPreferencesKey("research_ask_before_writing")
@@ -156,6 +158,23 @@ class SettingsRepository(
             tavilyKey = prefs[KEY_RESEARCH_TAVILY]?.let(cipher::decrypt),
             askBeforeWriting = prefs[KEY_RESEARCH_ASK_WRITES] ?: true
         )
+    }
+
+    /** Light, dark or follow the system (default). */
+    val themeMode: Flow<com.bytelog.app.ui.theme.ThemeMode> = context.dataStore.data.map { prefs ->
+        prefs[KEY_THEME_MODE]?.let { runCatching { com.bytelog.app.ui.theme.ThemeMode.valueOf(it) }.getOrNull() }
+            ?: com.bytelog.app.ui.theme.ThemeMode.SYSTEM
+    }
+
+    /** Use the device's wallpaper colours (Material You) where available. On by default. */
+    val useDeviceColors: Flow<Boolean> = context.dataStore.data.map { it[KEY_DEVICE_COLORS] ?: true }
+
+    suspend fun saveThemeMode(mode: com.bytelog.app.ui.theme.ThemeMode) {
+        context.dataStore.edit { it[KEY_THEME_MODE] = mode.name }
+    }
+
+    suspend fun saveUseDeviceColors(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_DEVICE_COLORS] = enabled }
     }
 
     suspend fun saveResearchProvider(provider: com.bytelog.app.research.ProviderId) {

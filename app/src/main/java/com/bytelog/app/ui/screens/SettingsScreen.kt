@@ -88,6 +88,7 @@ import com.bytelog.app.ui.theme.ByteInkDark
 import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroFat
 import com.bytelog.app.ui.theme.MacroProtein
@@ -217,6 +218,16 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Appearance: light/dark and device colours
+            val themeMode by settingsRepository.themeMode.collectAsState(initial = com.bytelog.app.ui.theme.ThemeMode.SYSTEM)
+            val deviceColors by settingsRepository.useDeviceColors.collectAsState(initial = true)
+            com.bytelog.app.ui.components.AppearanceCard(
+                mode = themeMode,
+                deviceColors = deviceColors,
+                onMode = { scope.launch { settingsRepository.saveThemeMode(it) } },
+                onDeviceColors = { scope.launch { settingsRepository.saveUseDeviceColors(it) } }
+            )
+
             // 1. Sparky Fitness Backend & Diagnostic Connection Test
             Column(
                 modifier = Modifier
@@ -554,12 +565,12 @@ fun SettingsScreen(
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
-                            color = ByteCream
+                            color = ByteOnTomato
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Signing in...", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ByteCream)
+                        Text("Signing in...", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ByteOnTomato)
                     } else {
-                        Text("Sign In & Save Session Token", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ByteCream)
+                        Text("Sign In & Save Session Token", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ByteOnTomato)
                     }
                 }
 
@@ -1103,7 +1114,7 @@ fun SettingsScreen(
             ) {
                 Text(
                     text = "Save Configuration",
-                    color = ByteCream,
+                    color = ByteOnTomato,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1237,7 +1248,7 @@ fun SettingsScreen(
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
                             ) {
-                                Text("Save Time", color = ByteCream, fontWeight = FontWeight.Bold)
+                                Text("Save Time", color = ByteOnTomato, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

@@ -67,6 +67,7 @@ import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroProtein
 import com.bytelog.app.ui.viewmodel.RecipesViewModel
@@ -186,9 +187,9 @@ private fun RecipeDetailContent(
             Spacer(Modifier.height(10.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onCook, colors = ButtonDefaults.buttonColors(containerColor = ByteTomato), shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.Default.PlayArrow, null, tint = ByteCream, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.PlayArrow, null, tint = ByteOnTomato, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Cook", color = ByteCream, fontWeight = FontWeight.Bold)
+                    Text("Cook", color = ByteOnTomato, fontWeight = FontWeight.Bold)
                 }
                 OutlinedButton(onClick = onStartBatch, shape = RoundedCornerShape(12.dp)) {
                     Icon(Icons.Default.Kitchen, null, tint = MacroProtein, modifier = Modifier.size(18.dp))

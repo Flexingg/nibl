@@ -33,6 +33,7 @@ import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import java.util.UUID
 
 @Composable
@@ -155,7 +156,7 @@ fun VoiceLogDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Stage in Tray", color = ByteCream, fontWeight = FontWeight.Bold)
+                        Text("Stage in Tray", color = ByteOnTomato, fontWeight = FontWeight.Bold)
                     }
                 }
             }

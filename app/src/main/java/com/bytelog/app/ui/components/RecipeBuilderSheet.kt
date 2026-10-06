@@ -68,6 +68,7 @@ import com.bytelog.app.ui.theme.ByteInkDark
 import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroProtein
 
 /** One ingredient in the builder: a food and how much of it, in any convertible unit. */
@@ -298,7 +299,7 @@ fun RecipeBuilderSheet(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
             ) {
-                Text("Save Recipe to Sparky Fitness", color = ByteCream, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text("Save Recipe to Sparky Fitness", color = ByteOnTomato, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

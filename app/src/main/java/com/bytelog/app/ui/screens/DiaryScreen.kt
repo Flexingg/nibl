@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.bytelog.app.ui.diary.daySwipe
 import androidx.compose.ui.graphics.graphicsLayer
 import com.bytelog.app.ui.components.hideWhenScrolledAway
 import com.bytelog.app.ui.components.popIn
@@ -53,6 +54,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -104,6 +106,7 @@ import com.bytelog.app.ui.theme.ByteInkDark
 import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroFat
 import com.bytelog.app.ui.theme.MacroProtein
@@ -220,11 +223,25 @@ fun DiaryScreen(
             }
         }
     }
+    // Swiping sideways between days; the cards follow the finger before the day changes.
+    val daySwipe = remember { com.bytelog.app.ui.diary.DaySwipeState() }
     val dayMotion = Modifier.graphicsLayer {
         val d = dayShift.value
-        translationX = d * 64.dp.toPx()
-        alpha = 1f - kotlin.math.abs(d).coerceAtMost(1f) * 0.7f
+        translationX = d * 64.dp.toPx() + daySwipe.offset.value
+        alpha = 1f - kotlin.math.abs(d).coerceAtMost(1f) * 0.7f -
+            (kotlin.math.abs(daySwipe.offset.value) / size.width.coerceAtLeast(1f)).coerceAtMost(0.4f)
     }
+    val toolbarScroll = remember { com.bytelog.app.ui.diary.ToolbarScrollState() }
+    var fabMenuOpen by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = fabMenuOpen) { fabMenuOpen = false }
+    val allWeights by viewModel.allWeights.collectAsState()
+    val recentWeights = remember(allWeights, selectedDate, weightUnit) {
+        allWeights.filter { it.entryDate <= selectedDate }.sortedBy { it.entryDate }.takeLast(7)
+            .map { com.bytelog.app.ui.components.displayWeight(it, weightUnit) }
+    }
+    val dayDate = remember(selectedDate) { runCatching { LocalDate.parse(selectedDate) }.getOrElse { LocalDate.now() } }
+    val heroShape = com.bytelog.app.ui.diary.BlobShape.forDay(dayDate.toEpochDay())
+    val weightShape = if (dayDate.toEpochDay() % 2 == 0L) com.bytelog.app.ui.diary.BlobShape.SQUIRCLE else com.bytelog.app.ui.diary.BlobShape.PENTAGON
 
     val headerState = com.bytelog.app.ui.components.rememberHeaderCollapseState()
     val headerFraction = com.bytelog.app.ui.components.rememberHeaderFraction(headerState)
@@ -261,172 +278,69 @@ fun DiaryScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = ByteInkDark,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    val defaultMeal = mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
-                    onNavigateToSearch(defaultMeal.id, defaultMeal.name, selectedDate)
-                },
-                modifier = Modifier
-                    .graphicsLayer {
-                        // Shrinks a little while the header is folded away
-                        val s = 1f - 0.14f * headerFraction().coerceIn(0f, 1f)
-                        scaleX = s; scaleY = s
-                    }
-                    .pressBounce(0.86f),
-                containerColor = ByteTomato,
-                contentColor = ByteCream,
-                shape = CircleShape
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search Foods"
-                )
-            }
-        }
+        containerColor = ByteInkDark
     ) { paddingValues ->
+      Box(Modifier.fillMaxSize().padding(paddingValues)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            // Top App Bar / Date Navigation
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Logo & Title
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(ByteTomato),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("b", color = ByteCream, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "bytelog",
-                        color = ByteCream,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-0.5).sp
-                    )
-                }
+            // Large title that shrinks as the header folds
+            com.bytelog.app.ui.diary.ExpressiveTopBar(
+                fraction = headerFraction,
+                date = selectedDate,
+                title = describeDay(selectedDate),
+                subtitle = dayDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+                syncing = isSyncing,
+                onSync = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    viewModel.manualSync()
+                },
+                onChat = onNavigateToChat,
+                onSettings = onNavigateToSettings
+            )
 
-                // Date Switcher Controls & Actions
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(modifier = Modifier.pressBounce(0.82f), onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        viewModel.changeDay(-1)
-                    }) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Day", tint = ByteCream)
-                    }
-
-                    // The day label rolls in from the side you moved towards.
-                    androidx.compose.animation.AnimatedContent(
-                        targetState = selectedDate,
-                        transitionSpec = {
-                            if (reduceMotion) {
-                                androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
-                            } else {
-                                val dir = if (targetState > initialState) 1 else -1
-                                val slide = androidx.compose.animation.core.spring(
-                                    dampingRatio = 0.6f, stiffness = 420f,
-                                    visibilityThreshold = androidx.compose.ui.unit.IntOffset.VisibilityThreshold
-                                )
-                                (androidx.compose.animation.slideInHorizontally(slide) { dir * it } + androidx.compose.animation.fadeIn()) togetherWith
-                                    (androidx.compose.animation.slideOutHorizontally(slide) { -dir * it } + androidx.compose.animation.fadeOut()) using
-                                    androidx.compose.animation.SizeTransform(clip = false) { _, _ ->
-                                        androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = 420f)
-                                    }
-                            }
-                        },
-                        modifier = Modifier
-                            .pressBounce(0.9f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(ByteSurfaceDark)
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                viewModel.setDate(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
-                            },
-                        label = "day_label"
-                    ) { date ->
-                        Text(
-                            text = describeDay(date),
-                            color = ByteCream,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-
-                    IconButton(modifier = Modifier.pressBounce(0.82f), onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        viewModel.changeDay(1)
-                    }) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Next Day", tint = ByteCream)
-                    }
-
-                    IconButton(
-                        modifier = Modifier.pressBounce(0.82f),
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onOpenRecentMeals()
-                        }
-                    ) {
-                        Icon(Icons.Default.History, contentDescription = "Copy Recent Meals", tint = ByteCreamMuted)
-                    }
-
-                    IconButton(modifier = Modifier.pressBounce(0.82f), onClick = onNavigateToChat) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Sparky AI Coach",
-                            tint = ByteTomato
-                        )
-                    }
-
-                    IconButton(modifier = Modifier.pressBounce(0.82f), onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = ByteCreamMuted)
-                    }
-                }
-            }
-
+          // Header and list: swipe sideways here to change day
+          Column(
+              Modifier
+                  .fillMaxSize()
+                  .daySwipe(daySwipe, enabled = !fabMenuOpen) { direction ->
+                      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                      viewModel.changeDay(direction.toLong())
+                  }
+          ) {
             // Calories, water and weight: full cards at the top, two narrow strips once the list scrolls
-            com.bytelog.app.ui.components.CollapsingDiaryHeader(
+            com.bytelog.app.ui.diary.ExpressiveDiaryHeader(
                 modifier = dayMotion,
                 fraction = headerFraction,
-                macroExpanded = { DailyMacroHeader(summary = dailySummary) },
-                macroCompact = { com.bytelog.app.ui.components.MacroStrip(summary = dailySummary) },
+                hero = {
+                    com.bytelog.app.ui.diary.CalorieHero(
+                        remaining = dailySummary.remainingCalories.roundToInt(),
+                        progress = dailySummary.calorieProgress,
+                        shape = heroShape,
+                        fraction = headerFraction,
+                        onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+                    )
+                },
+                heroExpanded = { com.bytelog.app.ui.diary.HeroMacros(dailySummary) },
+                heroCompact = { com.bytelog.app.ui.diary.HeroStrip(dailySummary) },
                 waterExpanded = {
-                    // Hydration Speed Logging Card (Always in oz)
-                    HydrationCard(
+                    com.bytelog.app.ui.diary.WaterExpanded(
                         currentOz = waterTotalOz,
                         targetOz = waterGoalOz,
                         defaultOz = defaultContainerOz,
-                        defaultContainerName = defaultContainerName,
+                        containerName = defaultContainerName,
                         onLogDefault = { viewModel.logDefaultDrink() },
-                        onLogDoubleDrink = {
-                            viewModel.quickAddWaterOz(
-                                amountOz = defaultContainerOz * 2f,
-                                containerName = "${defaultContainerName} x2"
-                            )
+                        onLogDouble = {
+                            viewModel.quickAddWaterOz(amountOz = defaultContainerOz * 2f, containerName = "${defaultContainerName} x2")
                         },
-                        onOpenCustom = { showHydrationSheet = true },
-                        onUndoLast = { viewModel.undoLastDrink() }
+                        onCustom = { showHydrationSheet = true },
+                        onUndo = { viewModel.undoLastDrink() }
                     )
                 },
                 waterCompact = {
-                    com.bytelog.app.ui.components.WaterStrip(
+                    com.bytelog.app.ui.diary.WaterPill(
                         currentOz = waterTotalOz,
                         targetOz = waterGoalOz,
                         defaultOz = defaultContainerOz,
@@ -434,19 +348,21 @@ fun DiaryScreen(
                     )
                 },
                 weightExpanded = {
-                    // Bodyweight Tracking Card
-                    BodyweightCard(
-                        currentEntry = currentWeight,
-                        previousEntry = previousWeight,
-                        weightUnit = weightUnit,
-                        onOpenLogDialog = { showWeightDialog = true }
+                    com.bytelog.app.ui.diary.WeightExpanded(
+                        weight = currentWeight?.let { com.bytelog.app.ui.components.displayWeight(it, weightUnit) },
+                        unit = weightUnit,
+                        delta = com.bytelog.app.ui.components.weightChange(currentWeight, previousWeight, weightUnit),
+                        recent = recentWeights,
+                        shape = weightShape,
+                        onOpen = { showWeightDialog = true }
                     )
                 },
                 weightCompact = {
-                    com.bytelog.app.ui.components.WeightStrip(
+                    com.bytelog.app.ui.diary.WeightPill(
                         weight = (currentWeight ?: previousWeight)?.let { com.bytelog.app.ui.components.displayWeight(it, weightUnit) },
                         unit = weightUnit,
-                        delta = com.bytelog.app.ui.components.weightChange(currentWeight, previousWeight, weightUnit)
+                        delta = com.bytelog.app.ui.components.weightChange(currentWeight, previousWeight, weightUnit),
+                        shape = weightShape
                     )
                 }
             )
@@ -459,6 +375,7 @@ fun DiaryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(dayMotion)
+                    .nestedScroll(toolbarScroll.connection)
                     .nestedScroll(headerState.connection),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -798,10 +715,61 @@ fun DiaryScreen(
                 }
 
                 item {
-                    Spacer(modifier = Modifier.height(72.dp))
+                    Spacer(modifier = Modifier.height(112.dp))
                 }
             }
+          }
         }
+
+        // Which day a sideways swipe would open
+        com.bytelog.app.ui.diary.DaySwipeHint(
+            state = daySwipe,
+            previousLabel = describeDay(dayDate.minusDays(1).toString()),
+            nextLabel = describeDay(dayDate.plusDays(1).toString())
+        )
+
+        // Floating day toolbar (hides while scrolling down) and the add menu
+        com.bytelog.app.ui.diary.DayToolbar(
+            hidden = toolbarScroll.hidden && !fabMenuOpen,
+            dayLabel = describeDay(selectedDate),
+            onPrev = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                viewModel.changeDay(-1)
+            },
+            onToday = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                viewModel.setDate(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
+            },
+            onNext = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                viewModel.changeDay(1)
+            },
+            onRecent = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onOpenRecentMeals()
+            },
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 18.dp)
+        )
+        com.bytelog.app.ui.diary.DiaryFabMenu(
+            expanded = fabMenuOpen,
+            onExpandedChange = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                fabMenuOpen = it
+            },
+            items = com.bytelog.app.ui.diary.diaryMenuItems(
+                onSearch = {
+                    val meal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
+                    onNavigateToSearch(meal.id, meal.name, selectedDate)
+                },
+                onScan = {
+                    val meal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
+                    onNavigateToBarcode(meal.id, meal.name, selectedDate)
+                },
+                onImport = onImportRecipe,
+                onAsk = onNavigateToChat
+            )
+        )
+      }
     }
 
     // Edit Food Entry Modal Bottom Sheet
@@ -1097,13 +1065,24 @@ fun MealCard(
         }
     }
 
+    // Expressive segmented group: the header and each food are separate rounded pieces with small gaps.
+    val hasBottom = entries.isNotEmpty()
+    val segOuter = 24.dp
+    val segInner = 6.dp
     Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+      Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(ByteSurfaceDark)
+            .clip(
+                if (hasBottom) RoundedCornerShape(topStart = segOuter, topEnd = segOuter, bottomStart = segInner, bottomEnd = segInner)
+                else RoundedCornerShape(segOuter)
+            )
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .padding(14.dp)
-    ) {
+      ) {
         if (isSelectionMode) {
             // Selection Mode Header
             Row(
@@ -1389,13 +1368,17 @@ fun MealCard(
             }
         }
 
+      }
+
         // Entries List
         if (entries.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                entries.forEach { entry ->
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                entries.forEachIndexed { index, entry ->
+                    val isLast = index == entries.lastIndex && !isSelectionMode
                     key(entry.id) {
                         SwipeableFoodEntryRow(
+                            shape = if (isLast) RoundedCornerShape(topStart = segInner, topEnd = segInner, bottomStart = segOuter, bottomEnd = segOuter)
+                                else RoundedCornerShape(segInner),
                             entry = entry,
                             isSelectionMode = isSelectionMode,
                             isSelected = selectedIds.contains(entry.id),
@@ -1425,13 +1408,12 @@ fun MealCard(
 
         // Batch Action Bar when in Selection Mode
         if (isSelectionMode && entries.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
             val selectedEntries = entries.filter { selectedIds.contains(it.id) }
             val count = selectedEntries.size
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(topStart = segInner, topEnd = segInner, bottomStart = segOuter, bottomEnd = segOuter))
                     .background(ByteSurfaceVariantDark)
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1546,6 +1528,7 @@ fun MealCard(
 @Composable
 fun SwipeableFoodEntryRow(
     entry: FoodEntry,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(10.dp),
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
     onToggleSelection: () -> Unit = {},
@@ -1565,8 +1548,8 @@ fun SwipeableFoodEntryRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (isSelected) ByteTomato.copy(alpha = 0.15f) else ByteSurfaceVariantDark)
+                .clip(shape)
+                .background(if (isSelected) ByteTomato.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainer)
                 .clickable { onToggleSelection() }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1642,16 +1625,16 @@ fun SwipeableFoodEntryRow(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(shape)
                         .background(color)
                         .padding(horizontal = 16.dp),
                     contentAlignment = if (dismissState.targetValue == SwipeToDismissBoxValue.StartToEnd)
                         Alignment.CenterStart else Alignment.CenterEnd
                 ) {
                     if (dismissState.targetValue == SwipeToDismissBoxValue.StartToEnd) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Duplicate", tint = ByteCream)
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Duplicate", tint = ByteOnTomato)
                     } else {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ByteCream)
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
                     }
                 }
             }
@@ -1659,8 +1642,8 @@ fun SwipeableFoodEntryRow(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(ByteSurfaceVariantDark)
+                    .clip(shape)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
                     .combinedClickable(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)

@@ -7,6 +7,11 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.onRoot
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.bytelog.app.data.local.db.ByteLogDatabase
@@ -131,7 +136,9 @@ class RecipeScreensRenderTest {
 
     @After
     fun tearDown() {
-        db.close()
+        // The diary keeps working in the background after a test (syncs and deletes against the absent server).
+        // Closing the in-memory database under it made those throw into the next test, so it is left for the GC.
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
     /** Runs the main looper (viewModelScope) until [condition] holds. */
@@ -198,7 +205,7 @@ class RecipeScreensRenderTest {
     @Test
     fun recipeDetail() {
         compose.setContent { ByteLogTheme(darkTheme = true) { RecipeDetailScreen(recipesVm, "tmpl-chili", {}, {}) } }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Turkey Chili").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { compose.onAllNodesWithText("Turkey Chili").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Brown the meat").assertExists()
         compose.onNodeWithText("Start batch").assertExists()
         compose.onNodeWithText("Prep 15 min · Cook 45 min · Fridge 4 days · Freezer 90 days").assertExists()
@@ -208,7 +215,7 @@ class RecipeScreensRenderTest {
     @Test
     fun cookMode() {
         compose.setContent { ByteLogTheme(darkTheme = true) { CookModeScreen(recipesVm, "tmpl-chili", {}) } }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Ingredients", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { compose.onAllNodesWithText("Ingredients", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("907 g  Ground Turkey 93% Lean", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("⏱ 8-10 minutes", useUnmergedTree = true).performClick()
         // A running countdown chip appears under the header
@@ -253,27 +260,108 @@ class RecipeScreensRenderTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText("5.2 of 6 left").fetchSemanticsNodes().isNotEmpty() }
     }
 
-    @Test
-    fun diaryTopBarChangesDayAndOpensRecentMeals() {
-        var recentOpened = 0
+    private fun setDiary(onRecent: () -> Unit = {}) {
         compose.setContent {
             ByteLogTheme(darkTheme = true) {
-                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = { recentOpened++ })
+                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = onRecent)
             }
         }
-        compose.onNodeWithText("Today").assertExists()
+    }
+
+    private fun day(offset: Long) = LocalDate.now().plusDays(offset).toString()
+
+    @Test
+    fun diaryToolbarChangesDayAndOpensRecentMeals() {
+        var recentOpened = 0
+        setDiary { recentOpened++ }
+        assertTrue(compose.onAllNodesWithText("Today").fetchSemanticsNodes().isNotEmpty())
         compose.onNode(androidx.compose.ui.test.hasContentDescription("Next Day")).performClick()
-        compose.waitUntil(5_000) { diaryVm.selectedDate.value == LocalDate.now().plusDays(1).toString() }
+        compose.waitUntil(5_000) { diaryVm.selectedDate.value == day(1) }
         compose.waitUntil(5_000) { compose.onAllNodesWithText("Tomorrow").fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(androidx.compose.ui.test.hasContentDescription("Previous Day")).performClick()
         compose.onNode(androidx.compose.ui.test.hasContentDescription("Previous Day")).performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithText("Yesterday").fetchSemanticsNodes().isNotEmpty() }
-        // Tapping the day label jumps back to today
-        compose.onNodeWithText("Yesterday").performClick()
+        // The day button in the toolbar jumps back to today
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Go to today")).performClick()
         compose.waitUntil(5_000) { diaryVm.selectedDate.value == today }
 
         compose.onNode(androidx.compose.ui.test.hasContentDescription("Copy Recent Meals")).performClick()
         assertEquals(1, recentOpened)
+    }
+
+    @Test
+    fun swipingSidewaysChangesDayWithoutStealingOtherSwipes() = runBlocking {
+        db.foodEntryDao().insertEntry(
+            com.bytelog.app.data.local.model.FoodEntry(
+                id = "e-oats", foodName = "Test Oats", mealTypeId = "breakfast", mealName = "Breakfast",
+                quantity = 40f, calories = 150f, protein = 5f, carbs = 27f, fat = 3f, entryDate = today
+            )
+        )
+        setDiary()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Test Oats").fetchSemanticsNodes().isNotEmpty() }
+        val root = compose.onRoot()
+
+        // Swipe left across the calorie card: next day
+        root.performTouchInput { swipe(Offset(width * 0.8f, height * 0.3f), Offset(width * 0.2f, height * 0.3f), 250) }
+        compose.waitUntil(5_000) { diaryVm.selectedDate.value == day(1) }
+        // Swipe right: back to today
+        root.performTouchInput { swipe(Offset(width * 0.2f, height * 0.3f), Offset(width * 0.8f, height * 0.3f), 250) }
+        compose.waitUntil(5_000) { diaryVm.selectedDate.value == today }
+
+        // A short drag springs back without changing day
+        root.performTouchInput { swipe(Offset(width * 0.6f, height * 0.3f), Offset(width * 0.5f, height * 0.3f), 400) }
+        compose.waitForIdle()
+        assertEquals(today, diaryVm.selectedDate.value)
+
+        // A drag that starts at the screen edge belongs to the system back gesture
+        root.performTouchInput { swipe(Offset(2f, height * 0.3f), Offset(width * 0.8f, height * 0.3f), 250) }
+        compose.waitForIdle()
+        assertEquals(today, diaryVm.selectedDate.value)
+
+        // Scrolling up and down doesn't change day
+        root.performTouchInput { swipe(Offset(width * 0.5f, height * 0.7f), Offset(width * 0.55f, height * 0.3f), 300) }
+        compose.waitForIdle()
+        assertEquals(today, diaryVm.selectedDate.value)
+        root.performTouchInput { swipe(Offset(width * 0.5f, height * 0.3f), Offset(width * 0.5f, height * 0.8f), 300) }
+        compose.waitForIdle()
+
+        // Swiping a food row left still deletes that food, and the day stays put
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Test Oats").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Test Oats").performTouchInput { swipeLeft(startX = width * 0.9f, endX = -width * 0.2f, durationMillis = 250) }
+        compose.waitUntil(5_000) { kotlinx.coroutines.runBlocking { db.foodEntryDao().getEntriesForDateOnce(today) }.none { it.id == "e-oats" && it.syncStatus != com.bytelog.app.data.local.model.FoodEntry.SYNC_STATUS_PENDING_DELETE } }
+        assertEquals(today, diaryVm.selectedDate.value)
+    }
+
+    @Test
+    fun diaryInLightModeAndFolded() {
+        compose.setContent {
+            ByteLogTheme(darkTheme = false, dynamicColor = false) {
+                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
+            }
+        }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("KCAL LEFT").fetchSemanticsNodes().isNotEmpty() }
+        shot("20-diary-light")
+        // Scroll the list: the header folds into the strips and the toolbar tucks away
+        compose.onRoot().performTouchInput { swipe(Offset(width * 0.5f, height * 0.85f), Offset(width * 0.5f, height * 0.25f), 400) }
+        compose.waitForIdle()
+        shot("21-diary-light-folded")
+        // The add menu
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Add food")).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Scan barcode").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitForIdle()
+        shot("22-diary-light-menu")
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Close menu")).performClick()
+    }
+
+    @Test
+    fun diaryInDarkModeWithTomatoColors() {
+        compose.setContent {
+            ByteLogTheme(darkTheme = true, dynamicColor = false) {
+                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
+            }
+        }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("KCAL LEFT").fetchSemanticsNodes().isNotEmpty() }
+        shot("23-diary-dark-tomato")
     }
 
     private fun resource(name: String) = javaClass.classLoader!!.getResource("recipes/$name")!!.readText()

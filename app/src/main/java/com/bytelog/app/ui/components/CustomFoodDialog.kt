@@ -43,6 +43,7 @@ import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroFat
 import com.bytelog.app.ui.theme.MacroProtein
@@ -307,11 +308,11 @@ fun CustomFoodDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
                 ) {
                     if (isSaving) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = ByteCream)
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = ByteOnTomato)
                     } else {
                         Text(
                             text = "Save Custom Food to Sparky",
-                            color = ByteCream,
+                            color = ByteOnTomato,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )

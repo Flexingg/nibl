@@ -134,6 +134,27 @@ class ResearchScreensRenderTest {
         shot("08-settings-research")
     }
 
+    @Test fun lightModeSettings() {
+        var mode = com.bytelog.app.ui.theme.ThemeMode.SYSTEM
+        compose.setContent {
+            ByteLogTheme(darkTheme = false, dynamicColor = false) {
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
+                    com.bytelog.app.ui.components.AppearanceCard(com.bytelog.app.ui.theme.ThemeMode.LIGHT, false, onMode = { mode = it }, onDeviceColors = {})
+                    SparkyToolsCard(com.bytelog.app.data.remote.SparkyTools.allSlugs, {})
+                }
+            }
+        }
+        compose.onNodeWithText("Dark", substring = true).performClick()
+        assertTrue(mode == com.bytelog.app.ui.theme.ThemeMode.DARK)
+        shot("24-settings-light")
+    }
+
+    @Test fun lightModeChat() {
+        compose.setContent { ByteLogTheme(darkTheme = false, dynamicColor = false) { SparkyChatScreen(SparkyChatViewModel(chat), onNavigateBack = {}) } }
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Web search"), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("25-chat-light")
+    }
+
     @Test fun chatWithWebSearchShowsSourcesAndApproval() {
         replies.add("""{"content":[
             {"type":"server_tool_use","id":"s1","name":"web_search","input":{"query":"chipotle chicken bowl nutrition"}},

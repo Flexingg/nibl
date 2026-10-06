@@ -59,6 +59,7 @@ import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import java.io.ByteArrayOutputStream
 
 @Composable
@@ -315,14 +316,14 @@ fun GenerateFoodAiDialog(
                 enabled = foodName.isNotBlank() && !isGenerating,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = ByteTomato,
-                    contentColor = ByteCream
+                    contentColor = ByteOnTomato
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 if (isGenerating) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
-                        color = ByteCream,
+                        color = ByteOnTomato,
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))

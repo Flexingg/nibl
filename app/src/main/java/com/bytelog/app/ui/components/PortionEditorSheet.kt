@@ -34,6 +34,7 @@ import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroFat
 import com.bytelog.app.ui.theme.MacroProtein
@@ -200,7 +201,7 @@ fun PortionEditorSheet(
         ) {
             Text(
                 text = "Apply Quantity",
-                color = ByteCream,
+                color = ByteOnTomato,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )

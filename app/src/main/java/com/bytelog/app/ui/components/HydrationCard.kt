@@ -43,8 +43,8 @@ import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import kotlin.math.roundToInt
 
-private val HydrationCyan = Color(0xFF38BDF8)
-private val HydrationCyanSubtle = Color(0x2638BDF8)
+private val HydrationCyan: Color @Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.bytelog.app.ui.theme.MacroProtein
+private val HydrationCyanSubtle: Color @Composable @androidx.compose.runtime.ReadOnlyComposable get() = com.bytelog.app.ui.theme.MacroProtein.copy(alpha = 0.15f)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
