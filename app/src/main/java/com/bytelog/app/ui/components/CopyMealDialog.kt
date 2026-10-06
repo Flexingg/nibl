@@ -80,7 +80,7 @@ fun CopyMealDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(28.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -163,7 +163,7 @@ fun CopyMealDialog(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -174,7 +174,7 @@ fun CopyMealDialog(
                         ) {
                             Text(
                                 text = label,
-                                color = if (isSelected) ByteCream else ByteCreamMuted,
+                                color = if (isSelected) ByteOnTomato else ByteCreamMuted,
                                 fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
@@ -263,7 +263,7 @@ fun CopyMealDialog(
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(50)
                     ) {
                         Text("Cancel", color = ByteTextSecondary, fontSize = 14.sp)
                     }
@@ -277,7 +277,7 @@ fun CopyMealDialog(
                         modifier = Modifier
                             .weight(2f)
                             .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
                     ) {
                         Icon(

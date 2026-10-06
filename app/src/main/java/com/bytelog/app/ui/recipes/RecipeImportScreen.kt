@@ -87,21 +87,20 @@ fun RecipeImportScreen(
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = ByteInkDark) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
-                IconButton(onClick = { viewModel.resetImport(); onBack() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = ByteCream)
-                }
-                Text(
-                    if (state is ImportState.Review) "Review recipe" else "Import a recipe",
-                    color = ByteCream, fontSize = 20.sp, fontWeight = FontWeight.Bold
-                )
-            }
+        Column(Modifier.fillMaxSize().padding(pad)) {
+            com.bytelog.app.ui.components.ScreenHeader(
+                title = if (state is ImportState.Review) "Review recipe" else "Import a recipe",
+                subtitle = if (state is ImportState.Review) "Check each ingredient before saving" else "Paste a link or the recipe text",
+                onBack = { viewModel.resetImport(); onBack() },
+                fraction = { 0f },
+                statusBarPadding = false
+            )
+          Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             when (val s = state) {
                 ImportState.Idle -> ImportInput(onSubmit = viewModel::startImport, onBrowse = viewModel::openBrowser)
                 is ImportState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = ByteTomato)
+                        com.bytelog.app.ui.diary.LoadingSpinner(Modifier.size(56.dp), color = ByteTomato)
                         Spacer(Modifier.height(12.dp))
                         Text(s.message, color = ByteTextSecondary)
                     }
@@ -118,7 +117,7 @@ fun RecipeImportScreen(
                     Button(
                         onClick = { viewModel.openBrowser(s.url) },
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(50),
                         modifier = Modifier.fillMaxWidth().height(50.dp)
                     ) { Text("Open in built-in browser", color = ByteOnTomato, fontWeight = FontWeight.Bold) }
                     Spacer(Modifier.height(16.dp))
@@ -136,6 +135,7 @@ fun RecipeImportScreen(
                 }
                 is ImportState.Review -> ImportReview(s, viewModel, onSaved)
             }
+          }
         }
     }
 }
@@ -168,7 +168,7 @@ private fun ImportInput(onSubmit: (String) -> Unit, onBrowse: (String) -> Unit =
             onClick = { onSubmit(text) },
             enabled = text.isNotBlank(),
             colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(50),
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) {
             Icon(Icons.Default.ContentPaste, null, tint = ByteOnTomato, modifier = Modifier.size(18.dp))
@@ -231,7 +231,7 @@ private fun ImportReview(s: ImportState.Review, viewModel: RecipesViewModel, onS
             Spacer(Modifier.height(10.dp))
 
             // Totals and sanity check against the site's own nutrition
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(ByteSurfaceDark).padding(12.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(ByteSurfaceDark).padding(12.dp)) {
                 Text("Per serving", color = ByteTextSecondary, fontSize = 12.sp)
                 MacroLine(s.perServing, size = 13)
                 s.recipe.siteNutrition?.calories?.let { site ->
@@ -256,7 +256,7 @@ private fun ImportReview(s: ImportState.Review, viewModel: RecipesViewModel, onS
                 )
                 if (unresolved > 0) {
                     if (s.aiRunning) {
-                        CircularProgressIndicator(Modifier.size(18.dp), color = ByteTomato, strokeWidth = 2.dp)
+                        com.bytelog.app.ui.diary.LoadingSpinner(Modifier.size(18.dp), color = ByteTomato, strokeWidth = 2.dp)
                     } else {
                         Row(
                             Modifier.clip(RoundedCornerShape(50)).background(ByteTomato.copy(alpha = 0.15f))
@@ -291,10 +291,10 @@ private fun ImportReview(s: ImportState.Review, viewModel: RecipesViewModel, onS
                 },
                 enabled = !s.saving && s.matches.any { it.include && it.food != null },
                 colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(50),
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
-                if (s.saving) CircularProgressIndicator(Modifier.size(18.dp), color = ByteOnTomato, strokeWidth = 2.dp)
+                if (s.saving) com.bytelog.app.ui.diary.LoadingSpinner(Modifier.size(18.dp), color = ByteOnTomato, strokeWidth = 2.dp)
                 else Text("Save recipe to Sparky", color = ByteOnTomato, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(24.dp))
@@ -334,7 +334,7 @@ private fun IngredientRow(
         else -> OkGreen
     }
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(ByteSurfaceDark).clickable(onClick = onPick),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(ByteSurfaceDark).clickable(onClick = onPick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.width(4.dp).height(72.dp).background(color))
@@ -367,12 +367,12 @@ private fun IngredientRow(
                 Text(
                     "${fmt1(Math.round(m.quantity * 10f) / 10f)} $unitLabel",
                     color = MacroProtein, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onAmount).padding(4.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onAmount).padding(4.dp)
                 )
                 m.grams?.takeIf { m.unit != "g" }?.let { Text("≈${fmt0(it)} g", color = ByteTextSecondary, fontSize = 10.sp) }
                 if (m.needsReview && m.include) {
                     Text("Looks right", color = OkGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onConfirm).padding(4.dp))
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onConfirm).padding(4.dp))
                 }
             }
         }

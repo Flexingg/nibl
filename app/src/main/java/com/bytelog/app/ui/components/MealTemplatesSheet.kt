@@ -141,7 +141,7 @@ fun MealTemplatesSheet(
                     modifier = Modifier
                         .weight(1f)
                         .height(46.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
                 ) {
                     Icon(
@@ -161,7 +161,7 @@ fun MealTemplatesSheet(
                     modifier = Modifier
                         .weight(1f)
                         .height(46.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(containerColor = ByteSurfaceVariantDark)
                 ) {
                     Icon(
@@ -211,7 +211,7 @@ fun MealTemplatesSheet(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(ByteCardDark)
                                 .clickable { onOpenRecipe(template.id) }
                                 .padding(14.dp)
@@ -292,7 +292,7 @@ fun MealTemplatesSheet(
 
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
+                                            .clip(RoundedCornerShape(12.dp))
                                             .background(MacroProtein)
                                             .clickable {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)

@@ -105,7 +105,7 @@ fun GenerateFoodAiDialog(
     AlertDialog(
         onDismissRequest = { if (!isGenerating) onDismiss() },
         containerColor = ByteSurfaceDark,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(28.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -199,7 +199,7 @@ fun GenerateFoodAiDialog(
                             onClick = { cameraLauncher.launch(null) },
                             enabled = !isGenerating,
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                         ) {
                             Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -211,7 +211,7 @@ fun GenerateFoodAiDialog(
                             onClick = { galleryLauncher.launch("image/*") },
                             enabled = !isGenerating,
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                         ) {
                             Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -229,7 +229,7 @@ fun GenerateFoodAiDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(ByteSurfaceVariantDark.copy(alpha = 0.5f))
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -241,7 +241,7 @@ fun GenerateFoodAiDialog(
                                 contentDescription = "Attached food photo",
                                 modifier = Modifier
                                     .size(54.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
+                                    .clip(RoundedCornerShape(12.dp)),
                                 contentScale = ContentScale.Crop
                             )
                             Spacer(modifier = Modifier.width(10.dp))
@@ -292,7 +292,7 @@ fun GenerateFoodAiDialog(
                             .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(
+                        com.bytelog.app.ui.diary.LoadingSpinner(
                             modifier = Modifier.size(16.dp),
                             color = ByteTomato,
                             strokeWidth = 2.dp
@@ -318,10 +318,10 @@ fun GenerateFoodAiDialog(
                     containerColor = ByteTomato,
                     contentColor = ByteOnTomato
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(50)
             ) {
                 if (isGenerating) {
-                    CircularProgressIndicator(
+                    com.bytelog.app.ui.diary.LoadingSpinner(
                         modifier = Modifier.size(16.dp),
                         color = ByteOnTomato,
                         strokeWidth = 2.dp

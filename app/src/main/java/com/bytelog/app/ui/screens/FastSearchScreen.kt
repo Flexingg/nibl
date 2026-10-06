@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import com.bytelog.app.ui.components.pressBounce
+import com.bytelog.app.ui.components.popIn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -39,6 +42,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -81,6 +85,7 @@ import com.bytelog.app.ui.components.PortionEditorSheet
 import com.bytelog.app.ui.components.QuickAddDialog
 import com.bytelog.app.ui.components.VoiceLogDialog
 import com.bytelog.app.ui.theme.ByteCream
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
 import com.bytelog.app.ui.theme.ByteSurfaceDark
@@ -151,27 +156,19 @@ fun FastSearchScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Search Header Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = ByteCream
-                    )
-                }
-
-                // Search Input Field
+            // Expressive header: title, a big pill search field and the other ways to add food
+            com.bytelog.app.ui.components.ScreenHeader(
+                title = "Log food",
+                subtitle = "Search, scan, speak or add your own",
+                onBack = onNavigateBack,
+                statusBarPadding = false
+            )
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 TextField(
                     value = searchQuery,
                     onValueChange = { viewModel.setSearchQuery(it) },
                     placeholder = {
-                        Text("Search foods or brands…", color = ByteCreamMuted, fontSize = 15.sp)
+                        Text("Search foods or brands…", color = ByteCreamMuted, fontSize = 16.sp)
                     },
                     leadingIcon = {
                         Icon(
@@ -189,46 +186,47 @@ fun FastSearchScreen(
                     },
                     singleLine = true,
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = ByteSurfaceDark,
-                        unfocusedContainerColor = ByteSurfaceDark,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         focusedTextColor = ByteCream,
                         unfocusedTextColor = ByteCream,
                         cursorColor = ByteTomato,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(50),
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
+                        .height(58.dp)
                         .focusRequester(focusRequester)
                 )
 
-                // Quick Action Icons
-                IconButton(onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    showCustomFoodDialog = true
-                }) {
-                    Icon(Icons.Default.Fastfood, contentDescription = "New Custom Food", tint = ByteCream)
-                }
-
-                IconButton(onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    showQuickAddDialog = true
-                }) {
-                    Icon(Icons.Default.PostAdd, contentDescription = "Quick Add", tint = ByteCream)
-                }
-
-                IconButton(onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    showVoiceLogDialog = true
-                }) {
-                    Icon(Icons.Default.Mic, contentDescription = "Voice Log", tint = ByteCream)
-                }
-
-                IconButton(onClick = onNavigateToBarcode) {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan", tint = ByteTomato)
-                }
+                val cs = MaterialTheme.colorScheme
+                com.bytelog.app.ui.diary.ConnectedButtonGroup(
+                    listOf(
+                        com.bytelog.app.ui.diary.GroupButton(
+                            label = "Scan", icon = Icons.Default.QrCodeScanner, description = "Scan", weight = 1.1f,
+                            container = cs.primaryContainer, content = cs.onPrimaryContainer, onClick = onNavigateToBarcode
+                        ),
+                        com.bytelog.app.ui.diary.GroupButton(
+                            icon = Icons.Default.Mic, description = "Voice Log", weight = 0.8f,
+                            container = cs.surfaceContainerHighest, content = cs.onSurface,
+                            onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); showVoiceLogDialog = true }
+                        ),
+                        com.bytelog.app.ui.diary.GroupButton(
+                            icon = Icons.Default.PostAdd, description = "Quick Add", weight = 0.8f,
+                            container = cs.surfaceContainerHighest, content = cs.onSurface,
+                            onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); showQuickAddDialog = true }
+                        ),
+                        com.bytelog.app.ui.diary.GroupButton(
+                            icon = Icons.Default.Fastfood, description = "New Custom Food", weight = 0.8f,
+                            container = cs.surfaceContainerHighest, content = cs.onSurface,
+                            onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); showCustomFoodDialog = true }
+                        )
+                    )
+                )
             }
+            Spacer(Modifier.height(4.dp))
 
             // Meal Picker Selector Chips (Deduplicated)
             val distinctMealTypes = remember(availableMealTypes) {
@@ -246,7 +244,7 @@ fun FastSearchScreen(
                         val isSelected = cleanName.equals(selectedMealName, ignoreCase = true)
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(if (isSelected) ByteTomato else ByteSurfaceDark)
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -256,7 +254,7 @@ fun FastSearchScreen(
                         ) {
                             Text(
                                 text = cleanName,
-                                color = if (isSelected) ByteCream else ByteCreamMuted,
+                                color = if (isSelected) ByteOnTomato else ByteCreamMuted,
                                 fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
@@ -274,7 +272,7 @@ fun FastSearchScreen(
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator(
+                    com.bytelog.app.ui.diary.LoadingSpinner(
                         modifier = Modifier.size(12.dp),
                         color = ByteTomato,
                         strokeWidth = 1.5.dp
@@ -326,11 +324,12 @@ fun FastSearchScreen(
                 else -> favoriteFoods
             }
 
+            val poppedResults = remember { mutableSetOf<Any>() }
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 if (searchQuery.isNotBlank() && displayFoods.isEmpty()) {
                     item {
@@ -342,7 +341,7 @@ fun FastSearchScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    CircularProgressIndicator(
+                                    com.bytelog.app.ui.diary.LoadingSpinner(
                                         color = ByteTomato,
                                         modifier = Modifier.size(32.dp),
                                         strokeWidth = 3.dp
@@ -377,9 +376,9 @@ fun FastSearchScreen(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(16.dp))
+                                            .clip(RoundedCornerShape(24.dp))
                                             .background(ByteSurfaceDark)
-                                            .border(1.dp, ByteTomato.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                            .border(1.dp, ByteTomato.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
                                             .padding(18.dp)
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -409,7 +408,7 @@ fun FastSearchScreen(
                                             Button(
                                                 onClick = { showAiGenerateDialog = true },
                                                 colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
-                                                shape = RoundedCornerShape(12.dp),
+                                                shape = RoundedCornerShape(50),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Icon(
@@ -436,7 +435,7 @@ fun FastSearchScreen(
                                     ) {
                                         OutlinedButton(
                                             onClick = { showCustomFoodDialog = true },
-                                            shape = RoundedCornerShape(12.dp),
+                                            shape = RoundedCornerShape(50),
                                             modifier = Modifier.weight(1f),
                                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                                         ) {
@@ -446,7 +445,7 @@ fun FastSearchScreen(
                                         }
                                         OutlinedButton(
                                             onClick = onNavigateToBarcode,
-                                            shape = RoundedCornerShape(12.dp),
+                                            shape = RoundedCornerShape(50),
                                             modifier = Modifier.weight(1f),
                                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                                         ) {
@@ -460,8 +459,16 @@ fun FastSearchScreen(
                         }
                     }
                 } else {
-                    items(displayFoods, key = { it.id }) { food ->
+                    itemsIndexed(displayFoods, key = { _, f -> f.id }) { index, food ->
+                        // Results read as one segmented group: round outer corners, tight inner ones.
+                        val outer = 24.dp; val inner = 6.dp
+                        val rowShape = RoundedCornerShape(
+                            topStart = if (index == 0) outer else inner, topEnd = if (index == 0) outer else inner,
+                            bottomStart = if (index == displayFoods.lastIndex) outer else inner, bottomEnd = if (index == displayFoods.lastIndex) outer else inner
+                        )
                         FoodSearchRow(
+                            shape = rowShape,
+                            modifier = Modifier.popIn(food.id, poppedResults, (index.coerceAtMost(8) * 25).toLong()),
                             food = food,
                             onQuickAdd = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -618,6 +625,8 @@ fun FastSearchScreen(
 @Composable
 fun FoodSearchRow(
     food: FoodItem,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
+    modifier: Modifier = Modifier,
     onQuickAdd: () -> Unit,
     onDoubleTapQuickAdd: () -> Unit,
     onAdjustPortion: () -> Unit,
@@ -626,10 +635,11 @@ fun FoodSearchRow(
     val haptic = LocalHapticFeedback.current
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(ByteSurfaceDark)
+            .pressBounce(0.98f)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .combinedClickable(
                 onClick = onQuickAdd,
                 onDoubleClick = onDoubleTapQuickAdd,
@@ -680,7 +690,7 @@ fun FoodSearchRow(
             // Calories Tag (Tappable to tweak portion)
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(ByteSurfaceVariantDark)
                     .clickable(onClick = onAdjustPortion)
                     .padding(horizontal = 10.dp, vertical = 6.dp)

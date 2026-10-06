@@ -78,7 +78,7 @@ fun CustomFoodDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(28.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -304,11 +304,11 @@ fun CustomFoodDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
                 ) {
                     if (isSaving) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = ByteOnTomato)
+                        com.bytelog.app.ui.diary.LoadingSpinner(modifier = Modifier.size(20.dp), color = ByteOnTomato)
                     } else {
                         Text(
                             text = "Save Custom Food to Sparky",

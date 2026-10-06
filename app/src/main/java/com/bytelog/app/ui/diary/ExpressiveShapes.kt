@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -106,8 +108,8 @@ fun rememberMorphState(shape: BlobShape, spinDegrees: Float = 60f): MorphState {
     return state
 }
 
-/** Draws [radii] (from a [MorphState]) as a smooth closed shape. */
-fun DrawScope.drawBlob(radii: FloatArray, rotationDegrees: Float, color: Color, radius: Float, center: Offset = this.center) {
+/** The outline of [radii] (from a [MorphState]) as a smooth closed path. */
+fun blobPath(radii: FloatArray, rotationDegrees: Float, radius: Float, center: Offset): Path {
     val n = radii.size
     val rot = rotationDegrees / 180f * PI.toFloat()
     val xs = FloatArray(n); val ys = FloatArray(n)
@@ -116,7 +118,7 @@ fun DrawScope.drawBlob(radii: FloatArray, rotationDegrees: Float, color: Color, 
         xs[i] = center.x + cos(a) * radii[i] * radius
         ys[i] = center.y + sin(a) * radii[i] * radius
     }
-    val path = Path().apply {
+    return Path().apply {
         moveTo(xs[0], ys[0])
         for (i in 0 until n) {
             val i0 = (i - 1 + n) % n; val i2 = (i + 1) % n; val i3 = (i + 2) % n
@@ -128,7 +130,41 @@ fun DrawScope.drawBlob(radii: FloatArray, rotationDegrees: Float, color: Color, 
         }
         close()
     }
-    drawPath(path, color)
+}
+
+/** Draws [radii] (from a [MorphState]) as a smooth closed shape. */
+fun DrawScope.drawBlob(radii: FloatArray, rotationDegrees: Float, color: Color, radius: Float, center: Offset = this.center) {
+    drawPath(blobPath(radii, rotationDegrees, radius, center), color)
+}
+
+/**
+ * Fills a shape like a glass: [level] (0..1) of its height from the bottom, with a gently moving wavy surface.
+ * The empty part is drawn in [emptyColor].
+ */
+fun DrawScope.drawFilledBlob(
+    radii: FloatArray, rotationDegrees: Float, radius: Float, level: Float, phase: Float,
+    fillColor: Color, emptyColor: Color, center: Offset = this.center
+) {
+    val outline = blobPath(radii, rotationDegrees, radius, center)
+    drawPath(outline, emptyColor)
+    val top = center.y - radius * 1.15f
+    val bottom = center.y + radius * 1.15f
+    val surface = bottom - (bottom - top) * level.coerceIn(0f, 1f)
+    if (level <= 0f) return
+    val amp = if (level >= 1f) 0f else radius * 0.07f
+    val left = center.x - radius * 1.2f; val right = center.x + radius * 1.2f
+    val liquid = Path().apply {
+        moveTo(left, bottom)
+        lineTo(left, surface)
+        var x = left
+        while (x < right) {
+            x = min(right, x + 2f)
+            lineTo(x, surface + amp * sin((x - left) / radius * 3.2f - phase))
+        }
+        lineTo(right, bottom)
+        close()
+    }
+    clipPath(outline) { drawPath(liquid, fillColor) }
 }
 
 /** A shape that morphs to [shape] whenever it changes. */
@@ -229,3 +265,28 @@ fun MorphingLoadingIndicator(modifier: Modifier = Modifier, indicatorSize: Dp = 
 
 internal fun lerpF(a: Float, b: Float, t: Float) = a + (b - a) * t
 internal fun clamp01(v: Float) = max(0f, min(1f, v))
+
+/**
+ * Drop-in for an indeterminate CircularProgressIndicator: the expressive shape-shifting indicator, sized by
+ * [modifier] (24 dp by default). [color] tints the moving shape; the container is a soft tint of it.
+ */
+@Composable
+fun LoadingSpinner(
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary,
+    @Suppress("UNUSED_PARAMETER") strokeWidth: Dp = 0.dp,
+    @Suppress("UNUSED_PARAMETER") trackColor: Color = Color.Transparent
+) {
+    val reduce = LocalReduceMotion.current
+    val state = remember { MorphState(BlobShape.COOKIE9) }
+    val spin = rememberInfiniteTransition(label = "spinner").animateFloat(0f, 360f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "spinner_spin")
+    LaunchedEffect(Unit) {
+        val seq = listOf(BlobShape.CLOVER4, BlobShape.PENTAGON, BlobShape.FLOWER8, BlobShape.SUNNY12, BlobShape.COOKIE9)
+        var i = 0
+        while (true) { delay(550); state.morphTo(seq[i++ % seq.size], 0f, reduce) }
+    }
+    Canvas(modifier.defaultMinSize(24.dp, 24.dp)) {
+        drawCircle(color.copy(alpha = 0.18f))
+        drawBlob(state.current(), if (reduce) 0f else spin.value, color, size.minDimension * 0.3f)
+    }
+}

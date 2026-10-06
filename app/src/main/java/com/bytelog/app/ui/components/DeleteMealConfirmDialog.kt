@@ -51,7 +51,7 @@ fun DeleteMealConfirmDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(28.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -105,7 +105,7 @@ fun DeleteMealConfirmDialog(
                         modifier = Modifier
                             .weight(1f)
                             .height(46.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(50)
                     ) {
                         Text("Cancel", color = ByteTextSecondary, fontSize = 14.sp)
                     }
@@ -119,7 +119,7 @@ fun DeleteMealConfirmDialog(
                         modifier = Modifier
                             .weight(1f)
                             .height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                     ) {
                         Text("Clear Meal", color = ByteCream, fontSize = 14.sp, fontWeight = FontWeight.Bold)

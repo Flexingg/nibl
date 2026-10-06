@@ -154,7 +154,7 @@ fun EditFoodEntrySheet(
                     val isSelected = mt.id == selectedMealTypeId || mt.name.equals(selectedMealName, ignoreCase = true)
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -165,7 +165,7 @@ fun EditFoodEntrySheet(
                     ) {
                         Text(
                             text = cleanName,
-                            color = if (isSelected) ByteCream else ByteCreamMuted,
+                            color = if (isSelected) ByteOnTomato else ByteCreamMuted,
                             fontSize = 12.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                         )
@@ -198,7 +198,7 @@ fun EditFoodEntrySheet(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -209,7 +209,7 @@ fun EditFoodEntrySheet(
                 ) {
                     Text(
                         text = label,
-                        color = if (isSelected) ByteCream else ByteCreamMuted,
+                        color = if (isSelected) ByteOnTomato else ByteCreamMuted,
                         fontSize = 11.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                     )
@@ -244,7 +244,7 @@ fun EditFoodEntrySheet(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(ByteSurfaceVariantDark)
                 .padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -318,7 +318,7 @@ fun EditFoodEntrySheet(
                     val isSelected = selectedUnit.equals(unit, ignoreCase = true)
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -328,7 +328,7 @@ fun EditFoodEntrySheet(
                     ) {
                         Text(
                             text = unit,
-                            color = if (isSelected) ByteCream else ByteCreamMuted,
+                            color = if (isSelected) ByteOnTomato else ByteCreamMuted,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -368,7 +368,7 @@ fun EditFoodEntrySheet(
                 modifier = Modifier
                     .weight(1f)
                     .height(48.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = Color(0xFFEF4444)
                 ),
@@ -412,7 +412,7 @@ fun EditFoodEntrySheet(
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MacroProtein
                     ),
@@ -456,7 +456,7 @@ fun EditFoodEntrySheet(
                 modifier = Modifier
                     .weight(if (onCopy != null) 1.6f else 2f)
                     .height(48.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
             ) {

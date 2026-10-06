@@ -120,14 +120,13 @@ fun CookModeScreen(viewModel: RecipesViewModel, templateId: String, onClose: () 
         val steps = r.steps
 
         Column(Modifier.fillMaxSize().padding(pad)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close", tint = ByteCream) }
-                Column(Modifier.weight(1f)) {
-                    Text(r.template.name, color = ByteCream, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("${checkedSteps.size} of ${steps.size} steps done · screen stays on", color = ByteTextSecondary, fontSize = 12.sp)
-                }
-                TextButton(onClick = { showBatch = true }) { Text("Done", color = ByteTomato, fontWeight = FontWeight.Bold) }
-            }
+            com.bytelog.app.ui.components.ScreenHeader(
+                title = r.template.name,
+                subtitle = "${checkedSteps.size} of ${steps.size} steps done · screen stays on",
+                onBack = onClose,
+                statusBarPadding = false,
+                actions = { TextButton(onClick = { showBatch = true }) { Text("Done", color = ByteTomato, fontWeight = FontWeight.Bold) } }
+            )
 
             if (timers.isNotEmpty()) {
                 LazyRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -140,11 +139,11 @@ fun CookModeScreen(viewModel: RecipesViewModel, templateId: String, onClose: () 
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Timer, null, tint = ByteCream, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Timer, null, tint = if (t.rang) ByteOnTomato else ByteCream, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 if (t.rang) "${t.label} — done! (tap to clear)" else "${TimerDetector.format(left)} · ${t.label}",
-                                color = ByteCream, fontSize = 15.sp, fontWeight = FontWeight.Bold
+                                color = if (t.rang) ByteOnTomato else ByteCream, fontSize = 15.sp, fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -208,7 +207,7 @@ fun CookModeScreen(viewModel: RecipesViewModel, templateId: String, onClose: () 
                     Button(
                         onClick = { showBatch = true },
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(50),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
                     ) { Text("Finished cooking — start a batch", color = ByteOnTomato, fontWeight = FontWeight.Bold) }
                     TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close without a batch", color = ByteTextSecondary) }
@@ -239,7 +238,7 @@ fun CookModeScreen(viewModel: RecipesViewModel, templateId: String, onClose: () 
 @Composable
 private fun CheckRow(done: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
             .background(if (done) ByteSurfaceDark.copy(alpha = 0.5f) else ByteSurfaceDark)
             .clickable(onClick = onToggle)
             .padding(12.dp),

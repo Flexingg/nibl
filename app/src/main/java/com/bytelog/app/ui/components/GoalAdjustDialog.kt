@@ -101,7 +101,7 @@ fun GoalAdjustDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(28.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -163,7 +163,7 @@ fun GoalAdjustDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(ByteSurfaceVariantDark)
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -204,7 +204,7 @@ fun GoalAdjustDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(20.dp))
                         .background(ByteSurfaceVariantDark.copy(alpha = 0.6f))
                         .padding(14.dp)
                 ) {
@@ -264,12 +264,12 @@ fun GoalAdjustDialog(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     presets.forEach { preset ->
                         val isSelected = enabled && selectedOffset == preset.offset && selectedMode == preset.mode
-                        val borderMod = if (isSelected) Modifier.border(1.5.dp, ByteTomato, RoundedCornerShape(12.dp)) else Modifier
+                        val borderMod = if (isSelected) Modifier.border(1.5.dp, ByteTomato, RoundedCornerShape(16.dp)) else Modifier
 
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(if (isSelected) ByteTomato.copy(alpha = 0.12f) else ByteSurfaceVariantDark)
                                 .then(borderMod)
                                 .clickable {
@@ -316,9 +316,9 @@ fun GoalAdjustDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(20.dp))
                         .background(ByteTomato.copy(alpha = 0.1f))
-                        .border(1.dp, ByteTomato.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+                        .border(1.dp, ByteTomato.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
                         .padding(14.dp)
                 ) {
                     Column {
@@ -381,7 +381,7 @@ fun GoalAdjustDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
                 ) {
                     Text(

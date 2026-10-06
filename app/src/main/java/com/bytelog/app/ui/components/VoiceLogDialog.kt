@@ -100,7 +100,7 @@ fun VoiceLogDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = ByteSurfaceDark),
             modifier = Modifier.fillMaxWidth().padding(16.dp)
         ) {
@@ -154,7 +154,7 @@ fun VoiceLogDialog(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(50)
                     ) {
                         Text("Stage in Tray", color = ByteOnTomato, fontWeight = FontWeight.Bold)
                     }

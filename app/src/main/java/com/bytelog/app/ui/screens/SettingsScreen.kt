@@ -199,6 +199,8 @@ fun SettingsScreen(
         reminderSmartNudge = reminderSmartNudgePref
     }
 
+    val pageScroll = rememberScrollState()
+    val headerFraction = com.bytelog.app.ui.components.rememberScrollFraction(pageScroll)
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = ByteInkDark,
@@ -206,7 +208,8 @@ fun SettingsScreen(
             com.bytelog.app.ui.components.ScreenHeader(
                 title = "Settings",
                 subtitle = "Server, goals, reminders and AI",
-                onBack = onNavigateBack
+                onBack = onNavigateBack,
+                fraction = headerFraction
             )
         }
     ) { paddingValues ->
@@ -214,7 +217,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(pageScroll)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -232,7 +235,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(24.dp))
                     .background(ByteSurfaceDark)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -289,14 +292,14 @@ fun SettingsScreen(
                         },
                         enabled = !isTestingConnection,
                         modifier = Modifier.weight(1f).height(46.dp),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ByteSurfaceVariantDark,
                             contentColor = ByteCream
                         )
                     ) {
                         if (isTestingConnection) {
-                            CircularProgressIndicator(
+                            com.bytelog.app.ui.diary.LoadingSpinner(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp,
                                 color = ByteTomato
@@ -340,14 +343,14 @@ fun SettingsScreen(
                         },
                         enabled = !isManualSyncing,
                         modifier = Modifier.weight(1f).height(46.dp),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ByteSurfaceVariantDark,
                             contentColor = ByteCream
                         )
                     ) {
                         if (isManualSyncing) {
-                            CircularProgressIndicator(
+                            com.bytelog.app.ui.diary.LoadingSpinner(
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp,
                                 color = ByteTomato
@@ -377,9 +380,9 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(bgColor)
-                            .border(1.dp, borderColor.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .border(1.dp, borderColor.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
                             .padding(12.dp),
                         verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -412,7 +415,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(24.dp))
                     .background(ByteSurfaceDark)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -429,9 +432,9 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(Color(0xFF064E3B).copy(alpha = 0.4f))
-                            .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                             .padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -469,7 +472,7 @@ fun SettingsScreen(
                                     snackbarHostState.showSnackbar("Signed out of Sparky account.")
                                 }
                             },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteTomato)
                         ) {
                             Text("Sign Out", fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -558,11 +561,11 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
                 ) {
                     if (isSigningIn) {
-                        CircularProgressIndicator(
+                        com.bytelog.app.ui.diary.LoadingSpinner(
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
                             color = ByteOnTomato
@@ -606,7 +609,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(24.dp))
                     .background(ByteSurfaceDark)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -633,7 +636,7 @@ fun SettingsScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(42.dp),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF87171))
                 ) {
                     Icon(
@@ -660,7 +663,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(24.dp))
                     .background(ByteSurfaceDark)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -813,12 +816,12 @@ fun SettingsScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) MacroProtein.copy(alpha = 0.2f) else ByteSurfaceVariantDark)
                                 .border(
                                     width = if (isSelected) 1.dp else 0.dp,
                                     color = if (isSelected) MacroProtein else Color.Transparent,
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(12.dp)
                                 )
                                 .clickable {
                                     defaultContainerName = name
@@ -846,7 +849,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(24.dp))
                     .background(ByteSurfaceDark)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -968,12 +971,12 @@ fun SettingsScreen(
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (isSelected) ByteTomato.copy(alpha = 0.2f) else ByteSurfaceVariantDark)
                                         .border(
                                             width = if (isSelected) 1.dp else 0.dp,
                                             color = if (isSelected) ByteTomato else Color.Transparent,
-                                            shape = RoundedCornerShape(8.dp)
+                                            shape = RoundedCornerShape(12.dp)
                                         )
                                         .clickable {
                                             reminderHour = h
@@ -1001,7 +1004,7 @@ fun SettingsScreen(
                         OutlinedButton(
                             onClick = { showTimePickerDialog = true },
                             modifier = Modifier.fillMaxWidth().height(42.dp),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                         ) {
                             Icon(
@@ -1064,7 +1067,7 @@ fun SettingsScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(40.dp),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                     ) {
                         Icon(
@@ -1109,7 +1112,7 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
             ) {
                 Text(
@@ -1134,7 +1137,7 @@ fun SettingsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(28.dp))
                         .background(ByteSurfaceDark)
                         .padding(20.dp)
                 ) {
@@ -1202,25 +1205,25 @@ fun SettingsScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(RoundedCornerShape(10.dp))
                                         .background(if (!isPm) ByteTomato else ByteSurfaceVariantDark)
                                         .clickable {
                                             if (isPm) dialogHour -= 12
                                         }
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
-                                    Text("AM", color = ByteCream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("AM", color = if (!isPm) ByteOnTomato else ByteCream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(RoundedCornerShape(10.dp))
                                         .background(if (isPm) ByteTomato else ByteSurfaceVariantDark)
                                         .clickable {
                                             if (!isPm) dialogHour += 12
                                         }
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
-                                    Text("PM", color = ByteCream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("PM", color = if (isPm) ByteOnTomato else ByteCream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

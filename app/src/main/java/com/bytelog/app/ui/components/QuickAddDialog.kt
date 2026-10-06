@@ -69,7 +69,7 @@ fun QuickAddDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = ByteSurfaceDark),
             modifier = Modifier.fillMaxWidth().padding(16.dp)
         ) {
@@ -214,7 +214,7 @@ fun QuickAddDialog(
                             onConfirm(entry)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(50)
                     ) {
                         Text("Add Entry", color = ByteOnTomato, fontWeight = FontWeight.Bold)
                     }

@@ -188,7 +188,7 @@ fun RecipeBuilderSheet(
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Column(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(ByteCardDark).padding(14.dp)
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(ByteCardDark).padding(14.dp)
                     ) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Per serving", color = ByteTomato, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -212,7 +212,7 @@ fun RecipeBuilderSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(ByteCardDark)
                             .clickable { editingIndex = index }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -240,7 +240,7 @@ fun RecipeBuilderSheet(
 
                 item {
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { showDetails = !showDetails }.padding(vertical = 8.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { showDetails = !showDetails }.padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Directions & notes", color = ByteCream, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -296,7 +296,7 @@ fun RecipeBuilderSheet(
                 },
                 enabled = recipeName.isNotBlank() && ingredients.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
             ) {
                 Text("Save Recipe to Sparky Fitness", color = ByteOnTomato, fontSize = 15.sp, fontWeight = FontWeight.Bold)

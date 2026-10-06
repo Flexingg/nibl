@@ -400,7 +400,7 @@ fun DiaryScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(ByteSurfaceDark.copy(alpha = 0.5f))
                                 .padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -424,7 +424,7 @@ fun DiaryScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(14.dp))
                                         .background(MacroProtein.copy(alpha = 0.15f))
                                         .clickable {
                                             templateTargetMeal = null
@@ -442,7 +442,7 @@ fun DiaryScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(14.dp))
                                         .background(ByteTomato.copy(alpha = 0.15f))
                                         .clickable {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -634,7 +634,7 @@ fun DiaryScreen(
                             item {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                         .background(MacroProtein.copy(alpha = 0.15f))
                                         .clickable {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -666,7 +666,7 @@ fun DiaryScreen(
                                 val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                         .background(ByteSurfaceDark)
                                         .clickable {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1096,7 +1096,7 @@ fun MealCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(ByteSurfaceVariantDark)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1126,7 +1126,7 @@ fun MealCard(
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(ByteTomato.copy(alpha = 0.2f))
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1153,7 +1153,7 @@ fun MealCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .combinedClickable(
                             onClick = onCopyMeal,
                             onDoubleClick = {
@@ -1422,7 +1422,7 @@ fun MealCard(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(if (count > 0) ByteTomato else ByteSurfaceDark)
                         .clickable(enabled = count > 0) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1440,12 +1440,12 @@ fun MealCard(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
                             contentDescription = null,
-                            tint = if (count > 0) ByteCream else ByteCreamMuted,
+                            tint = if (count > 0) ByteOnTomato else ByteCreamMuted,
                             modifier = Modifier.size(15.dp)
                         )
                         Text(
                             text = if (count > 0) "Move ($count)" else "Move",
-                            color = if (count > 0) ByteCream else ByteCreamMuted,
+                            color = if (count > 0) ByteOnTomato else ByteCreamMuted,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1456,7 +1456,7 @@ fun MealCard(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(if (count > 0) MacroProtein else ByteSurfaceDark)
                         .clickable(enabled = count > 0) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1474,12 +1474,12 @@ fun MealCard(
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
                             contentDescription = null,
-                            tint = if (count > 0) ByteCream else ByteCreamMuted,
+                            tint = if (count > 0) ByteInkDark else ByteCreamMuted,
                             modifier = Modifier.size(15.dp)
                         )
                         Text(
                             text = if (count > 0) "Copy ($count)" else "Copy",
-                            color = if (count > 0) ByteCream else ByteCreamMuted,
+                            color = if (count > 0) ByteInkDark else ByteCreamMuted,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1490,7 +1490,7 @@ fun MealCard(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(if (count > 0) Color(0xFFEF4444) else ByteSurfaceDark)
                         .clickable(enabled = count > 0) {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1528,7 +1528,7 @@ fun MealCard(
 @Composable
 fun SwipeableFoodEntryRow(
     entry: FoodEntry,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(10.dp),
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(14.dp),
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
     onToggleSelection: () -> Unit = {},

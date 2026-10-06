@@ -39,7 +39,7 @@ fun DailyMacroHeader(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(28.dp))
             .background(ByteSurfaceDark)
             .padding(16.dp)
     ) {
@@ -136,7 +136,7 @@ fun MacroMiniPill(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(ByteSurfaceVariantDark)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {

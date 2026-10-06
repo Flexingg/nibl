@@ -100,7 +100,7 @@ fun PortionEditorSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 12.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(ByteSurfaceVariantDark)
                 .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -156,14 +156,14 @@ fun PortionEditorSheet(
                     val isSelected = selectedUnit == unit
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
                             .clickable { selectedUnit = unit }
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
                             text = unit,
-                            color = if (isSelected) ByteCream else ByteCreamMuted,
+                            color = if (isSelected) ByteOnTomato else ByteCreamMuted,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -196,7 +196,7 @@ fun PortionEditorSheet(
                 .fillMaxWidth()
                 .padding(top = 10.dp)
                 .height(48.dp),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(50),
             colors = ButtonDefaults.buttonColors(containerColor = ByteTomato)
         ) {
             Text(

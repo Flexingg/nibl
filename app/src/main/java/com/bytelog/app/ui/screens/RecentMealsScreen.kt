@@ -90,13 +90,16 @@ fun RecentMealsScreen(
         }
     }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val headerFraction = com.bytelog.app.ui.components.rememberScrollFraction(listState)
     Scaffold(
         containerColor = ByteInkDark,
         topBar = {
             ScreenHeader(
                 title = "Recent meals",
                 subtitle = "Copy into $target",
-                onBack = onBack
+                onBack = onBack,
+                fraction = headerFraction
             )
         },
         bottomBar = {
@@ -130,6 +133,7 @@ fun RecentMealsScreen(
         }
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
