@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -120,6 +121,56 @@ class NavMotionTest {
         compose.mainClock.advanceTimeBy(200)   // an animated swap is still mid-way at 200 ms
         assertTrue(visible("Chat page")); assertTrue(!visible("Diary page"))
         compose.mainClock.autoAdvance = true
+    }
+
+    // ----- predictive back -----
+
+    private fun backEvent(progress: Float) =
+        androidx.activity.BackEventCompat(0.05f, 0.5f, progress, androidx.activity.BackEventCompat.EDGE_LEFT)
+
+    @Test fun theBackGestureFollowsTheFingerAndCanBeCancelledOrCompleted() {
+        setHost()
+        val dispatcher = compose.activity.onBackPressedDispatcher
+        for (route in listOf(NavMotion.CHAT, "settings", NavMotion.RECENT_MEALS)) {
+            val label = mapOf(NavMotion.CHAT to "Chat page", "settings" to "Settings page", NavMotion.RECENT_MEALS to "Recent meals page")[route]!!
+            compose.runOnIdle { nav.navigate(route) }
+            compose.waitForIdle()
+            assertTrue(visible(label)); assertTrue(!visible("Diary page"))
+            val resting = compose.onNodeWithText(label).getUnclippedBoundsInRoot()
+
+            // Start swiping back: the diary shows up underneath while the page is still there
+            compose.mainClock.autoAdvance = false
+            compose.runOnUiThread { dispatcher.dispatchOnBackStarted(backEvent(0f)) }
+            compose.mainClock.advanceTimeBy(64)
+            compose.runOnUiThread { dispatcher.dispatchOnBackProgressed(backEvent(0.5f)) }
+            compose.mainClock.advanceTimeBy(64)
+            assertTrue("$label is still there mid-gesture", visible(label))
+            assertTrue("the diary shows through mid-gesture", visible("Diary page"))
+            val dragged = compose.onNodeWithText(label).getUnclippedBoundsInRoot()
+            assertTrue("$label moves with the gesture ($resting vs $dragged)", dragged != resting)
+            shot("19-predictive-back-${route.replace('_', '-')}")
+
+            // Letting go early cancels: back on the page
+            compose.runOnUiThread { dispatcher.dispatchOnBackCancelled() }
+            compose.mainClock.advanceTimeBy(3_000)
+            compose.mainClock.autoAdvance = true
+            compose.waitForIdle()
+            assertEquals(route, nav.currentDestination?.route)
+            assertTrue(visible(label)); assertTrue(!visible("Diary page"))
+
+            // Swiping all the way goes back
+            compose.mainClock.autoAdvance = false
+            compose.runOnUiThread { dispatcher.dispatchOnBackStarted(backEvent(0f)) }
+            compose.mainClock.advanceTimeBy(64)
+            compose.runOnUiThread { dispatcher.dispatchOnBackProgressed(backEvent(0.8f)) }
+            compose.mainClock.advanceTimeBy(64)
+            compose.runOnUiThread { dispatcher.onBackPressed() }
+            compose.mainClock.advanceTimeBy(3_000)
+            compose.mainClock.autoAdvance = true
+            compose.waitForIdle()
+            assertEquals("diary", nav.currentDestination?.route)
+            assertTrue(visible("Diary page")); assertTrue(!visible(label))
+        }
     }
 
     // ----- recent meals page -----

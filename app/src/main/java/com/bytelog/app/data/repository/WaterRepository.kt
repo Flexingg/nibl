@@ -93,44 +93,38 @@ class WaterRepository(
 
             // Asynchronously sync with Sparky Fitness
             try {
-                if (containerId != null) {
-                    sparkyApiClient.upsertWaterIntake(cleanDate, 1, containerId)
-                } else {
-                    // Check if matching container already exists on Sparky
-                    // Container volumes are always in ml on Sparky, whatever their unit label says.
-                    val existingContainer = _containers.value.find { container ->
-                        abs(container.volumeMl - amountMl) < 5f
-                    }
-
-                    if (existingContainer != null) {
-                        sparkyApiClient.upsertWaterIntake(cleanDate, 1, existingContainer.id)
-                    } else {
-                        // Create custom container in Sparky with unit "oz"
-                        val createRes = sparkyApiClient.createWaterContainer(
-                            name = displayName,
-                            volume = amountOz,
-                            unit = "oz"
-                        )
-                        if (createRes.isSuccess) {
-                            val newContainer = createRes.getOrNull()
-                            if (newContainer != null) {
-                                _containers.value = _containers.value + newContainer
-                                sparkyApiClient.upsertWaterIntake(cleanDate, 1, newContainer.id)
-                            } else {
-                                val changeDrinks = (amountMl / 250f).coerceAtLeast(1f).roundToInt()
-                                sparkyApiClient.upsertWaterIntake(cleanDate, changeDrinks, null)
-                            }
-                        } else {
-                            val changeDrinks = (amountMl / 250f).coerceAtLeast(1f).roundToInt()
-                            sparkyApiClient.upsertWaterIntake(cleanDate, changeDrinks, null)
-                        }
-                    }
-                }
+                val pushed = pushDrink(cleanDate, amountOz, containerId, displayName)
+                // Once Sparky has the drink, the local copy must stop counting as a separate pending
+                // one. Reconciling below swaps it for the server's own entry; leaving it pending made
+                // every drink count twice.
+                if (pushed) waterLogDao.updateSyncStatus(entry.id, WaterLogEntry.SYNC_STATUS_SYNCED)
 
                 // Reconcile itemized logs with Sparky
                 syncWaterLogs(cleanDate)
             } catch (_: Exception) {}
         }
+    }
+
+    /** Sends one drink to Sparky, creating a matching container if needed. True when Sparky accepted it. */
+    private suspend fun pushDrink(cleanDate: String, amountOz: Float, containerId: Int?, displayName: String): Boolean {
+        if (containerId != null) {
+            return sparkyApiClient.upsertWaterIntake(cleanDate, 1, containerId).isSuccess
+        }
+        val amountMl = amountOz * ML_PER_FL_OZ
+        // Check if matching container already exists on Sparky.
+        // Container volumes are always in ml on Sparky, whatever their unit label says.
+        val existingContainer = _containers.value.find { container -> abs(container.volumeMl - amountMl) < 5f }
+        if (existingContainer != null) {
+            return sparkyApiClient.upsertWaterIntake(cleanDate, 1, existingContainer.id).isSuccess
+        }
+        // Create a container for this amount (volume in ml, as Sparky stores it)
+        val created = sparkyApiClient.createWaterContainer(name = displayName, volume = amountMl, unit = "ml").getOrNull()
+        if (created != null) {
+            _containers.value = _containers.value + created
+            return sparkyApiClient.upsertWaterIntake(cleanDate, 1, created.id).isSuccess
+        }
+        val changeDrinks = (amountMl / 250f).coerceAtLeast(1f).roundToInt()
+        return sparkyApiClient.upsertWaterIntake(cleanDate, changeDrinks, null).isSuccess
     }
 
     /**
