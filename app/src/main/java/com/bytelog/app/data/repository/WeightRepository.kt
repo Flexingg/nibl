@@ -91,7 +91,31 @@ class WeightRepository(
         }
     }
 
+    /**
+     * Sends weigh-ins made on the phone that Sparky hasn't accepted yet. Returns how many are still waiting.
+     */
+    suspend fun pushPendingWeights(): Int = withContext(Dispatchers.IO) {
+        var failed = 0
+        for (entry in weightDao.getPendingWeights()) {
+            val kg = if (entry.unit.equals("lbs", ignoreCase = true)) entry.weight * LBS_TO_KG else entry.weight
+            val ok = try { sparkyApiClient.upsertWeight(entry.entryDate, kg, entry.bodyFatPercentage).isSuccess } catch (_: Exception) { false }
+            // Only mark it synced if it wasn't changed again while sending
+            if (ok) {
+                val now = weightDao.getAllWeightsList().firstOrNull { it.entryDate == entry.entryDate }
+                if (now != null && now.updatedAt == entry.updatedAt) weightDao.insertOrUpdate(now.copy(syncStatus = WeightEntry.SYNC_STATUS_SYNCED))
+            } else failed++
+        }
+        failed
+    }
+
+    suspend fun countPending(): Int = withContext(Dispatchers.IO) { weightDao.getPendingWeights().size }
+
+    /** Dates whose weigh-in on the phone hasn't reached Sparky yet; a download must not overwrite these. */
+    private suspend fun pendingDates(): Set<String> = weightDao.getPendingWeights().map { it.entryDate }.toSet()
+
     suspend fun syncWeightForDate(date: String) = withContext(Dispatchers.IO) {
+        pushPendingWeights()
+        if (date in pendingDates()) return@withContext
         val remoteWeightResult = sparkyApiClient.fetchWeightForDate(date)
         if (remoteWeightResult.isSuccess) {
             val remoteWeightKg = remoteWeightResult.getOrNull()
@@ -116,6 +140,7 @@ class WeightRepository(
 
     suspend fun syncWeightHistory(days: Int = 90): Result<Int> = withContext(Dispatchers.IO) {
         try {
+            pushPendingWeights()
             val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
             val today = LocalDate.now()
             val startDate = today.minusDays(days.toLong()).format(dateFormatter)
@@ -127,7 +152,8 @@ class WeightRepository(
                 if (list.isNotEmpty()) {
                     val currentUnit = settingsRepository.weightUnit.first()
                     val isLbs = currentUnit.equals("lbs", ignoreCase = true)
-                    val entries = list.map { (date, kg) ->
+                    val keep = pendingDates()
+                    val entries = list.filter { (date, _) -> date !in keep }.map { (date, kg) ->
                         val displayW = if (isLbs) (kg * KG_TO_LBS * 10).toInt() / 10f else kg
                         WeightEntry(
                             entryDate = date,

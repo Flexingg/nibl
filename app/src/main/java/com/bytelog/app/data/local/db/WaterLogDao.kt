@@ -25,6 +25,9 @@ interface WaterLogDao {
     @Query("SELECT * FROM water_log_entries WHERE syncStatus = 2")
     suspend fun getPendingDeleteLogs(): List<WaterLogEntry>
 
+    @Query("SELECT COUNT(*) FROM water_log_entries WHERE syncStatus != 0")
+    suspend fun countPendingSync(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLog(entry: WaterLogEntry)
 

@@ -28,6 +28,10 @@ interface WeightDao {
     @Query("SELECT * FROM weight_entries ORDER BY entryDate ASC")
     suspend fun getAllWeightsList(): List<WeightEntry>
 
+    /** Weigh-ins made on the phone that Sparky hasn't accepted yet. */
+    @Query("SELECT * FROM weight_entries WHERE syncStatus = 0")
+    suspend fun getPendingWeights(): List<WeightEntry>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(entry: WeightEntry)
 

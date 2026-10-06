@@ -38,5 +38,7 @@ data class FoodEntry(
         const val SYNC_STATUS_PENDING_INSERT = "pending_insert"
         const val SYNC_STATUS_PENDING_UPDATE = "pending_update"
         const val SYNC_STATUS_PENDING_DELETE = "pending_delete"
+        /** Sparky accepted it, but it hasn't come back in a diary download yet; never removed by a sync. */
+        const val SYNC_STATUS_UPLOADED = "uploaded"
     }
 }

@@ -631,16 +631,22 @@ class DiaryViewModel(
                     _serverAdaptiveTdee.value = tdeeRes.getOrNull()
                 }
 
+                // Anything Sparky still hasn't accepted stays on the phone and is sent again next time
+                val waiting = foodRepository.countPendingSync() + waterRepository.countPending() + weightRepository.countPending()
+                val reason = foodRepository.lastPushError?.let { " Sparky said: ${it.take(120)}" } ?: ""
                 foodRes.fold(
                     onSuccess = { count ->
-                        val waterInfo = if (waterRes.isSuccess) ", ${waterRes.getOrNull()?.toInt() ?: 0} ml water" else ""
+                        val waterInfo = if (waterRes.isSuccess) ", ${waterRes.getOrNull()?.toInt() ?: 0} oz water" else ""
                         _syncMessage.emit(
-                            if (count > 0) "Synced $count food entries$waterInfo from Sparky Fitness"
-                            else "Synced with Sparky (0 foods$waterInfo)"
+                            if (waiting > 0) "Synced $count foods$waterInfo. $waiting change(s) are kept on this phone and will be sent next sync.$reason"
+                            else "Synced with Sparky: $count foods$waterInfo, everything from this phone is uploaded"
                         )
                     },
                     onFailure = { err ->
-                        _syncMessage.emit("Sync failed: ${err.message ?: "Connection error"}")
+                        _syncMessage.emit(
+                            "Couldn't reach Sparky (${err.message ?: "connection error"}). Nothing was removed; " +
+                                (if (waiting > 0) "$waiting change(s) are waiting on this phone." else "your diary is unchanged.")
+                        )
                     }
                 )
             } catch (e: Exception) {

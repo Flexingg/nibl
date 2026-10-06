@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.floatOrNull
@@ -43,9 +44,66 @@ class FoodRepository(
 
     private suspend fun rekeyEntry(entry: FoodEntry, serverId: String) {
         foodEntryDao.deleteEntryById(entry.id)
-        foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_SYNCED))
+        foodEntryDao.insertEntry(entry.copy(id = serverId, syncStatus = FoodEntry.SYNC_STATUS_UPLOADED))
         prepBatchDao?.remapEntryId(entry.id, serverId)
     }
+
+    /** Last reason Sparky gave for refusing a change, shown after a sync. */
+    @Volatile var lastPushError: String? = null
+        private set
+
+    /** Sends one new entry; on success it carries Sparky's id and is marked uploaded. */
+    private suspend fun pushCreate(entry: FoodEntry): Boolean {
+        val res = sparkyApiClient.createFoodEntry(entry)
+        if (res.isFailure) { lastPushError = res.exceptionOrNull()?.message; return false }
+        val serverId = res.getOrNull()
+        if (!serverId.isNullOrBlank() && serverId != entry.id) rekeyEntry(entry, serverId)
+        else foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_UPLOADED)
+        return true
+    }
+
+    /** Sends an edit; if Sparky doesn't know the entry (it never got there), creates it instead. */
+    private suspend fun pushUpdate(entry: FoodEntry): Boolean {
+        val res = sparkyApiClient.updateFoodEntry(entry)
+        if (res.isSuccess) { foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_UPLOADED); return true }
+        return pushCreate(entry)
+    }
+
+    private suspend fun pushDelete(entry: FoodEntry): Boolean {
+        val res = sparkyApiClient.deleteFoodEntry(entry.id)   // 404 counts as done
+        if (res.isFailure) { lastPushError = res.exceptionOrNull()?.message; return false }
+        foodEntryDao.deleteEntryById(entry.id)
+        return true
+    }
+
+    /** Result of sending the phone's changes to Sparky. */
+    data class PushReport(val sent: Int, val failed: Int, val error: String?)
+
+    private val pushLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * Sends every change made on the phone that Sparky hasn't accepted yet, for any date: new entries, edits
+     * and deletions. Anything Sparky refuses stays on the phone, marked pending, and is tried again next time.
+     */
+    suspend fun pushPendingEntries(): PushReport = withContext(Dispatchers.IO) {
+        pushLock.withLock {
+            var sent = 0; var failed = 0
+            lastPushError = null
+            for (entry in foodEntryDao.getPendingSyncEntries()) {
+                val ok = try {
+                    when (entry.syncStatus) {
+                        FoodEntry.SYNC_STATUS_PENDING_DELETE -> pushDelete(entry)
+                        FoodEntry.SYNC_STATUS_PENDING_UPDATE -> pushUpdate(entry)
+                        else -> pushCreate(entry)
+                    }
+                } catch (e: Exception) { lastPushError = e.message; false }
+                if (ok) sent++ else failed++
+            }
+            PushReport(sent, failed, lastPushError)
+        }
+    }
+
+    suspend fun countPendingSync(): Int = withContext(Dispatchers.IO) { foodEntryDao.countPendingSync() }
 
     // --- Food Queries ---
 
@@ -151,7 +209,8 @@ class FoodRepository(
     suspend fun commitMultiAdd(entries: List<FoodEntry>) = withContext(Dispatchers.IO) {
         if (entries.isEmpty()) return@withContext
 
-        // 1. Instant local persistence
+        // 1. Instant local persistence. Everything added here is new to Sparky (including undo restores).
+        val entries = entries.map { it.copy(syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT) }
         foodEntryDao.insertEntries(entries)
         entries.forEach { entry ->
             deletedBatchLinks.remove(entry.id)?.let { link -> prepBatchDao?.insertConsumption(link) }
@@ -165,49 +224,19 @@ class FoodRepository(
             }
         }
 
-        // 3. Asynchronously sync to Sparky Fitness Server
-        appScope.launch(Dispatchers.IO) {
-            entries.forEach { entry ->
-                val syncResult = sparkyApiClient.createFoodEntry(entry)
-                if (syncResult.isSuccess) {
-                    val serverId = syncResult.getOrNull()
-                    if (!serverId.isNullOrBlank() && serverId != entry.id) {
-                        rekeyEntry(entry, serverId)
-                    } else {
-                        foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
-                    }
-                } else {
-                    android.util.Log.e("ByteLog", "Failed to sync entry ${entry.foodName} to Sparky: ${syncResult.exceptionOrNull()?.message}")
-                }
-            }
-        }
+        // 3. Send to Sparky in the background; anything refused stays pending and is retried on the next sync
+        appScope.launch(Dispatchers.IO) { pushPendingEntries() }
     }
 
     /**
      * Update an entry optimistically in local DB and sync changes to Sparky Fitness in background.
      */
     suspend fun updateEntry(entry: FoodEntry) = withContext(Dispatchers.IO) {
-        foodEntryDao.updateEntry(entry.copy(syncStatus = FoodEntry.SYNC_STATUS_PENDING_UPDATE))
+        // An entry Sparky has never seen stays a new entry; otherwise it is an edit.
+        val status = if (entry.syncStatus == FoodEntry.SYNC_STATUS_PENDING_INSERT) FoodEntry.SYNC_STATUS_PENDING_INSERT else FoodEntry.SYNC_STATUS_PENDING_UPDATE
+        foodEntryDao.updateEntry(entry.copy(syncStatus = status))
         prepBatchDao?.onEntryQuantityChanged(entry.id, entry.quantity)
-        appScope.launch(Dispatchers.IO) {
-            val updateRes = sparkyApiClient.updateFoodEntry(entry)
-            if (updateRes.isSuccess) {
-                foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
-            } else {
-                // If update failed (e.g. entry ID was client-side or missing on server), try creating
-                val createRes = sparkyApiClient.createFoodEntry(entry)
-                if (createRes.isSuccess) {
-                    val serverId = createRes.getOrNull()
-                    if (!serverId.isNullOrBlank() && serverId != entry.id) {
-                        rekeyEntry(entry, serverId)
-                    } else {
-                        foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
-                    }
-                } else {
-                    android.util.Log.e("ByteLog", "Failed to update or recreate entry on Sparky: ${updateRes.exceptionOrNull()?.message}")
-                }
-            }
-        }
+        appScope.launch(Dispatchers.IO) { pushPendingEntries() }
     }
 
     /**
@@ -233,27 +262,20 @@ class FoodRepository(
     /**
      * Delete an entry optimistically and sync deletion to Sparky in background.
      */
-    suspend fun deleteEntry(entry: FoodEntry) = withContext(Dispatchers.IO) {
-        foodEntryDao.deleteEntryById(entry.id)
-        detachBatchLinks(listOf(entry.id))
-        appScope.launch(Dispatchers.IO) {
-            sparkyApiClient.deleteFoodEntry(entry.id)
-        }
-    }
+    suspend fun deleteEntry(entry: FoodEntry) = withContext(Dispatchers.IO) { deleteEntries(listOf(entry)) }
 
     /**
-     * Delete multiple entries locally and sync deletion to Sparky in background.
+     * Delete entries. Ones Sparky never received are simply removed; the rest are hidden and marked for deletion
+     * until Sparky confirms, so a deletion made offline isn't undone by the next download.
      */
     suspend fun deleteEntries(entries: List<FoodEntry>) = withContext(Dispatchers.IO) {
         if (entries.isEmpty()) return@withContext
         val ids = entries.map { it.id }
-        foodEntryDao.deleteEntriesByIds(ids)
+        val (neverSent, onServer) = entries.partition { it.syncStatus == FoodEntry.SYNC_STATUS_PENDING_INSERT }
+        if (neverSent.isNotEmpty()) foodEntryDao.deleteEntriesByIds(neverSent.map { it.id })
+        onServer.forEach { foodEntryDao.updateSyncStatus(it.id, FoodEntry.SYNC_STATUS_PENDING_DELETE) }
         detachBatchLinks(ids)
-        appScope.launch(Dispatchers.IO) {
-            entries.forEach { entry ->
-                sparkyApiClient.deleteFoodEntry(entry.id)
-            }
-        }
+        if (onServer.isNotEmpty()) appScope.launch(Dispatchers.IO) { pushPendingEntries() }
     }
 
     /**
@@ -291,12 +313,11 @@ class FoodRepository(
                 syncStatus = FoodEntry.SYNC_STATUS_PENDING_UPDATE
             )
         }
-        foodEntryDao.insertEntries(updatedEntries)
-        appScope.launch(Dispatchers.IO) {
-            updatedEntries.forEach { entry ->
-                sparkyApiClient.updateFoodEntry(entry)
-            }
-        }
+        foodEntryDao.insertEntries(updatedEntries.map { e ->
+            // Entries Sparky hasn't received yet stay new entries
+            if (entries.first { it.id == e.id }.syncStatus == FoodEntry.SYNC_STATUS_PENDING_INSERT) e.copy(syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT) else e
+        })
+        appScope.launch(Dispatchers.IO) { pushPendingEntries() }
     }
 
     /**
@@ -365,39 +386,14 @@ class FoodRepository(
     suspend fun syncDateWithServer(date: String): Result<Int> = withContext(Dispatchers.IO) {
         val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
 
-        // 1. Push local pending entries
-        try {
-            val pendingEntries = foodEntryDao.getPendingSyncEntries().filter { it.entryDate == cleanDate }
-            pendingEntries.forEach { entry ->
-                if (entry.syncStatus == FoodEntry.SYNC_STATUS_PENDING_UPDATE) {
-                    val updateRes = sparkyApiClient.updateFoodEntry(entry)
-                    if (updateRes.isSuccess) {
-                        foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
-                    }
-                } else {
-                    val pushResult = sparkyApiClient.createFoodEntry(entry)
-                    if (pushResult.isSuccess) {
-                        val serverId = pushResult.getOrNull()
-                        if (!serverId.isNullOrBlank() && serverId != entry.id) {
-                            rekeyEntry(entry, serverId)
-                        } else {
-                            foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_SYNCED)
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
+        // 1. Send the phone's changes first (every date), so nothing made here is lost to the download below
+        try { pushPendingEntries() } catch (_: Exception) {}
 
-        // 2. Fetch server entries for date
+        // 2. Download Sparky's diary for the date and merge it in
         val fetchResult = sparkyApiClient.fetchEntriesForDate(cleanDate)
         if (fetchResult.isSuccess) {
             val serverEntries = fetchResult.getOrNull().orEmpty()
-            
-            // Reconcile: delete previously synced entries for this date and insert fresh server entries
-            foodEntryDao.deleteSyncedEntriesForDate(cleanDate)
-            if (serverEntries.isNotEmpty()) {
-                foodEntryDao.insertEntries(serverEntries)
-            }
+            mergeServerEntries(cleanDate, serverEntries)
 
             // 3. Update meal types
             val mealTypesRes = sparkyApiClient.fetchMealTypes()
@@ -431,6 +427,29 @@ class FoodRepository(
         } else {
             Result.failure(fetchResult.exceptionOrNull() ?: Exception("Failed to sync entries with server"))
         }
+    }
+
+    /**
+     * Merges Sparky's entries for a date without losing anything made on the phone:
+     *  - entries Sparky has are stored as Sparky has them (unless the phone has an unsent change to them);
+     *  - an entry that was downloaded before and is now gone from Sparky was deleted there, so it goes here too;
+     *  - entries uploaded from the phone but not (yet) in Sparky's list, and unsent changes, are always kept.
+     */
+    private suspend fun mergeServerEntries(date: String, serverEntries: List<FoodEntry>) {
+        val local = foodEntryDao.getEntriesForDateOnce(date)
+        val serverIds = serverEntries.map { it.id }.toSet()
+        val keepLocal = local.filter {
+            it.syncStatus == FoodEntry.SYNC_STATUS_PENDING_INSERT ||
+                it.syncStatus == FoodEntry.SYNC_STATUS_PENDING_UPDATE ||
+                it.syncStatus == FoodEntry.SYNC_STATUS_PENDING_DELETE
+        }.map { it.id }.toSet()
+        val goneFromServer = local.filter { it.syncStatus == FoodEntry.SYNC_STATUS_SYNCED && it.id !in serverIds }.map { it.id }
+        if (goneFromServer.isNotEmpty()) {
+            foodEntryDao.deleteEntriesByIds(goneFromServer)
+            detachBatchLinks(goneFromServer)
+        }
+        val incoming = serverEntries.filter { it.id !in keepLocal }
+        if (incoming.isNotEmpty()) foodEntryDao.insertEntries(incoming)
     }
 
     suspend fun clearLocalFoodCache() = withContext(Dispatchers.IO) {
