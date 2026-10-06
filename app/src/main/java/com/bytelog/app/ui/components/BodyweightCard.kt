@@ -145,29 +145,9 @@ fun BodyweightCard(
 
             // Body content
             if (currentEntry != null) {
-                val entryUnit = currentEntry.unit.ifBlank { weightUnit }
-                val isTargetLbs = weightUnit.equals("lbs", ignoreCase = true)
-                val isEntryLbs = entryUnit.equals("lbs", ignoreCase = true)
-                val weightVal = if (isEntryLbs && !isTargetLbs) {
-                    (currentEntry.weight * 0.45359237f * 10).toInt() / 10f
-                } else if (!isEntryLbs && isTargetLbs) {
-                    (currentEntry.weight * 2.20462262f * 10).toInt() / 10f
-                } else {
-                    currentEntry.weight
-                }
+                val weightVal = displayWeight(currentEntry, weightUnit)
                 val unit = weightUnit
-
-                val prevDisplayWeight = previousEntry?.let { prev ->
-                    val pUnit = prev.unit.ifBlank { weightUnit }
-                    val pIsLbs = pUnit.equals("lbs", ignoreCase = true)
-                    if (pIsLbs && !isTargetLbs) {
-                        (prev.weight * 0.45359237f * 10).toInt() / 10f
-                    } else if (!pIsLbs && isTargetLbs) {
-                        (prev.weight * 2.20462262f * 10).toInt() / 10f
-                    } else {
-                        prev.weight
-                    }
-                }
+                val prevDisplayWeight = previousEntry?.let { displayWeight(it, weightUnit) }
 
                 val delta = if (prevDisplayWeight != null && previousEntry.entryDate != currentEntry.entryDate) {
                     weightVal - prevDisplayWeight
@@ -232,18 +212,7 @@ fun BodyweightCard(
                 }
             } else {
                 // Not logged yet today
-                val isTargetLbs = weightUnit.equals("lbs", ignoreCase = true)
-                val lastWeight = previousEntry?.let { prev ->
-                    val pUnit = prev.unit.ifBlank { weightUnit }
-                    val pIsLbs = pUnit.equals("lbs", ignoreCase = true)
-                    if (pIsLbs && !isTargetLbs) {
-                        (prev.weight * 0.45359237f * 10).toInt() / 10f
-                    } else if (!pIsLbs && isTargetLbs) {
-                        (prev.weight * 2.20462262f * 10).toInt() / 10f
-                    } else {
-                        prev.weight
-                    }
-                }
+                val lastWeight = previousEntry?.let { displayWeight(it, weightUnit) }
                 val unit = weightUnit
 
                 Row(
@@ -284,4 +253,21 @@ fun BodyweightCard(
             }
         }
     }
+}
+
+/** A weigh-in expressed in the unit the user chose, rounded down to one decimal like the card shows it. */
+fun displayWeight(entry: WeightEntry, targetUnit: String): Float {
+    val entryIsLbs = entry.unit.ifBlank { targetUnit }.equals("lbs", ignoreCase = true)
+    val targetIsLbs = targetUnit.equals("lbs", ignoreCase = true)
+    return when {
+        entryIsLbs && !targetIsLbs -> (entry.weight * 0.45359237f * 10).toInt() / 10f
+        !entryIsLbs && targetIsLbs -> (entry.weight * 2.20462262f * 10).toInt() / 10f
+        else -> entry.weight
+    }
+}
+
+/** Change since the previous weigh-in on another day, or null when there is nothing to compare. */
+fun weightChange(current: WeightEntry?, previous: WeightEntry?, targetUnit: String): Float? {
+    if (current == null || previous == null || previous.entryDate == current.entryDate) return null
+    return displayWeight(current, targetUnit) - displayWeight(previous, targetUnit)
 }

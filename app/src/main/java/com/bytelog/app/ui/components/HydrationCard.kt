@@ -62,10 +62,7 @@ fun HydrationCard(
     val haptic = LocalHapticFeedback.current
 
     val progress = if (targetOz > 0f) (currentOz / targetOz).coerceIn(0f, 1f) else 0f
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress,
-        label = "water_progress_oz"
-    )
+    val animatedProgress = animateBouncy(progress, "water_progress_oz").coerceIn(0f, 1f)
     val percentage = (progress * 100).roundToInt()
 
     Column(
@@ -100,20 +97,7 @@ fun HydrationCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(HydrationCyanSubtle),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.WaterDrop,
-                        contentDescription = "Hydration",
-                        tint = HydrationCyan,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                SplashingDrop(currentOz, size = 34.dp, iconSize = 18.dp)
 
                 Column {
                     Text(
@@ -196,6 +180,7 @@ fun HydrationCard(
             Box(
                 modifier = Modifier
                     .weight(1.3f)
+                    .pressBounce(0.93f)
                     .clip(RoundedCornerShape(10.dp))
                     .background(ByteSurfaceVariantDark)
                     .border(1.dp, HydrationCyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
@@ -252,6 +237,7 @@ fun HydrationCard(
             Box(
                 modifier = Modifier
                     .weight(1f)
+                    .pressBounce(0.93f)
                     .clip(RoundedCornerShape(10.dp))
                     .background(ByteSurfaceVariantDark)
                     .clickable {
@@ -290,6 +276,7 @@ fun HydrationCard(
             Box(
                 modifier = Modifier
                     .size(36.dp)
+                    .pressBounce(0.88f)
                     .clip(RoundedCornerShape(10.dp))
                     .background(ByteSurfaceVariantDark)
                     .clickable {
