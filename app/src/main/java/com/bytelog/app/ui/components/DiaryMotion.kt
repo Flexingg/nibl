@@ -121,12 +121,13 @@ fun Modifier.pressBounce(scaleDown: Float = 0.965f): Modifier = composed {
 
 /** List rows pop up a little the first time they appear (once per key), overshooting like the header does. */
 @Composable
-fun Modifier.popIn(key: Any, seen: MutableSet<Any>): Modifier {
+fun Modifier.popIn(key: Any, seen: MutableSet<Any>, delayMillis: Long = 0L): Modifier {
     val reduce = LocalReduceMotion.current
     val progress = remember(key) { Animatable(if (reduce || key in seen) 1f else 0f) }
     LaunchedEffect(key) {
         if (progress.value < 1f) {
             seen += key
+            if (delayMillis > 0) kotlinx.coroutines.delay(delayMillis)
             progress.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 380f))
         }
     }

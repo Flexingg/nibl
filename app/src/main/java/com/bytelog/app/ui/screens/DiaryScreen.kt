@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.graphicsLayer
 import com.bytelog.app.ui.components.hideWhenScrolledAway
@@ -83,7 +85,6 @@ import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.ui.components.BodyweightCard
 import com.bytelog.app.ui.components.CopyMealDialog
-import com.bytelog.app.ui.components.CopyRecentMealsDialog
 import com.bytelog.app.ui.components.DailyMacroHeader
 import com.bytelog.app.ui.components.DeleteMealConfirmDialog
 import com.bytelog.app.ui.components.EditFoodEntrySheet
@@ -122,7 +123,8 @@ fun DiaryScreen(
     onNavigateToSearch: (mealTypeId: String, mealName: String, date: String) -> Unit,
     onNavigateToBarcode: (mealTypeId: String, mealName: String, date: String) -> Unit,
     onNavigateToChat: () -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    onOpenRecentMeals: () -> Unit
 ) {
     val selectedDate by viewModel.selectedDate.collectAsState()
     val dailySummary by viewModel.dailySummary.collectAsState()
@@ -199,11 +201,30 @@ fun DiaryScreen(
     var showWeightDialog by remember { mutableStateOf(false) }
     var showGoalAdjustDialog by remember { mutableStateOf(false) }
     var copyingMealName by remember { mutableStateOf<String?>(null) }
-    var showRecentMealsDialog by remember { mutableStateOf(false) }
     var savingTemplateMealName by remember { mutableStateOf<String?>(null) }
     var showTemplatesSheet by remember { mutableStateOf(false) }
     var templateTargetMeal by remember { mutableStateOf<DisplayMealGroup?>(null) }
     var showRecipeBuilderSheet by remember { mutableStateOf(false) }
+
+    // Changing day: the new day's cards slide in from the side you moved towards and settle with a bounce.
+    val reduceMotion = com.bytelog.app.ui.theme.LocalReduceMotion.current
+    val dayShift = remember { androidx.compose.animation.core.Animatable(0f) }
+    var shownDate by remember { mutableStateOf(selectedDate) }
+    LaunchedEffect(selectedDate) {
+        if (selectedDate != shownDate) {
+            val direction = if (selectedDate > shownDate) 1f else -1f   // ISO dates sort as text
+            shownDate = selectedDate
+            if (!reduceMotion) {
+                dayShift.snapTo(direction)
+                dayShift.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.62f, stiffness = 380f))
+            }
+        }
+    }
+    val dayMotion = Modifier.graphicsLayer {
+        val d = dayShift.value
+        translationX = d * 64.dp.toPx()
+        alpha = 1f - kotlin.math.abs(d).coerceAtMost(1f) * 0.7f
+    }
 
     val headerState = com.bytelog.app.ui.components.rememberHeaderCollapseState()
     val headerFraction = com.bytelog.app.ui.components.rememberHeaderFraction(headerState)
@@ -303,28 +324,53 @@ fun DiaryScreen(
 
                 // Date Switcher Controls & Actions
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = {
+                    IconButton(modifier = Modifier.pressBounce(0.82f), onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         viewModel.changeDay(-1)
                     }) {
                         Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Day", tint = ByteCream)
                     }
 
-                    Text(
-                        text = if (isToday) "Today" else selectedDate,
-                        color = ByteCream,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
+                    // The day label rolls in from the side you moved towards.
+                    androidx.compose.animation.AnimatedContent(
+                        targetState = selectedDate,
+                        transitionSpec = {
+                            if (reduceMotion) {
+                                androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None
+                            } else {
+                                val dir = if (targetState > initialState) 1 else -1
+                                val slide = androidx.compose.animation.core.spring(
+                                    dampingRatio = 0.6f, stiffness = 420f,
+                                    visibilityThreshold = androidx.compose.ui.unit.IntOffset.VisibilityThreshold
+                                )
+                                (androidx.compose.animation.slideInHorizontally(slide) { dir * it } + androidx.compose.animation.fadeIn()) togetherWith
+                                    (androidx.compose.animation.slideOutHorizontally(slide) { -dir * it } + androidx.compose.animation.fadeOut()) using
+                                    androidx.compose.animation.SizeTransform(clip = false) { _, _ ->
+                                        androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = 420f)
+                                    }
+                            }
+                        },
                         modifier = Modifier
+                            .pressBounce(0.9f)
                             .clip(RoundedCornerShape(8.dp))
                             .background(ByteSurfaceDark)
                             .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 viewModel.setDate(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
-                            }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
+                            },
+                        label = "day_label"
+                    ) { date ->
+                        Text(
+                            text = describeDay(date),
+                            color = ByteCream,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
 
-                    IconButton(onClick = {
+                    IconButton(modifier = Modifier.pressBounce(0.82f), onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         viewModel.changeDay(1)
                     }) {
@@ -332,15 +378,16 @@ fun DiaryScreen(
                     }
 
                     IconButton(
+                        modifier = Modifier.pressBounce(0.82f),
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            showRecentMealsDialog = true
+                            onOpenRecentMeals()
                         }
                     ) {
                         Icon(Icons.Default.History, contentDescription = "Copy Recent Meals", tint = ByteCreamMuted)
                     }
 
-                    IconButton(onClick = onNavigateToChat) {
+                    IconButton(modifier = Modifier.pressBounce(0.82f), onClick = onNavigateToChat) {
                         Icon(
                             imageVector = Icons.Default.AutoAwesome,
                             contentDescription = "Sparky AI Coach",
@@ -348,7 +395,7 @@ fun DiaryScreen(
                         )
                     }
 
-                    IconButton(onClick = onNavigateToSettings) {
+                    IconButton(modifier = Modifier.pressBounce(0.82f), onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings", tint = ByteCreamMuted)
                     }
                 }
@@ -356,6 +403,7 @@ fun DiaryScreen(
 
             // Calories, water and weight: full cards at the top, two narrow strips once the list scrolls
             com.bytelog.app.ui.components.CollapsingDiaryHeader(
+                modifier = dayMotion,
                 fraction = headerFraction,
                 macroExpanded = { DailyMacroHeader(summary = dailySummary) },
                 macroCompact = { com.bytelog.app.ui.components.MacroStrip(summary = dailySummary) },
@@ -410,6 +458,7 @@ fun DiaryScreen(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(dayMotion)
                     .nestedScroll(headerState.connection),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -480,7 +529,7 @@ fun DiaryScreen(
                                         .background(ByteTomato.copy(alpha = 0.15f))
                                         .clickable {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            showRecentMealsDialog = true
+                                            onOpenRecentMeals()
                                         }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
@@ -930,20 +979,6 @@ fun DiaryScreen(
                     targetMeal = targetMeal
                 )
                 copyingMealName = null
-            }
-        )
-    }
-
-    // Copy Recent Meals Modal Dialog (From Copy Yesterday / History button)
-    if (showRecentMealsDialog) {
-        val recentMeals by viewModel.recentMealsHistory.collectAsState()
-        CopyRecentMealsDialog(
-            targetDate = selectedDate,
-            recentMeals = recentMeals,
-            onDismiss = { showRecentMealsDialog = false },
-            onCopyMeals = { selectedMeals, tgtDate ->
-                viewModel.copyMultipleMeals(selectedMeals, tgtDate)
-                showRecentMealsDialog = false
             }
         )
     }

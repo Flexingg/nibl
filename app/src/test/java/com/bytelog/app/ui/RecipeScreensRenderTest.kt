@@ -238,7 +238,7 @@ class RecipeScreensRenderTest {
 
         compose.setContent {
             ByteLogTheme(darkTheme = true) {
-                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {})
+                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
             }
         }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Meal prep").fetchSemanticsNodes().isNotEmpty() }
@@ -251,6 +251,29 @@ class RecipeScreensRenderTest {
             diaryVm.deleteEntry(it)
         }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("5.2 of 6 left").fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun diaryTopBarChangesDayAndOpensRecentMeals() {
+        var recentOpened = 0
+        compose.setContent {
+            ByteLogTheme(darkTheme = true) {
+                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = { recentOpened++ })
+            }
+        }
+        compose.onNodeWithText("Today").assertExists()
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Next Day")).performClick()
+        compose.waitUntil(5_000) { diaryVm.selectedDate.value == LocalDate.now().plusDays(1).toString() }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Tomorrow").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Previous Day")).performClick()
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Previous Day")).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Yesterday").fetchSemanticsNodes().isNotEmpty() }
+        // Tapping the day label jumps back to today
+        compose.onNodeWithText("Yesterday").performClick()
+        compose.waitUntil(5_000) { diaryVm.selectedDate.value == today }
+
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Copy Recent Meals")).performClick()
+        assertEquals(1, recentOpened)
     }
 
     private fun resource(name: String) = javaClass.classLoader!!.getResource("recipes/$name")!!.readText()

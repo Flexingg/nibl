@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,9 @@ import com.bytelog.app.ui.screens.SettingsScreen
 import com.bytelog.app.ui.screens.SparkyChatScreen
 import com.bytelog.app.ui.splash.AnimatedSplashScreen
 import com.bytelog.app.ui.theme.ByteLogTheme
+import com.bytelog.app.ui.theme.LocalReduceMotion
+import com.bytelog.app.ui.navigation.NavMotion
+import com.bytelog.app.ui.screens.RecentMealsScreen
 import com.bytelog.app.ui.viewmodel.DiaryViewModel
 import com.bytelog.app.ui.viewmodel.FastSearchViewModel
 import com.bytelog.app.ui.viewmodel.SparkyChatViewModel
@@ -119,9 +123,14 @@ fun ByteLogNavHost(
         }
     }
 
+    val reduceMotion = LocalReduceMotion.current
     NavHost(
         navController = navController,
-        startDestination = "diary"
+        startDestination = "diary",
+        enterTransition = { NavMotion.enter(this, reduceMotion) },
+        exitTransition = { NavMotion.exit(this, reduceMotion) },
+        popEnterTransition = { NavMotion.popEnter(this, reduceMotion) },
+        popExitTransition = { NavMotion.popExit(this, reduceMotion) }
     ) {
         // 1. Daily Diary / Timeline
         composable("diary") {
@@ -143,10 +152,32 @@ fun ByteLogNavHost(
                     navController.navigate("barcode/$mealId/$mealName/$date")
                 },
                 onNavigateToChat = {
-                    navController.navigate("chat")
+                    navController.navigate(NavMotion.CHAT) { launchSingleTop = true }
                 },
                 onNavigateToSettings = {
-                    navController.navigate("settings")
+                    navController.navigate("settings") { launchSingleTop = true }
+                },
+                onOpenRecentMeals = {
+                    navController.navigate(NavMotion.RECENT_MEALS) { launchSingleTop = true }
+                }
+            )
+        }
+
+        // 1b. Copy recent meals into the day open in the Diary (shares the Diary's view model)
+        composable(NavMotion.RECENT_MEALS) { entry ->
+            val diaryEntry = remember(entry) { navController.getBackStackEntry("diary") }
+            val diaryViewModel: DiaryViewModel = viewModel(diaryEntry) {
+                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient)
+            }
+            val targetDate by diaryViewModel.selectedDate.collectAsState()
+            val recentMeals by diaryViewModel.recentMealsHistory.collectAsState()
+            RecentMealsScreen(
+                targetDate = targetDate,
+                recentMeals = recentMeals,
+                onBack = { navController.popBackStack() },
+                onCopyMeals = { selected, date ->
+                    diaryViewModel.copyMultipleMeals(selected, date)
+                    navController.popBackStack()
                 }
             )
         }
@@ -258,7 +289,7 @@ fun ByteLogNavHost(
         }
 
         // 8. Sparky AI Chatbot Screen
-        composable("chat") {
+        composable(NavMotion.CHAT) {
             val chatViewModel: SparkyChatViewModel = viewModel {
                 SparkyChatViewModel(app.chatRepository)
             }
