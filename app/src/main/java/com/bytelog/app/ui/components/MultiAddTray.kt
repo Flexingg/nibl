@@ -108,7 +108,7 @@ fun MultiAddTray(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(ByteSurfaceVariantDark)
                                 .clickable { onEditEntry(entry) }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -210,7 +210,7 @@ fun MultiAddTray(
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onLogAll()
                 },
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
                 modifier = Modifier.height(46.dp)
             ) {

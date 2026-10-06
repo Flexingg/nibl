@@ -177,7 +177,10 @@ fun ExpressiveDiaryHeader(
             heroCard.place(0, 0)
             water.place(0, lerpF((e[0] + gapE).toFloat(), rowTop.toFloat(), f).roundToInt())
             weight.place(lerpF(0f, (half + gapC).toFloat(), f).roundToInt(), lerpF((e[0] + gapE + e[1] + gapE).toFloat(), rowTop.toFloat(), f).roundToInt())
-            heroShape.placeWithLayer(hx.roundToInt(), hy.roundToInt(), zIndex = 1f) {
+            // Sub-pixel translation in the layer: rounding the position to whole pixels while the scale changes
+            // smoothly made the shape stutter as it moved.
+            heroShape.placeWithLayer(0, 0, zIndex = 1f) {
+                translationX = hx; translationY = hy
                 scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0f, 0f)
             }
         }
@@ -215,7 +218,14 @@ fun CalorieHero(remaining: Int, progress: Float, shape: BlobShape, fraction: () 
                 drawWavyRing(animatedProgress, phase.value, primary.copy(alpha = ringAlpha), track.copy(alpha = ringAlpha),
                     ringRadius = r * 0.9f, stroke = 7.dp.toPx() * 156f / HERO_DP, amplitude = 2.6.dp.toPx())
             }
-            drawBlob(morph.current(), morph.rotation.value, androidx.compose.ui.graphics.lerp(blob, primary, f), r * lerpF(0.68f, 0.86f, f))
+            // Folded, the shape becomes a glass filled to how far the day is towards the calorie goal.
+            val glass = clamp01((f - 0.3f) / 0.45f)
+            drawFilledBlob(
+                morph.current(), morph.rotation.value, r * lerpF(0.68f, 0.86f, f),
+                level = animatedProgress * glass + (1f - glass), phase = phase.value,
+                fillColor = androidx.compose.ui.graphics.lerp(blob, primary, glass),
+                emptyColor = androidx.compose.ui.graphics.lerp(blob, track, glass)
+            )
         }
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -420,11 +430,28 @@ private fun Sparkline(points: List<Float>, modifier: Modifier) {
     val color = MaterialTheme.colorScheme.tertiary
     Canvas(modifier) {
         val lo = points.min(); val hi = points.max(); val span = (hi - lo).takeIf { it > 0.01f } ?: 1f
-        val stepX = (size.width - 8.dp.toPx()) / (points.size - 1)
-        fun pt(i: Int) = Offset(4.dp.toPx() + i * stepX, size.height - 6.dp.toPx() - (points[i] - lo) / span * (size.height - 12.dp.toPx()))
-        val path = androidx.compose.ui.graphics.Path().apply { moveTo(pt(0).x, pt(0).y); for (i in 1 until points.size) lineTo(pt(i).x, pt(i).y) }
-        drawPath(path, color, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
-        drawCircle(color, 4.dp.toPx(), pt(points.lastIndex))
+        val pad = 6.dp.toPx()
+        val stepX = (size.width - pad * 2) / (points.size - 1)
+        val pts = points.indices.map { i -> Offset(pad + i * stepX, size.height - pad - (points[i] - lo) / span * (size.height - pad * 2)) }
+        // Smooth curve through the points (Catmull-Rom as cubic Béziers), so the line reads soft and round.
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(pts[0].x, pts[0].y)
+            for (i in 0 until pts.lastIndex) {
+                val p0 = pts[maxOf(0, i - 1)]; val p1 = pts[i]; val p2 = pts[i + 1]; val p3 = pts[minOf(pts.lastIndex, i + 2)]
+                cubicTo(
+                    p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f,
+                    p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f,
+                    p2.x, p2.y
+                )
+            }
+        }
+        val area = androidx.compose.ui.graphics.Path().apply {
+            addPath(path); lineTo(pts.last().x, size.height); lineTo(pts.first().x, size.height); close()
+        }
+        drawPath(area, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(color.copy(alpha = 0.22f), color.copy(alpha = 0f))))
+        drawPath(path, color, style = Stroke(3.5.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        drawCircle(color, 5.dp.toPx(), pts.last())
+        drawCircle(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f), 2.dp.toPx(), pts.last())
     }
 }
 

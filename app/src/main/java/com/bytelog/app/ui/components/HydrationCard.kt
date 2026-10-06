@@ -68,7 +68,7 @@ fun HydrationCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(28.dp))
             .background(ByteSurfaceDark)
             .combinedClickable(
                 onClick = {
@@ -123,7 +123,7 @@ fun HydrationCard(
                 // Percentage Pill
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(HydrationCyanSubtle)
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
@@ -181,9 +181,9 @@ fun HydrationCard(
                 modifier = Modifier
                     .weight(1.3f)
                     .pressBounce(0.93f)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(ByteSurfaceVariantDark)
-                    .border(1.dp, HydrationCyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                    .border(1.dp, HydrationCyan.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
                     .combinedClickable(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -238,7 +238,7 @@ fun HydrationCard(
                 modifier = Modifier
                     .weight(1f)
                     .pressBounce(0.93f)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(ByteSurfaceVariantDark)
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -277,7 +277,7 @@ fun HydrationCard(
                 modifier = Modifier
                     .size(36.dp)
                     .pressBounce(0.88f)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(ByteSurfaceVariantDark)
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)

@@ -250,7 +250,7 @@ fun BarcodeScannerScreen(
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.6f))
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 )
@@ -263,7 +263,7 @@ fun BarcodeScannerScreen(
                 modifier = Modifier
                     .size(260.dp)
                     .align(Alignment.Center)
-                    .border(2.dp, ByteTomato, RoundedCornerShape(20.dp))
+                    .border(2.dp, ByteTomato, RoundedCornerShape(28.dp))
             )
 
             // Scanned Notification Toast
@@ -278,9 +278,9 @@ fun BarcodeScannerScreen(
                 scannedNotification?.let { msg ->
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(ByteSurfaceDark.copy(alpha = 0.95f))
-                            .border(1.dp, ByteTomato, RoundedCornerShape(12.dp))
+                            .border(1.dp, ByteTomato, RoundedCornerShape(16.dp))
                             .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
                         Text(

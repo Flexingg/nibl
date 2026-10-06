@@ -158,14 +158,17 @@ private fun RecipeDetailContent(
     val steps = r.steps
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = ByteCream) }
-                Text(r.template.name, color = ByteCream, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, "Edit directions", tint = ByteTextSecondary) }
-            }
+            com.bytelog.app.ui.components.ScreenHeader(
+                title = r.template.name,
+                subtitle = "Recipe",
+                onBack = onBack,
+                fraction = { 0f },
+                statusBarPadding = false,
+                actions = { IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, "Edit directions", tint = ByteTextSecondary) } }
+            )
             r.template.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = ByteTextSecondary, fontSize = 13.sp) }
             Spacer(Modifier.height(8.dp))
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(ByteSurfaceDark).padding(12.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(ByteSurfaceDark).padding(12.dp)) {
                 Text("Per serving · makes ${fmt1(r.servings)}", color = ByteTextSecondary, fontSize = 12.sp)
                 r.perServing?.let { MacroLine(it, size = 13) } ?: Text("No nutrition on this template yet.", color = ByteTextSecondary, fontSize = 12.sp)
                 val meta = listOfNotNull(
@@ -179,24 +182,24 @@ private fun RecipeDetailContent(
                     Text(
                         "Open original recipe",
                         color = MacroProtein, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(6.dp))
+                        modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(10.dp))
                             .clickable { runCatching { uri.openUri(url) } }
                     )
                 }
             }
             Spacer(Modifier.height(10.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCook, colors = ButtonDefaults.buttonColors(containerColor = ByteTomato), shape = RoundedCornerShape(12.dp)) {
+                Button(onClick = onCook, colors = ButtonDefaults.buttonColors(containerColor = ByteTomato), shape = RoundedCornerShape(50)) {
                     Icon(Icons.Default.PlayArrow, null, tint = ByteOnTomato, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Cook", color = ByteOnTomato, fontWeight = FontWeight.Bold)
                 }
-                OutlinedButton(onClick = onStartBatch, shape = RoundedCornerShape(12.dp)) {
+                OutlinedButton(onClick = onStartBatch, shape = RoundedCornerShape(50)) {
                     Icon(Icons.Default.Kitchen, null, tint = MacroProtein, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Start batch", color = MacroProtein, fontWeight = FontWeight.Bold)
                 }
-                OutlinedButton(onClick = onLog, shape = RoundedCornerShape(12.dp)) {
+                OutlinedButton(onClick = onLog, shape = RoundedCornerShape(50)) {
                     Icon(Icons.Default.Restaurant, null, tint = MacroCarbs, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Log servings", color = MacroCarbs, fontWeight = FontWeight.Bold)

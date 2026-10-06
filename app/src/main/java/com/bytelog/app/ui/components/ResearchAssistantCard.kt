@@ -65,7 +65,7 @@ fun ResearchAssistantCard(settings: SettingsRepository, modifier: Modifier = Mod
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(ByteSurfaceDark)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)

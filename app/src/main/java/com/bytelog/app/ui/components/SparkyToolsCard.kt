@@ -36,7 +36,7 @@ fun SparkyToolsCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(ByteSurfaceDark)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -56,7 +56,7 @@ fun SparkyToolsCard(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .clickable { onChange(if (on) enabled - c.slug else enabled + c.slug) }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically

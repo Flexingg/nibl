@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.compose.ui.unit.dp
 
 private val SeedDark = with(SeedTones) {
     darkColorScheme(
@@ -48,6 +49,15 @@ private val SeedLight = with(SeedTones) {
         surfaceContainerHigh = lHigh, surfaceContainerHighest = lHighest
     )
 }
+
+/** Expressive corner sizes: rounder fields, cards, sheets and dialogs. */
+val ExpressiveShapes = androidx.compose.material3.Shapes(
+    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+    small = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+    medium = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+    large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(32.dp)
+)
 
 /** Light, dark or follow the system. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -92,6 +102,7 @@ fun ByteLogTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
+            shapes = ExpressiveShapes,
             content = content
         )
     }

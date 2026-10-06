@@ -174,7 +174,7 @@ fun NumpadKey(
     Box(
         modifier = modifier
             .height(52.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(ByteSurfaceVariantDark)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -197,7 +197,7 @@ fun QuickChip(
     Box(
         modifier = modifier
             .height(34.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(ByteSurfaceVariantDark)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center

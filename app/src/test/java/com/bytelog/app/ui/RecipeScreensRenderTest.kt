@@ -205,7 +205,7 @@ class RecipeScreensRenderTest {
     @Test
     fun recipeDetail() {
         compose.setContent { ByteLogTheme(darkTheme = true) { RecipeDetailScreen(recipesVm, "tmpl-chili", {}, {}) } }
-        compose.waitUntil(30_000) { compose.onAllNodesWithText("Turkey Chili").fetchSemanticsNodes().isNotEmpty() }
+        waitFor(30_000) { compose.onAllNodesWithText("Turkey Chili").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Brown the meat").assertExists()
         compose.onNodeWithText("Start batch").assertExists()
         compose.onNodeWithText("Prep 15 min · Cook 45 min · Fridge 4 days · Freezer 90 days").assertExists()
@@ -215,7 +215,7 @@ class RecipeScreensRenderTest {
     @Test
     fun cookMode() {
         compose.setContent { ByteLogTheme(darkTheme = true) { CookModeScreen(recipesVm, "tmpl-chili", {}) } }
-        compose.waitUntil(30_000) { compose.onAllNodesWithText("Ingredients", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        waitFor(30_000) { compose.onAllNodesWithText("Ingredients", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("907 g  Ground Turkey 93% Lean", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("⏱ 8-10 minutes", useUnmergedTree = true).performClick()
         // A running countdown chip appears under the header
@@ -334,6 +334,15 @@ class RecipeScreensRenderTest {
 
     @Test
     fun diaryInLightModeAndFolded() {
+        runBlocking {
+            // A week of weigh-ins for the sparkline, and some food so the folded shape is part-filled
+            val w = listOf(184.1f, 183.8f, 183.9f, 183.3f, 183.4f, 183.0f, 182.4f)
+            db.weightDao().insertOrUpdateAll(w.mapIndexed { i, v -> com.bytelog.app.data.local.model.WeightEntry(day(i - 6L), v, "lbs") })
+            db.foodEntryDao().insertEntry(
+                com.bytelog.app.data.local.model.FoodEntry(id = "e-bowl", foodName = "Chipotle chicken bowl", mealTypeId = "lunch", mealName = "Lunch",
+                    quantity = 1f, unit = "bowl", calories = 1020f, protein = 60f, carbs = 90f, fat = 30f, entryDate = today)
+            )
+        }
         compose.setContent {
             ByteLogTheme(darkTheme = false, dynamicColor = false) {
                 DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})

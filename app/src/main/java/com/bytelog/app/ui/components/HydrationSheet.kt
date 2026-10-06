@@ -160,12 +160,12 @@ fun HydrationSheet(
 
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(ByteSurfaceVariantDark)
                                 .border(
                                     width = if (isCurrentDefault) 1.dp else 0.dp,
                                     color = if (isCurrentDefault) HydrationCyan else Color.Transparent,
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = RoundedCornerShape(14.dp)
                                 )
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -191,7 +191,7 @@ fun HydrationSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(20.dp))
                 .background(ByteSurfaceVariantDark)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -225,7 +225,7 @@ fun HydrationSheet(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(HydrationCyanSubtle)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -281,7 +281,7 @@ fun HydrationSheet(
                     }
                 },
                 enabled = amountOz > 0f,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = HydrationCyan),
                 modifier = Modifier
                     .weight(1f)
@@ -308,7 +308,7 @@ fun HydrationSheet(
                     disabledContainerColor = HydrationCyan.copy(alpha = 0.3f),
                     disabledContentColor = ByteCreamMuted
                 ),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(50),
                 modifier = Modifier
                     .weight(1.5f)
                     .height(50.dp)
@@ -343,7 +343,7 @@ fun HydrationSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(ByteSurfaceVariantDark.copy(alpha = 0.5f))
                         .padding(20.dp),
                     contentAlignment = Alignment.Center
@@ -360,7 +360,7 @@ fun HydrationSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(ByteSurfaceVariantDark)
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,

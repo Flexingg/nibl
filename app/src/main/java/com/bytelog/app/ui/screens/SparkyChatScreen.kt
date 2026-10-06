@@ -50,6 +50,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import com.bytelog.app.ui.components.pressBounce
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -201,7 +204,7 @@ fun SparkyChatScreen(
                                 cameraLauncher.launch(null)
                             },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -215,7 +218,7 @@ fun SparkyChatScreen(
                                 galleryLauncher.launch("image/*")
                             },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                         ) {
                             Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -264,47 +267,17 @@ fun SparkyChatScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = ByteInkDark,
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(ByteTomato.copy(alpha = 0.2f))
-                                .border(1.dp, ByteTomato, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = "Sparky AI",
-                                tint = ByteTomato,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "Sparky AI Coach",
-                                color = ByteCream,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Backend MCP & Fitness Agent",
-                                color = ByteCreamMuted,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = ByteCream
+            com.bytelog.app.ui.components.ScreenHeader(
+                title = "Sparky AI Coach",
+                subtitle = "Your Sparky server's AI, plus web search",
+                onBack = onNavigateBack,
+                leading = {
+                    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                        com.bytelog.app.ui.diary.MorphingBlob(
+                            if (isLoading) com.bytelog.app.ui.diary.BlobShape.FLOWER8 else com.bytelog.app.ui.diary.BlobShape.COOKIE9,
+                            MaterialTheme.colorScheme.primaryContainer, Modifier.fillMaxSize(), spinDegrees = 72f
                         )
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
                     }
                 },
                 actions = {
@@ -315,10 +288,7 @@ fun SparkyChatScreen(
                             tint = ByteCreamMuted
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = ByteInkDark
-                )
+                }
             )
         },
         bottomBar = {
@@ -341,14 +311,14 @@ fun SparkyChatScreen(
                         viewModel.suggestedPrompts.forEach { prompt ->
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(ByteSurfaceDark)
-                                    .border(1.dp, ByteSurfaceVariantDark, RoundedCornerShape(16.dp))
+                                    .pressBounce(0.94f)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                                     .clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         viewModel.sendMessage(prompt)
                                     }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .padding(horizontal = 16.dp, vertical = 9.dp)
                             ) {
                                 Text(
                                     text = prompt,
@@ -415,8 +385,8 @@ fun SparkyChatScreen(
                         Box(
                             modifier = Modifier
                                 .size(50.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, ByteTomato, RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, ByteTomato, RoundedCornerShape(12.dp))
                         ) {
                             attachedBitmap?.let { bmp ->
                                 Image(
@@ -504,9 +474,10 @@ fun SparkyChatScreen(
                     IconButton(
                         onClick = { showImageSourceDialog = true },
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(46.dp)
+                            .pressBounce(0.9f)
                             .clip(CircleShape)
-                            .background(if (attachedBitmap != null) ByteTomato.copy(alpha = 0.2f) else ByteSurfaceDark)
+                            .background(if (attachedBitmap != null) ByteTomato.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHigh)
                     ) {
                         Icon(
                             imageVector = Icons.Default.AddPhotoAlternate,
@@ -530,10 +501,10 @@ fun SparkyChatScreen(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(24.dp)),
+                            .clip(RoundedCornerShape(28.dp)),
                         colors = TextFieldDefaults.colors(
-                            focusedContainerColor = ByteSurfaceDark,
-                            unfocusedContainerColor = ByteSurfaceDark,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             focusedTextColor = ByteCream,
                             unfocusedTextColor = ByteCream,
                             cursorColor = ByteTomato,
@@ -547,12 +518,19 @@ fun SparkyChatScreen(
 
                     val canSend = (inputText.isNotBlank() || attachedBitmap != null) && !isLoading
 
+                    val sendSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    val sendPressed by sendSource.collectIsPressedAsState()
+                    val sendCorner by androidx.compose.animation.core.animateDpAsState(
+                        if (sendPressed) 14.dp else 28.dp,
+                        androidx.compose.animation.core.spring(dampingRatio = 0.6f, stiffness = 800f), label = "send_corner"
+                    )
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(if (canSend) ByteTomato else ByteSurfaceDark)
-                            .clickable(enabled = canSend) {
+                            .size(52.dp)
+                            .pressBounce(0.9f)
+                            .clip(RoundedCornerShape(sendCorner))
+                            .background(if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .clickable(interactionSource = sendSource, indication = androidx.compose.material3.ripple(), enabled = canSend) {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 val textToSend = inputText
                                 val base64ToSend = attachedBitmap?.let { ImageUtils.convertBitmapToBase64(it) }
@@ -571,16 +549,16 @@ fun SparkyChatScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = ByteTomato,
+                            com.bytelog.app.ui.diary.LoadingSpinner(
+                                modifier = Modifier.size(30.dp),
+                                color = MaterialTheme.colorScheme.primary,
                                 strokeWidth = 2.dp
                             )
                         } else {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send",
-                                tint = if (canSend) ByteCream else ByteCreamMuted,
+                                tint = if (canSend) MaterialTheme.colorScheme.onPrimary else ByteCreamMuted,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -686,23 +664,13 @@ fun ChatMessageBubble(
                 modifier = Modifier
                     .clip(
                         RoundedCornerShape(
-                            topStart = 16.dp,
-                            topEnd = 16.dp,
-                            bottomStart = if (isUser) 16.dp else 4.dp,
-                            bottomEnd = if (isUser) 4.dp else 16.dp
+                            topStart = 24.dp,
+                            topEnd = 24.dp,
+                            bottomStart = if (isUser) 24.dp else 6.dp,
+                            bottomEnd = if (isUser) 6.dp else 24.dp
                         )
                     )
-                    .background(if (isUser) ByteTomato else ByteSurfaceDark)
-                    .border(
-                        1.dp,
-                        if (isUser) Color.Transparent else ByteSurfaceVariantDark,
-                        RoundedCornerShape(
-                            topStart = 16.dp,
-                            topEnd = 16.dp,
-                            bottomStart = if (isUser) 16.dp else 4.dp,
-                            bottomEnd = if (isUser) 4.dp else 16.dp
-                        )
-                    )
+                    .background(if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Column {
@@ -714,7 +682,7 @@ fun ChatMessageBubble(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = 200.dp)
-                                .clip(RoundedCornerShape(10.dp)),
+                                .clip(RoundedCornerShape(14.dp)),
                             contentScale = ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -723,14 +691,14 @@ fun ChatMessageBubble(
                     if (displayContent.isNotBlank()) {
                         Text(
                             text = displayContent,
-                            color = ByteCream,
+                            color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else ByteCream,
                             fontSize = 14.sp,
                             lineHeight = 20.sp
                         )
                     } else if (message.askUserPrompt?.question != null) {
                         Text(
                             text = message.askUserPrompt.question,
-                            color = ByteCream,
+                            color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else ByteCream,
                             fontSize = 14.sp,
                             lineHeight = 20.sp
                         )
@@ -763,7 +731,7 @@ fun ChatMessageBubble(
                                 val enabled = isLastAssistantMessage
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
+                                        .clip(RoundedCornerShape(28.dp))
                                         .background(
                                             if (enabled) ByteInkDark.copy(alpha = 0.85f)
                                             else ByteInkDark.copy(alpha = 0.35f)
@@ -772,7 +740,7 @@ fun ChatMessageBubble(
                                             1.dp,
                                             if (enabled) ByteTomato.copy(alpha = 0.7f)
                                             else ByteSurfaceVariantDark.copy(alpha = 0.4f),
-                                            RoundedCornerShape(20.dp)
+                                            RoundedCornerShape(28.dp)
                                         )
                                         .clickable(enabled = enabled) {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -803,7 +771,7 @@ fun ChatMessageBubble(
                 // Copy Action
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .clickable { onCopy(message.content) }
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -827,7 +795,7 @@ fun ChatMessageBubble(
                 if (isUser) {
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .clickable { onEdit(message) }
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -885,7 +853,7 @@ fun ChatMessageBubble(
                         }
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(MacroCarbs.copy(alpha = 0.15f))
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
@@ -929,13 +897,13 @@ fun SparkyThinkingIndicator(status: String? = null) {
 
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .background(ByteSurfaceDark)
-                .border(1.dp, ByteSurfaceVariantDark, RoundedCornerShape(16.dp))
+                .border(1.dp, ByteSurfaceVariantDark, RoundedCornerShape(24.dp))
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(
+                com.bytelog.app.ui.diary.LoadingSpinner(
                     modifier = Modifier.size(14.dp),
                     color = ByteTomato,
                     strokeWidth = 2.dp

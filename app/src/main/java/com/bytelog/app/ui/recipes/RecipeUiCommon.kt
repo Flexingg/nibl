@@ -133,7 +133,7 @@ fun FoodPickerDialog(
                     onValueChange = { query = it; runSearch(it, debounce = true) },
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Default.Search, null, tint = ByteTextSecondary) },
-                    trailingIcon = { if (loading) CircularProgressIndicator(Modifier.size(18.dp), color = ByteTomato, strokeWidth = 2.dp) },
+                    trailingIcon = { if (loading) com.bytelog.app.ui.diary.LoadingSpinner(Modifier.size(18.dp), color = ByteTomato, strokeWidth = 2.dp) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { runSearch(query, debounce = false) }),
                     colors = byteFieldColors(),
@@ -153,7 +153,7 @@ fun FoodPickerDialog(
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .clickable { onPick(food) }
                                 .padding(vertical = 8.dp, horizontal = 4.dp)
                         ) {

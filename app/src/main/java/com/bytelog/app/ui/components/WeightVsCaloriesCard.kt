@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.analytics.AdaptiveTdeeCalculation
 import com.bytelog.app.data.analytics.DayChartPoint
 import com.bytelog.app.ui.theme.ByteCardDark
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
@@ -82,8 +83,8 @@ fun WeightVsCaloriesCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp)),
-        shape = RoundedCornerShape(18.dp),
+            .clip(RoundedCornerShape(28.dp)),
+        shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = ByteCardDark)
     ) {
         Column(
@@ -135,7 +136,7 @@ fun WeightVsCaloriesCard(
                 // Range Selector Pills (7D, 14D, 30D, 90D)
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(ByteSurfaceVariantDark)
                         .padding(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -144,7 +145,7 @@ fun WeightVsCaloriesCard(
                         val isSelected = selectedDaysRange == days
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) ByteTomato else Color.Transparent)
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -155,7 +156,7 @@ fun WeightVsCaloriesCard(
                         ) {
                             Text(
                                 text = "${days}D",
-                                color = if (isSelected) ByteCream else ByteTextSecondary,
+                                color = if (isSelected) ByteOnTomato else ByteTextSecondary,
                                 fontSize = 11.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
@@ -171,7 +172,7 @@ fun WeightVsCaloriesCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(ByteSurfaceVariantDark.copy(alpha = 0.5f))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -400,9 +401,9 @@ fun WeightVsCaloriesCard(
                 // Adjust Goal Button
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(ByteTomato.copy(alpha = 0.15f))
-                        .border(1.dp, ByteTomato.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .border(1.dp, ByteTomato.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onOpenGoalAdjuster()

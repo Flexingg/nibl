@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.bytelog.app.data.local.model.MealType
 import com.bytelog.app.ui.theme.ByteCardDark
+import com.bytelog.app.ui.theme.ByteInkDark
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteSurfaceDark
@@ -88,7 +90,7 @@ fun MoveCopyItemsDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(28.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -159,7 +161,7 @@ fun MoveCopyItemsDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(ByteSurfaceDark)
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -167,7 +169,7 @@ fun MoveCopyItemsDialog(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(if (mode == MoveCopyMode.MOVE) ByteTomato else ByteSurfaceDark)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -183,12 +185,12 @@ fun MoveCopyItemsDialog(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
                                 contentDescription = null,
-                                tint = if (mode == MoveCopyMode.MOVE) ByteCream else ByteCreamMuted,
+                                tint = if (mode == MoveCopyMode.MOVE) ByteOnTomato else ByteCreamMuted,
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
                                 text = "Move",
-                                color = if (mode == MoveCopyMode.MOVE) ByteCream else ByteCreamMuted,
+                                color = if (mode == MoveCopyMode.MOVE) ByteOnTomato else ByteCreamMuted,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -198,7 +200,7 @@ fun MoveCopyItemsDialog(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(if (mode == MoveCopyMode.COPY) MacroProtein else ByteSurfaceDark)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -214,12 +216,12 @@ fun MoveCopyItemsDialog(
                             Icon(
                                 imageVector = Icons.Default.ContentCopy,
                                 contentDescription = null,
-                                tint = if (mode == MoveCopyMode.COPY) ByteCream else ByteCreamMuted,
+                                tint = if (mode == MoveCopyMode.COPY) ByteInkDark else ByteCreamMuted,
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
                                 text = "Copy",
-                                color = if (mode == MoveCopyMode.COPY) ByteCream else ByteCreamMuted,
+                                color = if (mode == MoveCopyMode.COPY) ByteInkDark else ByteCreamMuted,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -254,7 +256,7 @@ fun MoveCopyItemsDialog(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSelected) (if (mode == MoveCopyMode.MOVE) ByteTomato else MacroProtein) else ByteSurfaceVariantDark)
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -318,7 +320,7 @@ fun MoveCopyItemsDialog(
                         val isSelected = cleanName.equals(targetMealName, ignoreCase = true)
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(
                                     if (isSelected) (if (mode == MoveCopyMode.MOVE) ByteTomato else MacroProtein)
                                     else ByteSurfaceVariantDark
@@ -351,7 +353,7 @@ fun MoveCopyItemsDialog(
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(50)
                     ) {
                         Text("Cancel", color = ByteTextSecondary, fontSize = 14.sp)
                     }
@@ -370,7 +372,7 @@ fun MoveCopyItemsDialog(
                         modifier = Modifier
                             .weight(2f)
                             .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = buttonColor)
                     ) {
                         Icon(
