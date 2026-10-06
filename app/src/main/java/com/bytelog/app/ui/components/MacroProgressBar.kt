@@ -75,10 +75,7 @@ fun DailyMacroHeader(
         }
 
         // Calorie Progress Bar
-        val animatedCalProgress by animateFloatAsState(
-            targetValue = summary.calorieProgress,
-            label = "cal_progress"
-        )
+        val animatedCalProgress = animateBouncy(summary.calorieProgress, "cal_progress").coerceIn(0f, 1f)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -135,7 +132,7 @@ fun MacroMiniPill(
     modifier: Modifier = Modifier
 ) {
     val progress = if (target > 0f) (current / target).coerceIn(0f, 1f) else 0f
-    val animatedProgress by animateFloatAsState(targetValue = progress, label = "macro_progress")
+    val animatedProgress = animateBouncy(progress, "macro_progress").coerceIn(0f, 1f)
 
     Column(
         modifier = modifier

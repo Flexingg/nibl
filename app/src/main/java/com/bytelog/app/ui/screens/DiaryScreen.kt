@@ -16,6 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.graphicsLayer
+import com.bytelog.app.ui.components.hideWhenScrolledAway
+import com.bytelog.app.ui.components.popIn
+import com.bytelog.app.ui.components.pressBounce
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -200,6 +205,11 @@ fun DiaryScreen(
     var templateTargetMeal by remember { mutableStateOf<DisplayMealGroup?>(null) }
     var showRecipeBuilderSheet by remember { mutableStateOf(false) }
 
+    val headerState = com.bytelog.app.ui.components.rememberHeaderCollapseState()
+    val headerFraction = com.bytelog.app.ui.components.rememberHeaderFraction(headerState)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val poppedKeys = remember { mutableSetOf<Any>() }
+
     val templatesSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val recipeBuilderSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -238,6 +248,13 @@ fun DiaryScreen(
                     val defaultMeal = mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
                     onNavigateToSearch(defaultMeal.id, defaultMeal.name, selectedDate)
                 },
+                modifier = Modifier
+                    .graphicsLayer {
+                        // Shrinks a little while the header is folded away
+                        val s = 1f - 0.14f * headerFraction().coerceIn(0f, 1f)
+                        scaleX = s; scaleY = s
+                    }
+                    .pressBounce(0.86f),
                 containerColor = ByteTomato,
                 contentColor = ByteCream,
                 shape = CircleShape
@@ -337,43 +354,52 @@ fun DiaryScreen(
                 }
             }
 
-            // Daily Macro Progress Cards
-            DailyMacroHeader(summary = dailySummary)
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Hydration Speed Logging Card (Always in oz)
-            HydrationCard(
-                currentOz = waterTotalOz,
-                targetOz = waterGoalOz,
-                defaultOz = defaultContainerOz,
-                defaultContainerName = defaultContainerName,
-                onLogDefault = {
-                    viewModel.logDefaultDrink()
-                },
-                onLogDoubleDrink = {
-                    viewModel.quickAddWaterOz(
-                        amountOz = defaultContainerOz * 2f,
-                        containerName = "${defaultContainerName} x2"
+            // Calories, water and weight: full cards at the top, two narrow strips once the list scrolls
+            com.bytelog.app.ui.components.CollapsingDiaryHeader(
+                fraction = headerFraction,
+                macroExpanded = { DailyMacroHeader(summary = dailySummary) },
+                macroCompact = { com.bytelog.app.ui.components.MacroStrip(summary = dailySummary) },
+                waterExpanded = {
+                    // Hydration Speed Logging Card (Always in oz)
+                    HydrationCard(
+                        currentOz = waterTotalOz,
+                        targetOz = waterGoalOz,
+                        defaultOz = defaultContainerOz,
+                        defaultContainerName = defaultContainerName,
+                        onLogDefault = { viewModel.logDefaultDrink() },
+                        onLogDoubleDrink = {
+                            viewModel.quickAddWaterOz(
+                                amountOz = defaultContainerOz * 2f,
+                                containerName = "${defaultContainerName} x2"
+                            )
+                        },
+                        onOpenCustom = { showHydrationSheet = true },
+                        onUndoLast = { viewModel.undoLastDrink() }
                     )
                 },
-                onOpenCustom = {
-                    showHydrationSheet = true
+                waterCompact = {
+                    com.bytelog.app.ui.components.WaterStrip(
+                        currentOz = waterTotalOz,
+                        targetOz = waterGoalOz,
+                        defaultOz = defaultContainerOz,
+                        onLogDefault = { viewModel.logDefaultDrink() }
+                    )
                 },
-                onUndoLast = {
-                    viewModel.undoLastDrink()
-                }
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Bodyweight Tracking Card
-            BodyweightCard(
-                currentEntry = currentWeight,
-                previousEntry = previousWeight,
-                weightUnit = weightUnit,
-                onOpenLogDialog = {
-                    showWeightDialog = true
+                weightExpanded = {
+                    // Bodyweight Tracking Card
+                    BodyweightCard(
+                        currentEntry = currentWeight,
+                        previousEntry = previousWeight,
+                        weightUnit = weightUnit,
+                        onOpenLogDialog = { showWeightDialog = true }
+                    )
+                },
+                weightCompact = {
+                    com.bytelog.app.ui.components.WeightStrip(
+                        weight = (currentWeight ?: previousWeight)?.let { com.bytelog.app.ui.components.displayWeight(it, weightUnit) },
+                        unit = weightUnit,
+                        delta = com.bytelog.app.ui.components.weightChange(currentWeight, previousWeight, weightUnit)
+                    )
                 }
             )
 
@@ -381,11 +407,15 @@ fun DiaryScreen(
 
             // Meal Categories List (Shows only logged meals, plus quick meal chips to add new ones)
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(headerState.connection),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (activeBatches.isNotEmpty()) {
                     item(key = "fridge") {
+                      Box(Modifier.hideWhenScrolledAway(listState, "fridge")) {
                         com.bytelog.app.ui.recipes.FridgeStrip(
                             batches = activeBatches,
                             targetMealName = quickLogMeal?.name ?: "your diary",
@@ -396,6 +426,7 @@ fun DiaryScreen(
                             },
                             onOpen = { openBatch = it }
                         )
+                      }
                     }
                 }
                 if (loggedMealGroups.isEmpty()) {
@@ -465,6 +496,7 @@ fun DiaryScreen(
                     }
                 } else {
                     items(loggedMealGroups, key = { it.mealName }) { group ->
+                      Box(Modifier.hideWhenScrolledAway(listState, group.mealName).popIn(group.mealName, poppedKeys)) {
                         MealCard(
                             mealName = group.mealName,
                             mealCalories = group.calories,
@@ -604,17 +636,19 @@ fun DiaryScreen(
                                 }
                             }
                         )
+                      }
                     }
                 }
 
                 // Quick Meal Selection Action Bar
-                item {
+                item(key = "quick_meals") {
                     val candidateMeals = remember(mealTypes) {
                         (if (mealTypes.isNotEmpty()) mealTypes else com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES)
                             .distinctBy { it.name.trim().lowercase() }
                     }
                     Column(
                         modifier = Modifier
+                            .hideWhenScrolledAway(listState, "quick_meals")
                             .fillMaxWidth()
                             .padding(vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -698,8 +732,9 @@ fun DiaryScreen(
                 }
 
                 // Interactive Weight vs Calories Over Time Chart & Adaptive TDEE
-                item {
+                item(key = "weight_chart") {
                     WeightVsCaloriesCard(
+                        modifier = Modifier.hideWhenScrolledAway(listState, "weight_chart"),
                         chartPoints = chartPoints,
                         calculation = adaptiveCalc,
                         selectedDaysRange = selectedChartDays,
