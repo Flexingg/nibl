@@ -54,6 +54,7 @@ import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroProtein
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -287,7 +288,7 @@ fun CopyMealDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Copy to $targetMeal",
-                            color = ByteCream,
+                            color = ByteOnTomato,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )

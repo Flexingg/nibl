@@ -48,6 +48,7 @@ import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroProtein
 
@@ -161,7 +162,7 @@ fun BatchSheet(
                     colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().height(48.dp)
-                ) { Text("Log to ${meal?.name ?: "diary"}", color = ByteCream, fontWeight = FontWeight.Bold) }
+                ) { Text("Log to ${meal?.name ?: "diary"}", color = ByteOnTomato, fontWeight = FontWeight.Bold) }
             }
 
             Spacer(Modifier.height(16.dp))

@@ -206,7 +206,7 @@ fun rememberHeaderFraction(state: HeaderCollapseState): () -> Float {
     return { if (reduce) state.target else spring }
 }
 
-private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+internal fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
 /**
  * The three Diary header cards. Each is given as a full version and a narrow version; the layout morphs the card's
@@ -264,7 +264,7 @@ fun CollapsingDiaryHeader(
 
 /** One card: full content fades out as the narrow content fades in, inside a surface whose corners ease with the fold. */
 @Composable
-private fun FoldingCard(
+internal fun FoldingCard(
     fraction: () -> Float,
     radiusExpanded: Int,
     radiusCompact: Int,
@@ -363,11 +363,12 @@ fun MacroStrip(summary: DailySummary, modifier: Modifier = Modifier) {
 private fun MacroRing(letter: String, progress: Float, color: Color) {
     val sweep = animateBouncy(progress, "ring_$letter")
     Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+        val cTrack = ByteSurfaceVariantDark
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 3.2.dp.toPx()
             val inset = stroke / 2
             val arcSize = Size(size.width - stroke, size.height - stroke)
-            drawArc(ByteSurfaceVariantDark, 0f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(stroke))
+            drawArc(cTrack, 0f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(stroke))
             drawArc(color, -90f, 360f * sweep.coerceIn(0f, 1f), false, Offset(inset, inset), arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
         }
         Text(letter, color = color, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)

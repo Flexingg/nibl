@@ -35,6 +35,7 @@ import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroFat
 import com.bytelog.app.ui.theme.MacroProtein
@@ -215,7 +216,7 @@ fun QuickAddDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Add Entry", color = ByteCream, fontWeight = FontWeight.Bold)
+                        Text("Add Entry", color = ByteOnTomato, fontWeight = FontWeight.Bold)
                     }
                 }
             }

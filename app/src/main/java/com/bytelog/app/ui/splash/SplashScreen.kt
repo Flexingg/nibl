@@ -26,8 +26,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bytelog.app.ui.theme.ByteCream
-import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.BrandCream
+import com.bytelog.app.ui.theme.BrandTomato
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -108,11 +108,12 @@ fun AnimatedSplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ByteTomato)
+            .background(BrandTomato)
             .graphicsLayer { alpha = overallAlpha.value },
         contentAlignment = Alignment.Center
     ) {
         // Main Logo Canvas
+        val cCream = BrandCream
         Canvas(
             modifier = Modifier.size(200.dp)
         ) {
@@ -159,7 +160,7 @@ fun AnimatedSplashScreen(
                     op(cookiePath, bitesPath, PathOperation.Difference)
                 }
 
-                drawPath(path = finalCookiePath, color = ByteCream)
+                drawPath(path = finalCookiePath, color = cCream)
             }
 
             // Speed lines on left
@@ -171,7 +172,7 @@ fun AnimatedSplashScreen(
                 val x2 = tx(146f) + line1OffsetX.value * scale
                 val y = ty(214f)
                 drawLine(
-                    color = ByteCream.copy(alpha = line1Alpha.value),
+                    color = cCream.copy(alpha = line1Alpha.value),
                     start = Offset(x1, y),
                     end = Offset(x2, y),
                     strokeWidth = sw,
@@ -185,7 +186,7 @@ fun AnimatedSplashScreen(
                 val x2 = tx(146f) + line2OffsetX.value * scale
                 val y = ty(256f)
                 drawLine(
-                    color = ByteCream.copy(alpha = line2Alpha.value),
+                    color = cCream.copy(alpha = line2Alpha.value),
                     start = Offset(x1, y),
                     end = Offset(x2, y),
                     strokeWidth = sw,
@@ -199,7 +200,7 @@ fun AnimatedSplashScreen(
                 val x2 = tx(146f) + line3OffsetX.value * scale
                 val y = ty(298f)
                 drawLine(
-                    color = ByteCream.copy(alpha = line3Alpha.value),
+                    color = cCream.copy(alpha = line3Alpha.value),
                     start = Offset(x1, y),
                     end = Offset(x2, y),
                     strokeWidth = sw,
@@ -211,7 +212,7 @@ fun AnimatedSplashScreen(
         // Brand typography anchored near bottom
         Text(
             text = "bytelog",
-            color = ByteCream,
+            color = BrandCream,
             fontSize = 32.sp,
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = (-0.5).sp,

@@ -69,6 +69,7 @@ import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroProtein
 import com.bytelog.app.ui.viewmodel.RecipesViewModel
@@ -209,7 +210,7 @@ fun CookModeScreen(viewModel: RecipesViewModel, templateId: String, onClose: () 
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
-                    ) { Text("Finished cooking — start a batch", color = ByteCream, fontWeight = FontWeight.Bold) }
+                    ) { Text("Finished cooking — start a batch", color = ByteOnTomato, fontWeight = FontWeight.Bold) }
                     TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Close without a batch", color = ByteTextSecondary) }
                     Spacer(Modifier.height(32.dp))
                 }

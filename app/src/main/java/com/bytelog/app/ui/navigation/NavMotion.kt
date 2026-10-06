@@ -36,7 +36,7 @@ object NavMotion {
     private val recede = spring<Float>(dampingRatio = 0.85f, stiffness = 420f)
 
     /** Where the sparkle button sits in the Diary's top bar, as a fraction of the screen. */
-    private val sparkleOrigin = TransformOrigin(0.86f, 0.04f)
+    private val sparkleOrigin = TransformOrigin(0.78f, 0.06f)
 
     private fun AnimatedContentTransitionScope<NavBackStackEntry>.targetRoute() = targetState.destination.route
     private fun AnimatedContentTransitionScope<NavBackStackEntry>.initialRoute() = initialState.destination.route

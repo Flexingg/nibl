@@ -63,6 +63,7 @@ import com.bytelog.app.ui.theme.ByteSurfaceDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroProtein
 import com.bytelog.app.ui.viewmodel.ImportState
@@ -119,7 +120,7 @@ fun RecipeImportScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = ByteTomato),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().height(50.dp)
-                    ) { Text("Open in built-in browser", color = ByteCream, fontWeight = FontWeight.Bold) }
+                    ) { Text("Open in built-in browser", color = ByteOnTomato, fontWeight = FontWeight.Bold) }
                     Spacer(Modifier.height(16.dp))
                     ImportInput(onSubmit = viewModel::startImport, onBrowse = viewModel::openBrowser)
                 }
@@ -170,9 +171,9 @@ private fun ImportInput(onSubmit: (String) -> Unit, onBrowse: (String) -> Unit =
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) {
-            Icon(Icons.Default.ContentPaste, null, tint = ByteCream, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.ContentPaste, null, tint = ByteOnTomato, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Read recipe", color = ByteCream, fontWeight = FontWeight.Bold)
+            Text("Read recipe", color = ByteOnTomato, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -293,8 +294,8 @@ private fun ImportReview(s: ImportState.Review, viewModel: RecipesViewModel, onS
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
-                if (s.saving) CircularProgressIndicator(Modifier.size(18.dp), color = ByteCream, strokeWidth = 2.dp)
-                else Text("Save recipe to Sparky", color = ByteCream, fontWeight = FontWeight.Bold)
+                if (s.saving) CircularProgressIndicator(Modifier.size(18.dp), color = ByteOnTomato, strokeWidth = 2.dp)
+                else Text("Save recipe to Sparky", color = ByteOnTomato, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(24.dp))
         }

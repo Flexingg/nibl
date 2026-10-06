@@ -254,6 +254,10 @@ fun WeightVsCaloriesCard(
                             )
                         }
                 ) {
+                    val cCream = ByteCream
+                    val cTomato = ByteTomato
+                    val cCarbs = MacroCarbs
+                    val cCard = ByteCardDark
                     Canvas(modifier = Modifier.fillMaxWidth().height(160.dp)) {
                         val canvasWidth = size.width
                         val canvasHeight = size.height
@@ -265,7 +269,7 @@ fun WeightVsCaloriesCard(
                         val targetCal = validPoints.firstOrNull()?.targetCalories ?: 2000f
                         val targetY = canvasHeight - ((targetCal / maxCals) * (canvasHeight * 0.85f))
                         drawLine(
-                            color = ByteCream.copy(alpha = 0.15f),
+                            color = cCream.copy(alpha = 0.15f),
                             start = Offset(0f, targetY),
                             end = Offset(canvasWidth, targetY),
                             strokeWidth = 2f,
@@ -279,7 +283,7 @@ fun WeightVsCaloriesCard(
                             val barHeight = ((pt.calories / maxCals) * (canvasHeight * 0.85f)).coerceAtLeast(4f)
                             val topY = canvasHeight - barHeight
 
-                            val barColor = if (i == activeScrubIndex) ByteTomato else ByteTomato.copy(alpha = 0.45f)
+                            val barColor = if (i == activeScrubIndex) cTomato else cTomato.copy(alpha = 0.45f)
                             drawRoundRect(
                                 color = barColor,
                                 topLeft = Offset(barCenterX - (barWidth / 2f), topY),
@@ -314,7 +318,7 @@ fun WeightVsCaloriesCard(
                             }
                             drawPath(
                                 path = weightPath,
-                                color = MacroCarbs,
+                                color = cCarbs,
                                 style = Stroke(width = 4f, cap = StrokeCap.Round)
                             )
                         }
@@ -328,12 +332,12 @@ fun WeightVsCaloriesCard(
                                 val y = (canvasHeight * 0.15f) + ((1f - normalizedWeight) * (canvasHeight * 0.65f))
 
                                 drawCircle(
-                                    color = ByteCardDark,
+                                    color = cCard,
                                     radius = 6f,
                                     center = Offset(x, y)
                                 )
                                 drawCircle(
-                                    color = MacroCarbs,
+                                    color = cCarbs,
                                     radius = 4f,
                                     center = Offset(x, y)
                                 )
@@ -344,7 +348,7 @@ fun WeightVsCaloriesCard(
                         if (activeScrubIndex in 0 until count) {
                             val scrubX = slotWidth * activeScrubIndex + (slotWidth / 2f)
                             drawLine(
-                                color = ByteCream.copy(alpha = 0.5f),
+                                color = cCream.copy(alpha = 0.5f),
                                 start = Offset(scrubX, 0f),
                                 end = Offset(scrubX, canvasHeight),
                                 strokeWidth = 2f

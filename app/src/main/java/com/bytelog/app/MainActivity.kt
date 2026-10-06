@@ -72,7 +72,14 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) readSharedText(intent)
 
         setContent {
-            ByteLogTheme(darkTheme = true) {
+            val themeMode by settingsRepo.themeMode.collectAsState(initial = com.bytelog.app.ui.theme.ThemeMode.SYSTEM)
+            val deviceColors by settingsRepo.useDeviceColors.collectAsState(initial = true)
+            val dark = when (themeMode) {
+                com.bytelog.app.ui.theme.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+                com.bytelog.app.ui.theme.ThemeMode.LIGHT -> false
+                com.bytelog.app.ui.theme.ThemeMode.DARK -> true
+            }
+            ByteLogTheme(darkTheme = dark, dynamicColor = deviceColors) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

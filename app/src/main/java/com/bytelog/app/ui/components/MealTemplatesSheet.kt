@@ -50,6 +50,7 @@ import com.bytelog.app.ui.theme.ByteInkDark
 import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
 import com.bytelog.app.ui.theme.ByteTextSecondary
 import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
 import com.bytelog.app.ui.theme.MacroCarbs
 import com.bytelog.app.ui.theme.MacroFat
 import com.bytelog.app.ui.theme.MacroProtein
@@ -146,11 +147,11 @@ fun MealTemplatesSheet(
                     Icon(
                         imageVector = Icons.Default.Language,
                         contentDescription = null,
-                        tint = ByteCream,
+                        tint = ByteOnTomato,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Import Recipe", color = ByteCream, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Import Recipe", color = ByteOnTomato, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
                 Button(
                     onClick = {
