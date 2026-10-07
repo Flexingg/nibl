@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.util.UUID
@@ -90,17 +91,51 @@ class WaterRepository(
 
         appScope.launch(Dispatchers.IO) {
             waterLogDao.insertLog(entry)
-
-            // Asynchronously sync with Sparky Fitness
+            // Send it (with any other drinks Sparky hasn't received yet), then reconcile the day
             try {
-                val pushed = pushDrink(cleanDate, amountOz, containerId, displayName)
-                // Once Sparky has the drink, the local copy must stop counting as a separate pending
-                // one. Reconciling below swaps it for the server's own entry; leaving it pending made
-                // every drink count twice.
-                if (pushed) waterLogDao.updateSyncStatus(entry.id, WaterLogEntry.SYNC_STATUS_SYNCED)
-
-                // Reconcile itemized logs with Sparky
+                pushPendingWater()
                 syncWaterLogs(cleanDate)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private val pushLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * Sends drinks logged and removed on the phone that Sparky hasn't accepted yet, for any date. A drink only
+     * stops being pending once Sparky has it (so it is never counted twice), and anything refused is kept and
+     * tried again on the next sync. Returns how many changes are still waiting.
+     */
+    suspend fun pushPendingWater(): Int = withContext(Dispatchers.IO) {
+        pushLock.withLock {
+            var failed = 0
+            for (log in waterLogDao.getPendingInsertLogs()) {
+                val oz = log.waterMl / ML_PER_FL_OZ
+                val ok = try { pushDrink(log.entryDate, oz, log.containerId, log.containerName ?: "${oz.roundToInt()} oz") } catch (_: Exception) { false }
+                if (ok) waterLogDao.updateSyncStatus(log.id, WaterLogEntry.SYNC_STATUS_SYNCED) else failed++
+            }
+            for (log in waterLogDao.getPendingDeleteLogs()) {
+                val ok = try {
+                    sparkyApiClient.deleteWaterLog(log.id).isSuccess ||
+                        sparkyApiClient.upsertWaterIntake(log.entryDate, -1, log.containerId).isSuccess
+                } catch (_: Exception) { false }
+                if (ok) waterLogDao.deleteLogById(log.id) else failed++
+            }
+            failed
+        }
+    }
+
+    suspend fun countPending(): Int = withContext(Dispatchers.IO) { waterLogDao.countPendingSync() }
+
+    /** Removes a drink: straight away if Sparky never got it, otherwise once Sparky confirms. */
+    private suspend fun removeLog(log: WaterLogEntry) {
+        if (log.syncStatus == WaterLogEntry.SYNC_STATUS_PENDING_INSERT) {
+            waterLogDao.deleteLogById(log.id)
+        } else {
+            waterLogDao.updateSyncStatus(log.id, WaterLogEntry.SYNC_STATUS_PENDING_DELETE)
+            try {
+                pushPendingWater()
+                syncWaterLogs(log.entryDate)
             } catch (_: Exception) {}
         }
     }
@@ -133,19 +168,7 @@ class WaterRepository(
     fun undoLastDrink(date: String) {
         val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
         appScope.launch(Dispatchers.IO) {
-            val latest = waterLogDao.getLatestLogForDate(cleanDate)
-            if (latest != null) {
-                waterLogDao.deleteLogById(latest.id)
-                try {
-                    // Try direct delete by ID first
-                    val delRes = sparkyApiClient.deleteWaterLog(latest.id)
-                    if (!delRes.isSuccess) {
-                        // Fallback to decrementing drinks count
-                        sparkyApiClient.upsertWaterIntake(cleanDate, -1, latest.containerId)
-                    }
-                    syncWaterLogs(cleanDate)
-                } catch (_: Exception) {}
-            }
+            waterLogDao.getLatestLogForDate(cleanDate)?.let { removeLog(it) }
         }
     }
 
@@ -153,13 +176,7 @@ class WaterRepository(
      * Delete a specific water entry.
      */
     fun deleteWaterLog(entry: WaterLogEntry) {
-        appScope.launch(Dispatchers.IO) {
-            waterLogDao.deleteLogById(entry.id)
-            try {
-                sparkyApiClient.deleteWaterLog(entry.id)
-                syncWaterLogs(entry.entryDate)
-            } catch (_: Exception) {}
-        }
+        appScope.launch(Dispatchers.IO) { removeLog(entry) }
     }
 
     /**
@@ -167,6 +184,9 @@ class WaterRepository(
      */
     suspend fun syncWaterForDate(date: String): Result<Float> = withContext(Dispatchers.IO) {
         val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+
+        // 0. Send the phone's unsent drinks and removals first, so the download below can't drop them
+        try { pushPendingWater() } catch (_: Exception) {}
 
         // 1. Fetch user water containers if empty
         try {
@@ -221,10 +241,13 @@ class WaterRepository(
                     )
                 }
 
-                // Delete only synced entries for this date, preserve any pending ones
+                // Delete only synced entries for this date, preserve any pending ones, and don't bring back
+                // drinks removed on the phone whose removal Sparky hasn't confirmed yet
+                val removing = waterLogDao.getPendingDeleteLogs().map { it.id }.toSet()
                 waterLogDao.deleteSyncedLogsForDate(cleanDate)
-                if (serverEntries.isNotEmpty()) {
-                    waterLogDao.insertLogs(serverEntries)
+                val incoming = serverEntries.filter { it.id !in removing }
+                if (incoming.isNotEmpty()) {
+                    waterLogDao.insertLogs(incoming)
                 }
             }
         } catch (_: Exception) {}

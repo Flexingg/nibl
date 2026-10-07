@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FoodEntryDao {
-    @Query("SELECT * FROM food_entries WHERE entryDate = :date ORDER BY createdAt ASC")
+    @Query("SELECT * FROM food_entries WHERE entryDate = :date AND syncStatus != 'pending_delete' ORDER BY createdAt ASC")
     fun getEntriesForDate(date: String): Flow<List<FoodEntry>>
 
     @Query("SELECT * FROM food_entries WHERE entryDate = :date ORDER BY createdAt ASC")
@@ -19,8 +19,12 @@ interface FoodEntryDao {
     @Query("SELECT * FROM food_entries WHERE id = :id LIMIT 1")
     suspend fun getEntryById(id: String): FoodEntry?
 
-    @Query("SELECT * FROM food_entries WHERE syncStatus != 'synced'")
+    /** Changes made on the phone that Sparky hasn't accepted yet (any date). */
+    @Query("SELECT * FROM food_entries WHERE syncStatus IN ('pending_insert', 'pending_update', 'pending_delete') ORDER BY createdAt ASC")
     suspend fun getPendingSyncEntries(): List<FoodEntry>
+
+    @Query("SELECT COUNT(*) FROM food_entries WHERE syncStatus IN ('pending_insert', 'pending_update', 'pending_delete')")
+    suspend fun countPendingSync(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEntries(entries: List<FoodEntry>)
@@ -57,6 +61,7 @@ interface FoodEntryDao {
         INNER JOIN (
             SELECT LOWER(foodName) as lowerName, MAX(createdAt) as maxCreated
             FROM food_entries
+            WHERE syncStatus != 'pending_delete'
             GROUP BY LOWER(foodName)
         ) latest ON LOWER(fe.foodName) = latest.lowerName AND fe.createdAt = latest.maxCreated
         ORDER BY fe.createdAt DESC
@@ -64,9 +69,9 @@ interface FoodEntryDao {
     """)
     fun getRecentlyLoggedEntries(limit: Int = 30): Flow<List<FoodEntry>>
 
-    @Query("SELECT * FROM food_entries WHERE entryDate >= :startDate AND entryDate <= :endDate ORDER BY entryDate ASC, createdAt ASC")
+    @Query("SELECT * FROM food_entries WHERE entryDate >= :startDate AND entryDate <= :endDate AND syncStatus != 'pending_delete' ORDER BY entryDate ASC, createdAt ASC")
     fun getEntriesInRange(startDate: String, endDate: String): Flow<List<FoodEntry>>
 
-    @Query("SELECT * FROM food_entries ORDER BY entryDate ASC, createdAt ASC")
+    @Query("SELECT * FROM food_entries WHERE syncStatus != 'pending_delete' ORDER BY entryDate ASC, createdAt ASC")
     fun getAllEntries(): Flow<List<FoodEntry>>
 }

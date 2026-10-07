@@ -225,7 +225,7 @@ fun DrawScope.drawWavyRing(progress: Float, phase: Float, color: Color, track: C
     val p = Path()
     var a = start; var first = true
     while (a <= start + sweep) {
-        val r = ringRadius + amplitude * sin(waves * (a - start) - phase * 1.4f)
+        val r = ringRadius + amplitude * sin(waves * (a - start) - phase)   // whole multiple of the phase, so the loop has no seam
         val x = center.x + cos(a) * r; val y = center.y + sin(a) * r
         if (first) { p.moveTo(x, y); first = false } else p.lineTo(x, y)
         a += 0.02f

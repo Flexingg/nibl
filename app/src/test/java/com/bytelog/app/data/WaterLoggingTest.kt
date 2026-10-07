@@ -131,4 +131,18 @@ class WaterLoggingTest {
         val volume = Regex("\"volume\":([0-9.]+)").find(body)!!.groupValues[1].toFloat()
         assertEquals(236.6f, volume, 0.5f)                    // 8 oz, not "8" ml
     }
+
+    @Test fun aDrinkLoggedWhileSparkyRefusedIsSentOnTheNextSync() = runBlocking {
+        repo.syncWaterForDate(date)
+        acceptDrinks = false
+        repo.quickAddWaterOz(date, 20f, containerName = "20 oz Bottle")
+        until("the local entry") { count() == 1 }
+        settle()
+        assertEquals(0, posts.size)
+        acceptDrinks = true
+        repo.syncWaterForDate(date)                        // the sync sends it first, then downloads
+        assertEquals("sent once", 1, posts.size)
+        assertEquals(20f, total(), 0.1f); assertEquals(1, count())
+        assertEquals(0, repo.countPending())
+    }
 }

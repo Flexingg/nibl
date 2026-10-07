@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
@@ -1663,13 +1664,26 @@ fun SwipeableFoodEntryRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = entry.foodName,
                         color = ByteCream,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    // Saved on this phone but not on Sparky yet; it is sent on the next sync
+                    if (entry.syncStatus == FoodEntry.SYNC_STATUS_PENDING_INSERT || entry.syncStatus == FoodEntry.SYNC_STATUS_PENDING_UPDATE) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Default.CloudOff,
+                            contentDescription = "Not on Sparky yet",
+                            tint = ByteCreamMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                  }
                     Text(
                         text = "${entry.quantity.roundToInt()}${entry.unit} • P: ${entry.protein.roundToInt()}g  C: ${entry.carbs.roundToInt()}g  F: ${entry.fat.roundToInt()}g",
                         color = ByteCreamMuted,
