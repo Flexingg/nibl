@@ -129,6 +129,14 @@ class FoodRepository(
         return getRecentlyLoggedFoods(limit)
     }
 
+    /** The amount last logged of each food (quantity, unit), keyed by food id. */
+    suspend fun lastPortions(foodIds: List<String>): Map<String, Pair<Float, String>> = withContext(Dispatchers.IO) {
+        if (foodIds.isEmpty()) return@withContext emptyMap()
+        foodIds.distinct().chunked(500).flatMap { foodEntryDao.getLatestEntriesForFoods(it) }
+            .filter { it.foodId != null && it.quantity > 0f }
+            .associate { it.foodId!! to (it.quantity to it.unit) }
+    }
+
     fun getRecentlyLoggedFoods(limit: Int = 30): Flow<List<FoodItem>> {
         return foodEntryDao.getRecentlyLoggedEntries(limit).map { entries ->
             entries.map { entry ->

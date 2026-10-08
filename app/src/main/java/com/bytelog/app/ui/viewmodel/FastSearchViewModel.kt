@@ -1,5 +1,8 @@
 package com.bytelog.app.ui.viewmodel
 
+import com.bytelog.app.ui.logging.Portion
+import com.bytelog.app.ui.logging.Portions
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bytelog.app.data.local.model.FoodEntry
@@ -115,10 +118,41 @@ class FastSearchViewModel(
         _searchQuery.value = query
     }
 
-    /**
-     * Instantly stage food to multi-add tray with default or custom portion.
-     */
-    fun stageFood(food: FoodItem, quantity: Float = food.servingSize, unit: String = food.servingUnit) {
+    // ----- Staging: one tap adds a food at a sensible amount; the amount and unit stay easy to change -----
+
+    /** The food behind each staged entry, so a new amount or unit is recalculated from the food itself. */
+    private val stagedFoods = java.util.concurrent.ConcurrentHashMap<String, FoodItem>()
+
+    /** The staged entry whose amount is being adjusted (the one added last, unless another is picked). */
+    private val _activeStagedId = MutableStateFlow<String?>(null)
+    val activeStagedId: StateFlow<String?> = _activeStagedId.asStateFlow()
+
+    /** Amount last logged of each food shown, so a tap repeats it. */
+    private val _lastPortions = MutableStateFlow<Map<String, Portion>>(emptyMap())
+    val lastPortions: StateFlow<Map<String, Portion>> = _lastPortions.asStateFlow()
+
+    fun prefetchPortions(foods: List<FoodItem>) {
+        val missing = foods.map { it.id }.filter { it !in _lastPortions.value }
+        if (missing.isEmpty()) return
+        viewModelScope.launch {
+            val found = foodRepository.lastPortions(missing)
+            if (found.isNotEmpty()) _lastPortions.value = _lastPortions.value + found.mapValues { (_, v) -> Portion(v.first, v.second) }
+        }
+    }
+
+    /** What a tap logs: the amount last logged of this food when its unit still fits, else one serving. */
+    fun portionFor(food: FoodItem): Portion {
+        val last = _lastPortions.value[food.id] ?: return Portions.defaultFor(food)
+        val fits = Portions.unitOptions(food).any { it.equals(last.unit, ignoreCase = true) } || last.unit.equals(food.servingUnit, ignoreCase = true)
+        return if (fits && last.quantity > 0f) last else Portions.defaultFor(food)
+    }
+
+    fun unitOptionsFor(entryId: String): List<String> = stagedFoods[entryId]?.let { Portions.unitOptions(it) } ?: emptyList()
+    fun foodFor(entryId: String): FoodItem? = stagedFoods[entryId]
+
+    fun stageFood(food: FoodItem, portion: Portion? = null): FoodEntry {
+        val p = portion ?: portionFor(food)
+        val m = Portions.macros(food, p)
         val entry = FoodEntry(
             id = UUID.randomUUID().toString(),
             foodId = food.id,
@@ -126,42 +160,70 @@ class FastSearchViewModel(
             brandName = food.brand,
             mealTypeId = targetMealTypeId,
             mealName = targetMealName,
-            quantity = quantity,
-            unit = unit,
-            calories = food.caloriesFor(quantity, unit),
-            protein = food.proteinFor(quantity, unit),
-            carbs = food.carbsFor(quantity, unit),
-            fat = food.fatFor(quantity, unit),
+            quantity = p.quantity,
+            unit = p.unit,
+            calories = m.calories,
+            protein = m.protein,
+            carbs = m.carbs,
+            fat = m.fat,
             entryDate = targetDate,
             syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT
         )
+        stagedFoods[entry.id] = food
         _stagedEntries.value = _stagedEntries.value + entry
+        _activeStagedId.value = entry.id
+        return entry
     }
 
-    fun stageEntries(entries: List<FoodEntry>) {
-        _stagedEntries.value = _stagedEntries.value + entries
+    fun stageFood(food: FoodItem, quantity: Float, unit: String = food.servingUnit) = stageFood(food, Portion(quantity, unit))
+
+    /**
+     * One tap on a result. A food not yet in the tray is added at [portionFor]; tapping a food that is already
+     * there adds another portion of it to that entry (in the entry's unit) instead of a duplicate line.
+     */
+    fun tapFood(food: FoodItem) {
+        val existing = _stagedEntries.value.lastOrNull { it.foodId == food.id && stagedFoods[it.id]?.id == food.id }
+        if (existing == null) { stageFood(food); return }
+        val more = Portions.convert(food, portionFor(food), existing.unit).quantity
+        updateStagedPortion(existing.id, Portion(Portions.tidy(existing.quantity + more, existing.unit), existing.unit))
+        _activeStagedId.value = existing.id
     }
+
+    /** Entries made elsewhere (quick add, voice): their own amount becomes "1 serving" for later changes. */
+    fun stageEntries(entries: List<FoodEntry>) {
+        entries.forEach { e ->
+            stagedFoods[e.id] = FoodItem(
+                id = e.foodId ?: e.id, name = e.foodName, brand = e.brandName,
+                servingSize = e.quantity, servingUnit = e.unit,
+                calories = e.calories, protein = e.protein, carbs = e.carbs, fat = e.fat
+            )
+        }
+        _stagedEntries.value = _stagedEntries.value + entries
+        entries.lastOrNull()?.let { _activeStagedId.value = it.id }
+    }
+
+    fun selectStagedEntry(entryId: String) { _activeStagedId.value = entryId }
 
     fun removeStagedEntry(entry: FoodEntry) {
+        stagedFoods.remove(entry.id)
         _stagedEntries.value = _stagedEntries.value.filter { it.id != entry.id }
+        if (_activeStagedId.value == entry.id) _activeStagedId.value = _stagedEntries.value.lastOrNull()?.id
     }
 
-    fun updateStagedEntry(entry: FoodEntry, newQuantity: Float, newUnit: String) {
-        val updatedList = _stagedEntries.value.map { current ->
-            if (current.id == entry.id) {
-                val ratio = if (current.quantity > 0f) newQuantity / current.quantity else 1f
-                current.copy(
-                    quantity = newQuantity,
-                    unit = newUnit,
-                    calories = current.calories * ratio,
-                    protein = current.protein * ratio,
-                    carbs = current.carbs * ratio,
-                    fat = current.fat * ratio
-                )
-            } else current
+    /** New amount and/or unit for a staged entry; nutrition is recalculated from its food, converting units. */
+    fun updateStagedPortion(entryId: String, portion: Portion) {
+        val food = stagedFoods[entryId] ?: return
+        val m = Portions.macros(food, portion)
+        _stagedEntries.value = _stagedEntries.value.map { current ->
+            if (current.id == entryId) current.copy(
+                quantity = portion.quantity, unit = portion.unit,
+                calories = m.calories, protein = m.protein, carbs = m.carbs, fat = m.fat
+            ) else current
         }
-        _stagedEntries.value = updatedList
     }
+
+    /** Kept for callers that edit by entry: same as [updateStagedPortion]. */
+    fun updateStagedEntry(entry: FoodEntry, newQuantity: Float, newUnit: String) = updateStagedPortion(entry.id, Portion(newQuantity, newUnit))
 
     /**
      * Commits all staged items in 1 frame and clears tray.
@@ -173,6 +235,8 @@ class FastSearchViewModel(
         viewModelScope.launch {
             foodRepository.commitMultiAdd(entriesToCommit)
             _stagedEntries.value = emptyList()
+            stagedFoods.clear()
+            _activeStagedId.value = null
             onSuccess()
         }
     }
@@ -221,7 +285,7 @@ class FastSearchViewModel(
             if (result.isSuccess && autoStage) {
                 val item = result.getOrNull()
                 if (item != null) {
-                    stageFood(item, servingSize, servingUnit)
+                    stageFood(item, Portion(servingSize, servingUnit))
                 }
             }
         }

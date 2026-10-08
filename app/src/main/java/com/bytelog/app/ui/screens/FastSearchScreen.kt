@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.Favorite
@@ -71,6 +72,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.onFocusChanged
+import com.bytelog.app.ui.logging.Portion
+import com.bytelog.app.ui.logging.Portions
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -81,7 +86,6 @@ import com.bytelog.app.data.local.model.FoodItem
 import com.bytelog.app.ui.components.CustomFoodDialog
 import com.bytelog.app.ui.components.GenerateFoodAiDialog
 import com.bytelog.app.ui.components.MultiAddTray
-import com.bytelog.app.ui.components.PortionEditorSheet
 import com.bytelog.app.ui.components.QuickAddDialog
 import com.bytelog.app.ui.components.VoiceLogDialog
 import com.bytelog.app.ui.theme.ByteCream
@@ -111,10 +115,11 @@ fun FastSearchScreen(
     val suggestedFoods by viewModel.suggestedFoods.collectAsState()
     val stagedEntries by viewModel.stagedEntries.collectAsState()
     val isSearchingRemote by viewModel.isSearchingRemote.collectAsState()
+    val activeStagedId by viewModel.activeStagedId.collectAsState()
+    val lastPortions by viewModel.lastPortions.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    var selectedFoodForPortion by remember { mutableStateOf<FoodItem?>(null) }
-    var activeEntryToEdit by remember { mutableStateOf<FoodEntry?>(null) }
+    var searchFocused by remember { mutableStateOf(false) }
     var showQuickAddDialog by remember { mutableStateOf(false) }
     var showVoiceLogDialog by remember { mutableStateOf(false) }
     var showCustomFoodDialog by remember { mutableStateOf(false) }
@@ -124,6 +129,7 @@ fun FastSearchScreen(
 
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(Unit) {
         delay(200)
@@ -146,8 +152,15 @@ fun FastSearchScreen(
                 },
                 onRemoveEntry = { viewModel.removeStagedEntry(it) },
                 onEditEntry = { entry ->
-                    activeEntryToEdit = entry
-                }
+                    focusManager.clearFocus()
+                    viewModel.selectStagedEntry(entry.id)
+                },
+                activeEntryId = activeStagedId,
+                foodFor = viewModel::foodFor,
+                unitsFor = viewModel::unitOptionsFor,
+                onPortionChange = viewModel::updateStagedPortion,
+                // While typing a search the tray shrinks to its chips and button so results stay visible
+                compact = searchFocused
             )
         }
     ) { paddingValues ->
@@ -199,6 +212,7 @@ fun FastSearchScreen(
                         .fillMaxWidth()
                         .height(58.dp)
                         .focusRequester(focusRequester)
+                        .onFocusChanged { searchFocused = it.isFocused }
                 )
 
                 val cs = MaterialTheme.colorScheme
@@ -323,6 +337,9 @@ fun FastSearchScreen(
                 selectedTabIndex == 1 -> recentFoods
                 else -> favoriteFoods
             }
+
+            LaunchedEffect(displayFoods) { viewModel.prefetchPortions(displayFoods) }
+            val inTray = remember(stagedEntries) { stagedEntries.mapNotNull { it.foodId }.toSet() }
 
             val poppedResults = remember { mutableSetOf<Any>() }
             LazyColumn(
@@ -470,16 +487,14 @@ fun FastSearchScreen(
                             shape = rowShape,
                             modifier = Modifier.popIn(food.id, poppedResults, (index.coerceAtMost(8) * 25).toLong()),
                             food = food,
+                            portion = remember(food, lastPortions) { viewModel.portionFor(food) },
+                            inTray = food.id in inTray,
                             onQuickAdd = {
+                                // One tap: in the tray at the usual amount, editor open, search cleared for the next food
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                viewModel.stageFood(food)
-                            },
-                            onDoubleTapQuickAdd = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.stageFood(food, quantity = food.servingSize * 2f)
-                            },
-                            onAdjustPortion = {
-                                selectedFoodForPortion = food
+                                viewModel.tapFood(food)
+                                if (searchQuery.isNotBlank()) viewModel.setSearchQuery("")
+                                focusManager.clearFocus()
                             },
                             onToggleFavorite = {
                                 viewModel.toggleFavorite(food)
@@ -492,58 +507,6 @@ fun FastSearchScreen(
                     Spacer(modifier = Modifier.height(80.dp))
                 }
             }
-        }
-    }
-
-    // Portion Editor Bottom Sheet
-    selectedFoodForPortion?.let { food ->
-        ModalBottomSheet(
-            onDismissRequest = { selectedFoodForPortion = null },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = ByteSurfaceDark
-        ) {
-            PortionEditorSheet(
-                food = food,
-                initialQuantity = food.servingSize,
-                initialUnit = food.servingUnit,
-                onConfirm = { qty, unit ->
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    viewModel.stageFood(food, qty, unit)
-                    selectedFoodForPortion = null
-                },
-                onDismiss = { selectedFoodForPortion = null }
-            )
-        }
-    }
-
-    // Edit Existing Staged Entry Bottom Sheet
-    activeEntryToEdit?.let { entry ->
-        ModalBottomSheet(
-            onDismissRequest = { activeEntryToEdit = null },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = ByteSurfaceDark
-        ) {
-            val dummyFood = FoodItem(
-                id = entry.foodId ?: entry.id,
-                name = entry.foodName,
-                brand = entry.brandName,
-                servingSize = entry.quantity,
-                servingUnit = entry.unit,
-                calories = entry.calories,
-                protein = entry.protein,
-                carbs = entry.carbs,
-                fat = entry.fat
-            )
-            PortionEditorSheet(
-                food = dummyFood,
-                initialQuantity = entry.quantity,
-                initialUnit = entry.unit,
-                onConfirm = { qty, unit ->
-                    viewModel.updateStagedEntry(entry, qty, unit)
-                    activeEntryToEdit = null
-                },
-                onDismiss = { activeEntryToEdit = null }
-            )
         }
     }
 
@@ -627,28 +590,30 @@ fun FoodSearchRow(
     food: FoodItem,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
     modifier: Modifier = Modifier,
+    portion: Portion = Portions.defaultFor(food),
+    inTray: Boolean = false,
     onQuickAdd: () -> Unit,
-    onDoubleTapQuickAdd: () -> Unit,
-    onAdjustPortion: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
+    val cs = MaterialTheme.colorScheme
+    val kcal = remember(food, portion) { Portions.macros(food, portion).calories.roundToInt() }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .pressBounce(0.98f)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .background(if (inTray) cs.secondaryContainer.copy(alpha = 0.55f) else cs.surfaceContainer)
+            // No double-tap handler: a single tap adds instantly instead of waiting to rule out a second tap
             .combinedClickable(
                 onClick = onQuickAdd,
-                onDoubleClick = onDoubleTapQuickAdd,
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onToggleFavorite()
                 }
             )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -656,10 +621,11 @@ fun FoodSearchRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = food.name,
-                    color = ByteCream,
+                    color = cs.onSurface,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 if (food.id.startsWith("off_")) {
@@ -667,39 +633,43 @@ fun FoodSearchRow(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(ByteTomato.copy(alpha = 0.18f))
+                            .background(cs.primary.copy(alpha = 0.18f))
                             .padding(horizontal = 5.dp, vertical = 1.dp)
                     ) {
-                        Text(
-                            text = "DB",
-                            color = ByteTomato,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                        Text(text = "DB", color = cs.primary, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
             }
             Text(
-                text = "${food.brand ?: "Generic"} • ${food.servingSize.roundToInt()}${food.servingUnit} • P: ${food.protein.roundToInt()}g  C: ${food.carbs.roundToInt()}g  F: ${food.fat.roundToInt()}g",
-                color = ByteCreamMuted,
-                fontSize = 11.sp
+                text = "${food.brand ?: "Generic"} • ${portion.label}",
+                color = cs.onSurfaceVariant,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Calories Tag (Tappable to tweak portion)
-            Box(
+            // Calories for the amount a tap adds, with a + (or a check once it is in the tray)
+            Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(ByteSurfaceVariantDark)
-                    .clickable(onClick = onAdjustPortion)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (inTray) cs.primary else cs.primaryContainer)
+                    .padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "${food.calories.roundToInt()} kcal",
-                    color = ByteTomato,
+                    text = "$kcal kcal",
+                    color = if (inTray) cs.onPrimary else cs.onPrimaryContainer,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.ExtraBold
+                )
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = if (inTray) Icons.Default.Check else Icons.Default.Add,
+                    contentDescription = if (inTray) "In tray" else null,
+                    tint = if (inTray) cs.onPrimary else cs.onPrimaryContainer,
+                    modifier = Modifier.size(16.dp)
                 )
             }
 
@@ -707,7 +677,7 @@ fun FoodSearchRow(
                 Icon(
                     imageVector = if (food.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     contentDescription = "Favorite",
-                    tint = if (food.isFavorite) ByteTomato else ByteCreamMuted,
+                    tint = if (food.isFavorite) cs.primary else cs.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
             }
