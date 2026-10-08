@@ -98,6 +98,7 @@ fun BarcodeScannerScreen(
     }
 
     val stagedEntries by viewModel.stagedEntries.collectAsState()
+    val activeStagedId by viewModel.activeStagedId.collectAsState()
     var scannedNotification by remember { mutableStateOf<String?>(null) }
     var lastScannedBarcode by remember { mutableStateOf("") }
     var lastScanTimestamp by remember { mutableStateOf(0L) }
@@ -124,7 +125,11 @@ fun BarcodeScannerScreen(
                     }
                 },
                 onRemoveEntry = { viewModel.removeStagedEntry(it) },
-                onEditEntry = {}
+                onEditEntry = { viewModel.selectStagedEntry(it.id) },
+                activeEntryId = activeStagedId,
+                foodFor = viewModel::foodFor,
+                unitsFor = viewModel::unitOptionsFor,
+                onPortionChange = viewModel::updateStagedPortion
             )
         }
     ) { paddingValues ->

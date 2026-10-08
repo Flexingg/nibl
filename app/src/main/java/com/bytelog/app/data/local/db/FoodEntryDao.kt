@@ -16,6 +16,17 @@ interface FoodEntryDao {
     @Query("SELECT * FROM food_entries WHERE entryDate = :date ORDER BY createdAt ASC")
     suspend fun getEntriesForDateOnce(date: String): List<FoodEntry>
 
+    /** The most recent entry of each of these foods, for "log the amount I had last time". */
+    @Query("""
+        SELECT fe.* FROM food_entries fe
+        INNER JOIN (
+            SELECT foodId, MAX(createdAt) AS maxCreated FROM food_entries
+            WHERE foodId IN (:foodIds) AND syncStatus != 'pending_delete'
+            GROUP BY foodId
+        ) latest ON fe.foodId = latest.foodId AND fe.createdAt = latest.maxCreated
+    """)
+    suspend fun getLatestEntriesForFoods(foodIds: List<String>): List<FoodEntry>
+
     @Query("SELECT * FROM food_entries WHERE id = :id LIMIT 1")
     suspend fun getEntryById(id: String): FoodEntry?
 
