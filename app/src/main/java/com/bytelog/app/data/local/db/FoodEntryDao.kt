@@ -37,6 +37,9 @@ interface FoodEntryDao {
     @Query("SELECT COUNT(*) FROM food_entries WHERE syncStatus IN ('pending_insert', 'pending_update', 'pending_delete')")
     suspend fun countPendingSync(): Int
 
+    @Query("SELECT * FROM food_entries WHERE foodId = :foodId AND syncStatus != 'pending_delete'")
+    suspend fun getEntriesForFood(foodId: String): List<FoodEntry>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEntries(entries: List<FoodEntry>)
 

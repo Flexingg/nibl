@@ -9,6 +9,8 @@ import com.bytelog.app.data.local.model.WeightEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
@@ -1428,6 +1430,165 @@ class SparkyApiClient(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    // --- Editing foods in the Sparky library ---
+    // Sparky keeps a food's name/brand/barcode on the food and its nutrition on the food's default variant;
+    // both PUTs only change the fields sent. Diary entries keep their own snapshot unless update-snapshot is called.
+
+    private fun jsonBody(obj: kotlinx.serialization.json.JsonObject) =
+        obj.toString().toRequestBody("application/json".toMediaType())
+
+    private fun errorText(code: Int, body: String): String {
+        val msg = runCatching { json.parseToJsonElement(body).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull()
+        return msg ?: "HTTP $code"
+    }
+
+    /** GET /api/foods/:id — the food with its default serving and nutrients. */
+    suspend fun getFoodDetails(foodId: String): Result<SparkyFood> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder().url("$baseUrl/api/foods/$foodId").get().build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@use Result.failure(IOException("Couldn't load food: ${errorText(response.code, body)}"))
+                Result.success(SparkyFood.parse(json.parseToJsonElement(body).jsonObject))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** The signed-in user's own foods (foodFilter=mine), newest Sparky ordering, with their default servings. */
+    suspend fun listMyFoods(search: String = "", page: Int = 1, perPage: Int = 50): Result<List<SparkyFood>> = withContext(Dispatchers.IO) {
+        try {
+            val q = java.net.URLEncoder.encode(search.trim(), "UTF-8")
+            val request = Request.Builder()
+                .url("$baseUrl/api/foods/foods-paginated?searchTerm=$q&foodFilter=mine&currentPage=$page&itemsPerPage=$perPage&sortBy=name:asc")
+                .get().build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@use Result.failure(IOException("Couldn't load your foods: ${errorText(response.code, body)}"))
+                val root = json.parseToJsonElement(body)
+                val arr = (root as? kotlinx.serialization.json.JsonObject)?.get("foods")?.jsonArray
+                    ?: (root as? kotlinx.serialization.json.JsonArray) ?: kotlinx.serialization.json.JsonArray(emptyList())
+                Result.success(arr.map { SparkyFood.parse(it.jsonObject) })
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** PUT /api/foods/:id — name, brand and barcode (a blank barcode clears it). */
+    suspend fun updateFood(foodId: String, name: String, brand: String?, barcode: String?): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("name", JsonPrimitive(name))
+                put("brand", JsonPrimitive(brand.orEmpty()))
+                put("barcode", barcode?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
+            }
+            val request = Request.Builder().url("$baseUrl/api/foods/$foodId").put(jsonBody(payload)).build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException("Couldn't save food: ${errorText(response.code, body)}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** PUT /api/foods/food-variants/:id — serving and nutrients of the food's default variant. */
+    suspend fun updateFoodVariant(variantId: String, foodId: String, n: SparkyNutrients): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val payload = kotlinx.serialization.json.JsonObject(nutrientsJson(n, foodId))
+            val request = Request.Builder().url("$baseUrl/api/foods/food-variants/$variantId").put(jsonBody(payload)).build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException("Couldn't save nutrition: ${errorText(response.code, body)}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** POST /api/foods — a new custom food of the user's own (used to save an edited copy of someone else's food). */
+    suspend fun createFoodFull(name: String, brand: String?, n: SparkyNutrients): Result<SparkyFood> = withContext(Dispatchers.IO) {
+        try {
+            val payload = kotlinx.serialization.json.JsonObject(
+                nutrientsJson(n, null) + mapOf(
+                    "name" to JsonPrimitive(name),
+                    "brand" to (brand?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull),
+                    // No barcode here: Sparky answers a create whose barcode it already knows with that existing food,
+                    // so the copy is created bare and the barcode is set afterwards with updateFood.
+                    "is_custom" to JsonPrimitive(true),
+                    "is_default" to JsonPrimitive(true)
+                )
+            )
+            val request = Request.Builder().url("$baseUrl/api/foods").post(jsonBody(payload)).build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@use Result.failure(IOException("Couldn't save your copy: ${errorText(response.code, body)}"))
+                val id = runCatching { json.parseToJsonElement(body).jsonObject["id"]?.jsonPrimitive?.content }.getOrNull()
+                    ?: return@use Result.failure(IOException("Sparky didn't return the new food's id"))
+                Result.success(SparkyFood(id = id, name = name, brand = brand, isCustom = true, nutrients = n))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** POST /api/foods/update-snapshot — rewrite the user's past diary entries of this food with its current nutrition. */
+    suspend fun updatePastEntries(foodId: String, variantId: String?): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("foodId", JsonPrimitive(foodId))
+                variantId?.let { put("variantId", JsonPrimitive(it)) }
+                put("syncImages", JsonPrimitive(false)) // nutrition only; keep any photos set on entries
+            }
+            val request = Request.Builder().url("$baseUrl/api/foods/update-snapshot").post(jsonBody(payload)).build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException("Couldn't update past entries: ${errorText(response.code, body)}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** DELETE /api/foods/:id?mode=hide|delete — "hide" only drops it from search; "delete" keeps diary entries. */
+    suspend fun deleteFood(foodId: String, hideOnly: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val mode = if (hideOnly) "hide" else "delete"
+            val request = Request.Builder().url("$baseUrl/api/foods/$foodId?mode=$mode").delete().build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful || response.code == 404) Result.success(Unit)
+                else Result.failure(IOException("Couldn't delete food: ${errorText(response.code, body)}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun nutrientsJson(n: SparkyNutrients, foodId: String?): Map<String, kotlinx.serialization.json.JsonElement> {
+        val m = linkedMapOf<String, kotlinx.serialization.json.JsonElement>()
+        foodId?.let { m["food_id"] = JsonPrimitive(it) }
+        m["serving_size"] = JsonPrimitive(n.servingSize)
+        m["serving_unit"] = JsonPrimitive(n.servingUnit)
+        m["calories"] = JsonPrimitive(n.calories)
+        m["protein"] = JsonPrimitive(n.protein)
+        m["carbs"] = JsonPrimitive(n.carbs)
+        m["fat"] = JsonPrimitive(n.fat)
+        // Optional nutrients: only sent when known, so Sparky keeps what it has for the rest
+        n.fiber?.let { m["dietary_fiber"] = JsonPrimitive(it) }
+        n.sugars?.let { m["sugars"] = JsonPrimitive(it) }
+        n.saturatedFat?.let { m["saturated_fat"] = JsonPrimitive(it) }
+        n.sodium?.let { m["sodium"] = JsonPrimitive(it) }
+        n.cholesterol?.let { m["cholesterol"] = JsonPrimitive(it) }
+        n.potassium?.let { m["potassium"] = JsonPrimitive(it) }
+        return m
     }
 
     // --- Bodyweight Tracking (Check-In) ---

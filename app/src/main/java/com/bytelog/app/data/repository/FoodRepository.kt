@@ -7,6 +7,8 @@ import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.FoodItem
 import com.bytelog.app.data.local.model.MealType
 import com.bytelog.app.data.remote.SparkyApiClient
+import com.bytelog.app.data.remote.SparkyFood
+import com.bytelog.app.data.remote.SparkyNutrients
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -123,6 +125,108 @@ class FoodRepository(
             return remoteFoods
         }
         return emptyList()
+    }
+
+    // --- Editing foods (Sparky is the source of truth; the phone's copy follows a successful save) ---
+
+    /** Who the signed-in user is on Sparky, learned from their own foods; null until they have one. */
+    @Volatile private var myUserId: String? = null
+
+    private suspend fun ownUserId(): String? {
+        myUserId?.let { return it }
+        return sparkyApiClient.listMyFoods(perPage = 1).getOrNull()?.firstOrNull()?.userId?.also { myUserId = it }
+    }
+
+    /**
+     * A food opened for editing. [sparky] is null when Sparky doesn't have it (e.g. an OpenFoodFacts result that
+     * was never saved). [owned] foods are edited in place; anything else is saved as the user's own copy.
+     */
+    data class EditableFood(val local: FoodItem?, val sparky: SparkyFood?, val owned: Boolean) {
+        val name get() = sparky?.name ?: local?.name.orEmpty()
+    }
+
+    suspend fun loadFoodForEditing(foodId: String): Result<EditableFood> = withContext(Dispatchers.IO) {
+        val local = foodDao.getFoodById(foodId)
+        val remote = if (foodId.startsWith("off_")) null else sparkyApiClient.getFoodDetails(foodId)
+        val sparky = remote?.getOrNull()
+        when {
+            sparky != null -> {
+                val me = ownUserId()
+                Result.success(EditableFood(local, sparky, owned = sparky.userId != null && sparky.userId == me))
+            }
+            local != null -> Result.success(EditableFood(local, null, owned = false))
+            else -> Result.failure(remote?.exceptionOrNull() ?: IllegalStateException("Food not found"))
+        }
+    }
+
+    suspend fun getLocalFood(id: String): FoodItem? = withContext(Dispatchers.IO) { foodDao.getFoodById(id) }
+
+    /** The user's own foods on Sparky, for the "My foods" library. */
+    suspend fun myFoods(search: String = ""): Result<List<SparkyFood>> {
+        val res = sparkyApiClient.listMyFoods(search)
+        res.getOrNull()?.firstOrNull()?.userId?.let { myUserId = it }
+        return res
+    }
+
+    /**
+     * Saves an edit to Sparky first, then updates the phone. An owned food is changed in place (and, if asked, the
+     * user's past diary entries of it are rewritten on Sparky and here); any other food becomes the user's own copy.
+     * Returns the food as now stored.
+     */
+    suspend fun saveFoodEdit(
+        original: EditableFood,
+        name: String,
+        brand: String?,
+        barcode: String?,
+        nutrients: SparkyNutrients,
+        updatePastEntries: Boolean
+    ): Result<FoodItem> = withContext(Dispatchers.IO) {
+        runCatching {
+            val sparky = original.sparky
+            if (original.owned && sparky != null) {
+                sparkyApiClient.updateFood(sparky.id, name, brand, barcode).getOrThrow()
+                val variantId = sparky.variantId ?: sparkyApiClient.getFoodDetails(sparky.id).getOrThrow().variantId
+                    ?: error("Sparky has no serving for this food")
+                sparkyApiClient.updateFoodVariant(variantId, sparky.id, nutrients).getOrThrow()
+                val saved = sparky.copy(name = name, brand = brand, barcode = barcode, nutrients = nutrients).toFoodItem(original.local)
+                foodDao.insertFood(saved)
+                if (updatePastEntries) {
+                    sparkyApiClient.updatePastEntries(sparky.id, variantId).getOrThrow()
+                    rewriteLocalEntries(saved)
+                }
+                saved
+            } else {
+                val created = sparkyApiClient.createFoodFull(name, brand, nutrients).getOrThrow()
+                if (!barcode.isNullOrBlank()) sparkyApiClient.updateFood(created.id, name, brand, barcode).getOrThrow()
+                val saved = created.copy(barcode = barcode).toFoodItem().copy(
+                    isFavorite = original.local?.isFavorite ?: false,
+                    mealTypeAffinity = original.local?.mealTypeAffinity
+                )
+                foodDao.insertFood(saved)
+                // The phone's cached original (an OpenFoodFacts result or a shared food) would otherwise sit next to
+                // the user's edited copy in search
+                original.local?.let { if (it.id != saved.id) foodDao.deleteFood(it.id) }
+                saved
+            }
+        }
+    }
+
+    /** Past entries of [food] on the phone take its new name and nutrition, keeping their amounts. */
+    private suspend fun rewriteLocalEntries(food: FoodItem) {
+        foodEntryDao.getEntriesForFood(food.id).forEach { e ->
+            foodEntryDao.updateEntry(
+                e.copy(
+                    foodName = food.name, brandName = food.brand,
+                    calories = food.caloriesFor(e.quantity, e.unit), protein = food.proteinFor(e.quantity, e.unit),
+                    carbs = food.carbsFor(e.quantity, e.unit), fat = food.fatFor(e.quantity, e.unit)
+                )
+            )
+        }
+    }
+
+    /** Hides a food from search, or deletes it from the library (diary entries are kept either way). */
+    suspend fun deleteFood(foodId: String, hideOnly: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        sparkyApiClient.deleteFood(foodId, hideOnly).onSuccess { foodDao.deleteFood(foodId) }
     }
 
     fun getRecentFoods(limit: Int = 25): Flow<List<FoodItem>> {

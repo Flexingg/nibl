@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -66,7 +67,8 @@ fun QuickPortionEditor(
     units: List<String>,
     onChange: (Portion) -> Unit,
     onRemove: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onEditFood: (() -> Unit)? = null
 ) {
     val cs = MaterialTheme.colorScheme
     val x = LocalByteExtraColors.current
@@ -96,6 +98,12 @@ fun QuickPortionEditor(
             Text("${m.calories.roundToInt()}", color = cs.primary, fontSize = 26.sp, fontWeight = FontWeight.Black)
             Text(" kcal", color = cs.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
             Spacer(Modifier.width(4.dp))
+            if (onEditFood != null) {
+                MorphButton(onEditFood, Modifier.size(36.dp), cs.surfaceContainerHighest, description = "Edit ${food.name}") {
+                    Icon(Icons.Default.Edit, contentDescription = null, tint = cs.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                }
+                Spacer(Modifier.width(4.dp))
+            }
             MorphButton(onRemove, Modifier.size(36.dp), cs.surfaceContainerHighest, description = "Remove ${food.name}") {
                 Icon(Icons.Default.Close, contentDescription = null, tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp))
             }

@@ -38,6 +38,10 @@ import com.bytelog.app.ui.navigation.NavMotion
 import com.bytelog.app.ui.screens.RecentMealsScreen
 import com.bytelog.app.ui.viewmodel.DiaryViewModel
 import com.bytelog.app.ui.viewmodel.FastSearchViewModel
+import com.bytelog.app.ui.viewmodel.FoodEditorViewModel
+import com.bytelog.app.ui.viewmodel.MyFoodsViewModel
+import com.bytelog.app.ui.foods.FoodEditorScreen
+import com.bytelog.app.ui.foods.MyFoodsScreen
 import com.bytelog.app.ui.viewmodel.SparkyChatViewModel
 import com.bytelog.app.ui.viewmodel.RecipesViewModel
 import com.bytelog.app.ui.recipes.CookModeScreen
@@ -106,6 +110,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+/** Key a page's saved state receives "<old id>|<new id>" under when the food editor it opened finishes. */
+const val FOOD_EDIT_RESULT = "food_edit_result"
 
 @Composable
 fun ByteLogNavHost(
@@ -208,12 +215,21 @@ fun ByteLogNavHost(
                 }
             }
 
+            // The food editor reports back here so staged entries of an edited food follow the edit
+            val foodEdit by backStackEntry.savedStateHandle.getStateFlow<String?>(FOOD_EDIT_RESULT, null).collectAsState()
+            LaunchedEffect(foodEdit) {
+                val parts = foodEdit?.split('|') ?: return@LaunchedEffect
+                fastSearchViewModel.onFoodEdited(parts[0], parts.getOrNull(1)?.ifBlank { null })
+                backStackEntry.savedStateHandle[FOOD_EDIT_RESULT] = null
+            }
+
             FastSearchScreen(
                 viewModel = fastSearchViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToBarcode = {
                     navController.navigate("barcode/$mealTypeId/$mealName/$date")
-                }
+                },
+                onEditFood = { id -> navController.navigate("food/${android.net.Uri.encode(id)}") { launchSingleTop = true } }
             )
         }
 
@@ -250,7 +266,40 @@ fun ByteLogNavHost(
                 waterRepository = app.waterRepository,
                 weightRepository = app.weightRepository,
                 mealTemplateRepository = app.mealTemplateRepository,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onOpenMyFoods = { navController.navigate("my_foods") { launchSingleTop = true } }
+            )
+        }
+
+        // 4b. The user's own foods on Sparky
+        composable("my_foods") { entry ->
+            val vm: MyFoodsViewModel = viewModel { MyFoodsViewModel(foodRepo) }
+            val foodEdit by entry.savedStateHandle.getStateFlow<String?>(FOOD_EDIT_RESULT, null).collectAsState()
+            LaunchedEffect(foodEdit) {
+                if (foodEdit != null) { vm.refresh(); entry.savedStateHandle[FOOD_EDIT_RESULT] = null }
+            }
+            MyFoodsScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenFood = { id -> navController.navigate("food/${android.net.Uri.encode(id)}") { launchSingleTop = true } }
+            )
+        }
+
+        // 4c. Edit one food (saved to Sparky)
+        composable(
+            route = "food/{foodId}",
+            arguments = listOf(navArgument("foodId") { type = NavType.StringType })
+        ) { entry ->
+            val foodId = entry.arguments?.getString("foodId").orEmpty()
+            val vm: FoodEditorViewModel = viewModel { FoodEditorViewModel(foodRepo, foodId) }
+            FoodEditorScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onFinished = { saved ->
+                    // "<old id>|<new id>" (new id blank after a delete) for whichever page opened the editor
+                    navController.previousBackStackEntry?.savedStateHandle?.set(FOOD_EDIT_RESULT, "$foodId|${saved?.id.orEmpty()}")
+                    navController.popBackStack()
+                }
             )
         }
 
