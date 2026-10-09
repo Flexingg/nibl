@@ -348,7 +348,7 @@ class RecipeScreensRenderTest {
                 DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
             }
         }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("KCAL LEFT").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("KCAL EATEN").fetchSemanticsNodes().isNotEmpty() }
         shot("20-diary-light")
         // Scroll the list: the header folds into the strips and the toolbar tucks away
         compose.onRoot().performTouchInput { swipe(Offset(width * 0.5f, height * 0.85f), Offset(width * 0.5f, height * 0.25f), 400) }
@@ -369,7 +369,7 @@ class RecipeScreensRenderTest {
                 DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
             }
         }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("KCAL LEFT").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("KCAL EATEN").fetchSemanticsNodes().isNotEmpty() }
         shot("23-diary-dark-tomato")
     }
 

@@ -112,6 +112,8 @@ class FastSearchViewModel(
         this.targetMealTypeId = mealId
         this.targetMealName = cleanName
         this._selectedMealName.value = cleanName
+        // The tray logs to the meal shown on its button, including foods added before the meal was picked
+        _stagedEntries.value = _stagedEntries.value.map { it.copy(mealTypeId = mealId, mealName = cleanName) }
     }
 
     fun setSearchQuery(query: String) {
@@ -257,7 +259,10 @@ class FastSearchViewModel(
      * Commits all staged items in 1 frame and clears tray.
      */
     fun commitStagedTray(onSuccess: () -> Unit) {
-        val entriesToCommit = _stagedEntries.value
+        // Always the meal and day this screen is logging to (the ones on the Log button)
+        val entriesToCommit = _stagedEntries.value.map {
+            it.copy(mealTypeId = targetMealTypeId, mealName = targetMealName, entryDate = targetDate.ifBlank { it.entryDate })
+        }
         if (entriesToCommit.isEmpty()) return
 
         viewModelScope.launch {

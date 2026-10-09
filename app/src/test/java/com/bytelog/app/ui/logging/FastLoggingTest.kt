@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -123,6 +124,22 @@ class FastLoggingTest {
 
         vm.updateStagedPortion(id, Portion(2f, "serving"))
         assertEquals(330f, vm.stagedEntries.value.single().calories, 0.5f)
+    }
+
+    @Test
+    fun foodsAddedBeforePickingTheMealLogToThePickedMealAndDay() {
+        // Opened from yesterday's diary with the default meal (Breakfast)
+        vm.initContext("breakfast", "Breakfast", "2026-10-06")
+        vm.tapFood(oats)
+        vm.setTargetMeal("lunch", "lunch")            // then Lunch is picked
+        assertEquals("Lunch", vm.stagedEntries.value.single().mealName)
+        vm.tapFood(chicken)
+        var done = false
+        vm.commitStagedTray { done = true }
+        waitFor { done }
+        val logged = runBlocking { db.foodEntryDao().getEntriesForDateOnce("2026-10-06") }
+        assertEquals(2, logged.size)
+        assertTrue(logged.all { it.mealName == "Lunch" && it.mealTypeId == "lunch" })
     }
 
     @Test

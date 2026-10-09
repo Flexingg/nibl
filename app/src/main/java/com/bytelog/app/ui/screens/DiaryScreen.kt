@@ -317,7 +317,8 @@ fun DiaryScreen(
                 fraction = headerFraction,
                 hero = {
                     com.bytelog.app.ui.diary.CalorieHero(
-                        remaining = dailySummary.remainingCalories.roundToInt(),
+                        eaten = dailySummary.totalCalories.roundToInt(),
+                        goal = dailySummary.targetCalories.roundToInt(),
                         progress = dailySummary.calorieProgress,
                         shape = heroShape,
                         fraction = headerFraction,

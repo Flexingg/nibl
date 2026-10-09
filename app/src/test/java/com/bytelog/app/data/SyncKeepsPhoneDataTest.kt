@@ -20,6 +20,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -56,6 +57,9 @@ class SyncKeepsPhoneDataTest {
         @Volatile var online = true
         @Volatile var refuseCreates: String? = null      // error body to return for POST /api/food-entries/
         val hiddenFromDownload = mutableSetOf<String>()  // stored, but missing from the by-date list
+        /** Library foods by id: name, barcode, variant id, quick-food flag, serving size. */
+        val foods = ConcurrentHashMap<String, Map<String, Any?>>()
+        val foodCreates = AtomicInteger(0)
     }
     private val sparky = FakeSparky()
     private lateinit var server: MockWebServer
@@ -77,11 +81,39 @@ class SyncKeepsPhoneDataTest {
                 if (!sparky.online) return MockResponse().setResponseCode(503)
                 val path = request.path.orEmpty()
                 return when {
+                    request.method == "POST" && path == "/api/foods" -> {
+                        val o = json.parseToJsonElement(request.body.readUtf8()).jsonObject
+                        val barcode = o["barcode"]?.jsonPrimitive?.contentOrNull
+                        // Sparky hands back the food it already has for a known barcode
+                        sparky.foods.entries.firstOrNull { barcode != null && it.value["barcode"] == barcode }?.let { (id, f) ->
+                            return MockResponse().setResponseCode(201).setBody("{\"id\":\"$id\",\"name\":\"${f["name"]}\"}")
+                        }
+                        sparky.foodCreates.incrementAndGet()
+                        val id = "00000000-0000-4000-8000-%012d".format(1000 + sparky.ids.incrementAndGet())
+                        sparky.foods[id] = mapOf(
+                            "name" to o["name"]!!.jsonPrimitive.content, "barcode" to barcode, "variant" to "var-$id",
+                            "quick" to o["is_quick_food"]?.jsonPrimitive?.content, "serving_size" to o["serving_size"]?.jsonPrimitive?.content,
+                            "calories" to o["calories"]?.jsonPrimitive?.content
+                        )
+                        MockResponse().setResponseCode(201).setBody("{\"id\":\"$id\",\"name\":\"${sparky.foods[id]!!["name"]}\",\"default_variant\":{\"id\":\"var-$id\"}}")
+                    }
+                    request.method == "GET" && path.startsWith("/api/foods/") -> {
+                        val id = path.removePrefix("/api/foods/")
+                        val f = sparky.foods[id] ?: return MockResponse().setResponseCode(404).setBody("{\"error\":\"Food not found.\"}")
+                        MockResponse().setBody("{\"id\":\"$id\",\"name\":\"${f["name"]}\",\"default_variant\":{\"id\":\"${f["variant"]}\",\"serving_size\":100,\"serving_unit\":\"g\",\"calories\":100}}")
+                    }
                     request.method == "POST" && path == "/api/food-entries/" -> {
                         sparky.refuseCreates?.let { return MockResponse().setResponseCode(400).setBody(it) }
                         val o = json.parseToJsonElement(request.body.readUtf8()).jsonObject
+                        // Sparky's row-level security: an entry must point at a food in the library
+                        val foodId = o["food_id"]?.jsonPrimitive?.contentOrNull
+                        if (foodId == null || sparky.foods[foodId]?.get("variant") != o["variant_id"]?.jsonPrimitive?.contentOrNull) {
+                            return MockResponse().setResponseCode(500)
+                                .setBody("{\"error\":\"new row violates row-level security policy for table \\\"food_entries\\\"\"}")
+                        }
                         val id = "srv-${sparky.ids.incrementAndGet()}"
                         sparky.entries[id] = mapOf(
+                            "food_id" to foodId,
                             "food_name" to o["food_name"]!!.jsonPrimitive.content, "meal_type" to o["meal_type"]!!.jsonPrimitive.content,
                             "entry_date" to o["entry_date"]!!.jsonPrimitive.content, "quantity" to o["quantity"]!!.jsonPrimitive.content,
                             "calories" to o["calories"]!!.jsonPrimitive.content
@@ -236,5 +268,54 @@ class SyncKeepsPhoneDataTest {
         assertEquals(82.5f, db.weightDao().getAllWeightsList().single { it.entryDate == today }.weight, 0.01f)
         assertEquals(82.5f, sparky.weights[today]!!, 0.01f)        // and Sparky now has it
         assertEquals(WeightEntry.SYNC_STATUS_SYNCED, db.weightDao().getAllWeightsList().single().syncStatus)
+    }
+
+    @Test fun entriesAreLinkedToSparkyFoodsSoSparkyAcceptsThem() = runBlocking {
+        val oatsId = "00000000-0000-4000-8000-000000000001"
+        sparky.foods[oatsId] = mapOf("name" to "Rolled Oats", "variant" to "var-oats")
+        db.foodDao().insertFoods(
+            listOf(
+                com.bytelog.app.data.local.model.FoodItem(oatsId, "Rolled Oats", servingSize = 40f, calories = 150f),
+                com.bytelog.app.data.local.model.FoodItem("off_123", "Peanut Butter", barcode = "0123456789012", servingSize = 32f, calories = 190f)
+            )
+        )
+        sparky.online = false
+        food.commitMultiAdd(
+            listOf(
+                entry("l-1", "Rolled Oats").copy(foodId = oatsId),                 // already in Sparky's library
+                entry("l-2", "Peanut Butter").copy(foodId = "off_123"),            // an OpenFoodFacts result
+                entry("l-3", "Peanut Butter", kcal = 95f).copy(foodId = "off_123", quantity = 16f),
+                entry("l-4", "Quick add", kcal = 250f)                             // no food at all
+            )
+        )
+        settle()
+        sparky.online = true
+        val report = food.pushPendingEntries()
+        assertEquals("nothing left behind: ${report.error}", 0, food.countPendingSync())
+        assertEquals(4, sparky.entries.size)
+
+        val byName = sparky.entries.values.groupBy { it["food_name"] }
+        assertEquals(oatsId, byName["Rolled Oats"]!!.single()["food_id"])
+        val pb = sparky.foods.entries.single { it.value["name"] == "Peanut Butter" }
+        assertEquals("one Sparky food for both peanut butter entries", setOf(pb.key), byName["Peanut Butter"]!!.map { it["food_id"] }.toSet())
+        assertEquals("0123456789012", pb.value["barcode"])
+        val quick = sparky.foods.values.single { it["name"] == "Quick add" }
+        assertEquals("true", quick["quick"])
+        assertEquals(250f, quick["calories"].toString().toFloat())
+        assertEquals("two foods created: peanut butter and the quick add", 2, sparky.foodCreates.get())
+
+        // The phone's OpenFoodFacts food now has Sparky's id, so logging it again needs no new food
+        assertEquals(null, db.foodDao().getFoodById("off_123"))
+        assertEquals("Peanut Butter", db.foodDao().getFoodById(pb.key)!!.name)
+    }
+
+    @Test fun anOpenFoodFactsFoodSparkyAlreadyHasIsReusedByBarcode() = runBlocking {
+        val existing = "00000000-0000-4000-8000-000000000077"
+        sparky.foods[existing] = mapOf("name" to "Peanut Butter", "barcode" to "0123456789012", "variant" to "var-pb")
+        db.foodDao().insertFood(com.bytelog.app.data.local.model.FoodItem("off_123", "Peanut Butter", barcode = "0123456789012", servingSize = 32f, calories = 190f))
+        food.commitMultiAdd(listOf(entry("l-1", "Peanut Butter").copy(foodId = "off_123")))
+        until { food.countPendingSync() == 0 }
+        assertEquals(0, sparky.foodCreates.get())
+        assertEquals(existing, sparky.entries.values.single()["food_id"])
     }
 }

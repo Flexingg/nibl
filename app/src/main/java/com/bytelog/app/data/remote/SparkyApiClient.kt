@@ -653,7 +653,11 @@ class SparkyApiClient(
      * Post a newly logged food entry to Sparky Fitness Server.
      * Returns the server-assigned UUID on success.
      */
-    suspend fun createFoodEntry(entry: FoodEntry): Result<String> = withContext(Dispatchers.IO) {
+    /**
+     * Logs an entry on Sparky. Sparky only accepts entries that point at a food in its library ([foodId] with its
+     * serving [variantId]); the entry's own amount and nutrition are sent too and override the food's.
+     */
+    suspend fun createFoodEntry(entry: FoodEntry, foodId: String? = null, variantId: String? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
             val isUuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
             val cleanMealName = entry.mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
@@ -663,6 +667,10 @@ class SparkyApiClient(
             val payload = buildString {
                 append("{")
                 append("\"id\":\"${entry.id}\",")
+                if (foodId != null && variantId != null) {
+                    append("\"food_id\":\"$foodId\",")
+                    append("\"variant_id\":\"$variantId\",")
+                }
                 if (isUuid.matches(entry.mealTypeId)) {
                     append("\"meal_type_id\":\"${entry.mealTypeId}\",")
                 }
@@ -1513,7 +1521,14 @@ class SparkyApiClient(
     }
 
     /** POST /api/foods — a new custom food of the user's own (used to save an edited copy of someone else's food). */
-    suspend fun createFoodFull(name: String, brand: String?, n: SparkyNutrients): Result<SparkyFood> = withContext(Dispatchers.IO) {
+    suspend fun createFoodFull(
+        name: String,
+        brand: String?,
+        n: SparkyNutrients,
+        barcode: String? = null,
+        providerType: String? = null,
+        quickFood: Boolean = false
+    ): Result<SparkyFood> = withContext(Dispatchers.IO) {
         try {
             val payload = kotlinx.serialization.json.JsonObject(
                 nutrientsJson(n, null) + mapOf(
@@ -1521,17 +1536,25 @@ class SparkyApiClient(
                     "brand" to (brand?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull),
                     // No barcode here: Sparky answers a create whose barcode it already knows with that existing food,
                     // so the copy is created bare and the barcode is set afterwards with updateFood.
-                    "is_custom" to JsonPrimitive(true),
-                    "is_default" to JsonPrimitive(true)
+                    "is_custom" to JsonPrimitive(providerType == null),
+                    "is_default" to JsonPrimitive(true),
+                    "is_quick_food" to JsonPrimitive(quickFood)
+                ) + listOfNotNull(
+                    // Only for foods from a provider (OpenFoodFacts), where finding the existing food is what we want
+                    barcode?.takeIf { it.isNotBlank() }?.let { "barcode" to JsonPrimitive(it) },
+                    providerType?.let { "provider_type" to JsonPrimitive(it) },
+                    providerType?.let { barcode?.takeIf { b -> b.isNotBlank() }?.let { "provider_external_id" to JsonPrimitive(it) } }
                 )
             )
             val request = Request.Builder().url("$baseUrl/api/foods").post(jsonBody(payload)).build()
             client.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) return@use Result.failure(IOException("Couldn't save your copy: ${errorText(response.code, body)}"))
-                val id = runCatching { json.parseToJsonElement(body).jsonObject["id"]?.jsonPrimitive?.content }.getOrNull()
+                val parsed = runCatching { SparkyFood.parse(json.parseToJsonElement(body).jsonObject) }.getOrNull()
+                    ?.takeIf { it.id.isNotBlank() }
                     ?: return@use Result.failure(IOException("Sparky didn't return the new food's id"))
-                Result.success(SparkyFood(id = id, name = name, brand = brand, isCustom = true, nutrients = n))
+                // Sparky's own reply for a new food; a barcode match returns the existing food instead
+                Result.success(parsed.copy(nutrients = if (parsed.variantId == null) n else parsed.nutrients))
             }
         } catch (e: Exception) {
             Result.failure(e)

@@ -54,13 +54,80 @@ class FoodRepository(
     @Volatile var lastPushError: String? = null
         private set
 
+    /** Phone food id → the Sparky food and serving it was linked to, for this run of the app. */
+    private val sparkyLinks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+    private val uuidRegex = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+    /**
+     * The Sparky food and serving (food id, variant id) an entry is logged against. Sparky's row-level security
+     * only accepts diary entries that point at a food in its library, so a food Sparky doesn't have yet is
+     * created first: an OpenFoodFacts result as that product (matched by barcode), a food from the phone's
+     * library with its own serving, and a quick add or voice entry as a quick food holding exactly its numbers.
+     */
+    private suspend fun linkToSparkyFood(entry: FoodEntry): Result<Pair<String, String>> = runCatching {
+        val localId = entry.foodId
+        localId?.let { sparkyLinks[it] }?.let { return@runCatching it }
+
+        // Already a Sparky food: just needs its default serving
+        if (localId != null && uuidRegex.matches(localId)) {
+            val sparky = sparkyApiClient.getFoodDetails(localId).getOrNull()
+            if (sparky?.variantId != null) return@runCatching (sparky.id to sparky.variantId).also { sparkyLinks[localId] = it }
+        }
+
+        val local = localId?.let { foodDao.getFoodById(it) }
+        val created = if (local != null) {
+            val fromOff = local.id.startsWith("off_")
+            sparkyApiClient.createFoodFull(
+                name = local.name, brand = local.brand,
+                n = SparkyNutrients(
+                    servingSize = local.servingSize, servingUnit = local.servingUnit,
+                    calories = local.calories, protein = local.protein, carbs = local.carbs, fat = local.fat,
+                    fiber = local.fiber?.takeIf { it > 0f }
+                ),
+                barcode = if (fromOff) local.barcode else null,
+                providerType = if (fromOff) "openfoodfacts" else null
+            ).getOrThrow()
+        } else {
+            // Quick add / voice: a food holding exactly this entry's amount and nutrition, kept out of search
+            sparkyApiClient.createFoodFull(
+                name = entry.foodName, brand = entry.brandName,
+                n = SparkyNutrients(
+                    servingSize = entry.quantity.takeIf { it > 0f } ?: 1f, servingUnit = entry.unit.ifBlank { "serving" },
+                    calories = entry.calories, protein = entry.protein, carbs = entry.carbs, fat = entry.fat
+                ),
+                quickFood = true
+            ).getOrThrow()
+        }
+        val variantId = created.variantId ?: sparkyApiClient.getFoodDetails(created.id).getOrThrow().variantId
+            ?: error("Sparky has no serving for ${entry.foodName}")
+        val link = created.id to variantId
+
+        // The phone's food takes Sparky's id, so later logs of it (and other entries waiting to sync) reuse it
+        if (local != null && local.id != created.id) {
+            foodDao.insertFood(local.copy(id = created.id))
+            foodDao.deleteFood(local.id)
+            foodEntryDao.relinkFood(local.id, created.id)
+        }
+        localId?.let { sparkyLinks[it] = link }
+        sparkyLinks[created.id] = link
+        link
+    }
+
     /** Sends one new entry; on success it carries Sparky's id and is marked uploaded. */
     private suspend fun pushCreate(entry: FoodEntry): Boolean {
-        val res = sparkyApiClient.createFoodEntry(entry)
+        val link = linkToSparkyFood(entry).getOrElse { e ->
+            lastPushError = "Couldn't add ${entry.foodName} to Sparky's food library: ${e.message}"
+            return false
+        }
+        val linked = entry.copy(foodId = link.first)
+        val res = sparkyApiClient.createFoodEntry(linked, link.first, link.second)
         if (res.isFailure) { lastPushError = res.exceptionOrNull()?.message; return false }
         val serverId = res.getOrNull()
-        if (!serverId.isNullOrBlank() && serverId != entry.id) rekeyEntry(entry, serverId)
-        else foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_UPLOADED)
+        if (!serverId.isNullOrBlank() && serverId != entry.id) rekeyEntry(linked, serverId)
+        else {
+            if (linked.foodId != entry.foodId) foodEntryDao.updateEntry(linked)
+            foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_UPLOADED)
+        }
         return true
     }
 
