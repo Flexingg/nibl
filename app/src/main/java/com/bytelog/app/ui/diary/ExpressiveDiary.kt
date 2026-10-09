@@ -6,6 +6,7 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -187,9 +188,9 @@ fun ExpressiveDiaryHeader(
     }
 }
 
-/** Calories left inside a morphing shape, with a wavy ring for the day's progress. */
+/** Calories eaten so far (counting up to the goal) inside a morphing shape, with a wavy ring for the day's progress. */
 @Composable
-fun CalorieHero(remaining: Int, progress: Float, shape: BlobShape, fraction: () -> Float, onClick: () -> Unit) {
+fun CalorieHero(eaten: Int, goal: Int, progress: Float, shape: BlobShape, fraction: () -> Float, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val morph = rememberMorphState(shape, spinDegrees = 60f)
     val phase = rememberWavePhase()
@@ -206,7 +207,7 @@ fun CalorieHero(remaining: Int, progress: Float, shape: BlobShape, fraction: () 
                 if (!reduce) scope.launch { kick.snapTo(0.88f); kick.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = 500f)) }
                 onClick()
             }
-            .semantics { contentDescription = "$remaining calories left" },
+            .semantics { contentDescription = "$eaten of $goal calories eaten" },
         contentAlignment = Alignment.Center
     ) {
         val primary = cs.primary; val track = cs.surfaceContainerHighest; val blob = cs.primaryContainer
@@ -231,10 +232,26 @@ fun CalorieHero(remaining: Int, progress: Float, shape: BlobShape, fraction: () 
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.graphicsLayer { alpha = clamp01(1f - clamp01(fraction()) * 2.6f) }
         ) {
-            Text(String.format(Locale.getDefault(), "%,d", remaining), color = cs.onPrimaryContainer, fontSize = 36.sp, fontWeight = FontWeight.Black, maxLines = 1)
-            Text("KCAL LEFT", color = cs.onPrimaryContainer.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
+            val shown = rememberCountUp(eaten)
+            Text(String.format(Locale.getDefault(), "%,d", shown), color = cs.onPrimaryContainer, fontSize = 36.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            Text(
+                String.format(Locale.getDefault(), "OF %,d KCAL", goal),
+                color = cs.onPrimaryContainer.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, maxLines = 1
+            )
         }
     }
+}
+
+/** [target] as shown on screen, rolling up (or down) to each new value instead of jumping. */
+@Composable
+fun rememberCountUp(target: Int): Int {
+    val reduce = LocalReduceMotion.current
+    val anim = remember { Animatable(target.toFloat()) }
+    LaunchedEffect(target, reduce) {
+        if (reduce) anim.snapTo(target.toFloat())
+        else anim.animateTo(target.toFloat(), tween(durationMillis = 700, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+    }
+    return anim.value.roundToInt()
 }
 
 /** Full calorie card: space for the shape on the left, macros with wavy bars on the right. */
@@ -272,8 +289,14 @@ fun HeroStrip(summary: DailySummary) {
     val x = LocalByteExtraColors.current
     Row(Modifier.fillMaxSize().padding(start = 64.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(String.format(Locale.getDefault(), "%,d", summary.remainingCalories.roundToInt()), color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
-            Text("KCAL LEFT", color = cs.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(String.format(Locale.getDefault(), "%,d", rememberCountUp(summary.totalCalories.roundToInt())), color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                Text(
+                    String.format(Locale.getDefault(), " / %,d", summary.targetCalories.roundToInt()),
+                    color = cs.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+            Text("KCAL EATEN", color = cs.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             SmallRing("P", summary.proteinProgress, x.protein)

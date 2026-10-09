@@ -104,7 +104,8 @@ import kotlin.math.roundToInt
 fun FastSearchScreen(
     viewModel: FastSearchViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToBarcode: () -> Unit
+    onNavigateToBarcode: () -> Unit,
+    onEditFood: (String) -> Unit = {}
 ) {
     val availableMealTypes by viewModel.availableMealTypes.collectAsState()
     val selectedMealName by viewModel.selectedMealName.collectAsState()
@@ -160,7 +161,9 @@ fun FastSearchScreen(
                 unitsFor = viewModel::unitOptionsFor,
                 onPortionChange = viewModel::updateStagedPortion,
                 // While typing a search the tray shrinks to its chips and button so results stay visible
-                compact = searchFocused
+                compact = searchFocused,
+                editableFoodId = viewModel::editableFoodId,
+                onEditFood = { focusManager.clearFocus(); onEditFood(it) }
             )
         }
     ) { paddingValues ->
@@ -496,6 +499,7 @@ fun FastSearchScreen(
                                 if (searchQuery.isNotBlank()) viewModel.setSearchQuery("")
                                 focusManager.clearFocus()
                             },
+                            onEdit = { onEditFood(food.id) },
                             onToggleFavorite = {
                                 viewModel.toggleFavorite(food)
                             }
@@ -593,7 +597,8 @@ fun FoodSearchRow(
     portion: Portion = Portions.defaultFor(food),
     inTray: Boolean = false,
     onQuickAdd: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onEdit: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
     val cs = MaterialTheme.colorScheme
@@ -608,10 +613,12 @@ fun FoodSearchRow(
             // No double-tap handler: a single tap adds instantly instead of waiting to rule out a second tap
             .combinedClickable(
                 onClick = onQuickAdd,
+                // Long press opens the food itself for editing; the heart handles favourites
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onToggleFavorite()
-                }
+                    onEdit()
+                },
+                onLongClickLabel = "Edit food"
             )
             .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,

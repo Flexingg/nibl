@@ -68,7 +68,10 @@ fun MultiAddTray(
     foodFor: (String) -> FoodItem? = { null },
     unitsFor: (String) -> List<String> = { emptyList() },
     onPortionChange: (String, Portion) -> Unit = { _, _ -> },
-    compact: Boolean = false
+    compact: Boolean = false,
+    /** The library food behind a staged entry, when it has one; enables the edit-food button. */
+    editableFoodId: (String) -> String? = { null },
+    onEditFood: (String) -> Unit = {}
 ) {
     if (stagedEntries.isEmpty()) return
 
@@ -108,6 +111,7 @@ fun MultiAddTray(
                     units = unitsFor(id),
                     onChange = { onPortionChange(id, it) },
                     onRemove = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onRemoveEntry(entry) },
+                    onEditFood = editableFoodId(id)?.let { fid -> { onEditFood(fid) } },
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(22.dp))

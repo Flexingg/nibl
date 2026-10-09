@@ -112,6 +112,8 @@ class FastSearchViewModel(
         this.targetMealTypeId = mealId
         this.targetMealName = cleanName
         this._selectedMealName.value = cleanName
+        // The tray logs to the meal shown on its button, including foods added before the meal was picked
+        _stagedEntries.value = _stagedEntries.value.map { it.copy(mealTypeId = mealId, mealName = cleanName) }
     }
 
     fun setSearchQuery(query: String) {
@@ -147,6 +149,32 @@ class FastSearchViewModel(
         return if (fits && last.quantity > 0f) last else Portions.defaultFor(food)
     }
 
+    /** Staged entries backed by a library food (not quick add or voice), which can open the food editor. */
+    private val libraryBacked = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    fun editableFoodId(entryId: String): String? = if (entryId in libraryBacked) stagedFoods[entryId]?.id else null
+
+    /**
+     * A food was edited (or saved as the user's copy, or deleted) in the food editor. Staged entries of it take the
+     * new food and are recalculated at their current amount.
+     */
+    fun onFoodEdited(oldId: String, newId: String?) {
+        viewModelScope.launch {
+            val updated = newId?.let { foodRepository.getLocalFood(it) }
+            val ids = stagedFoods.filterValues { it.id == oldId }.keys
+            if (updated == null) return@launch
+            ids.forEach { entryId ->
+                stagedFoods[entryId] = updated
+                val e = _stagedEntries.value.firstOrNull { it.id == entryId } ?: return@forEach
+                _stagedEntries.value = _stagedEntries.value.map {
+                    if (it.id == entryId) it.copy(foodId = updated.id, foodName = updated.name, brandName = updated.brand) else it
+                }
+                updateStagedPortion(entryId, Portion(e.quantity, e.unit))
+            }
+            _lastPortions.value = _lastPortions.value - oldId
+        }
+    }
+
     fun unitOptionsFor(entryId: String): List<String> = stagedFoods[entryId]?.let { Portions.unitOptions(it) } ?: emptyList()
     fun foodFor(entryId: String): FoodItem? = stagedFoods[entryId]
 
@@ -170,6 +198,7 @@ class FastSearchViewModel(
             syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT
         )
         stagedFoods[entry.id] = food
+        libraryBacked += entry.id
         _stagedEntries.value = _stagedEntries.value + entry
         _activeStagedId.value = entry.id
         return entry
@@ -206,6 +235,7 @@ class FastSearchViewModel(
 
     fun removeStagedEntry(entry: FoodEntry) {
         stagedFoods.remove(entry.id)
+        libraryBacked -= entry.id
         _stagedEntries.value = _stagedEntries.value.filter { it.id != entry.id }
         if (_activeStagedId.value == entry.id) _activeStagedId.value = _stagedEntries.value.lastOrNull()?.id
     }
@@ -229,13 +259,17 @@ class FastSearchViewModel(
      * Commits all staged items in 1 frame and clears tray.
      */
     fun commitStagedTray(onSuccess: () -> Unit) {
-        val entriesToCommit = _stagedEntries.value
+        // Always the meal and day this screen is logging to (the ones on the Log button)
+        val entriesToCommit = _stagedEntries.value.map {
+            it.copy(mealTypeId = targetMealTypeId, mealName = targetMealName, entryDate = targetDate.ifBlank { it.entryDate })
+        }
         if (entriesToCommit.isEmpty()) return
 
         viewModelScope.launch {
             foodRepository.commitMultiAdd(entriesToCommit)
             _stagedEntries.value = emptyList()
             stagedFoods.clear()
+            libraryBacked.clear()
             _activeStagedId.value = null
             onSuccess()
         }

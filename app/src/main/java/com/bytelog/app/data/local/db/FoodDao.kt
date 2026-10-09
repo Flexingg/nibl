@@ -56,6 +56,9 @@ interface FoodDao {
     @Query("UPDATE foods SET isFavorite = :isFavorite WHERE id = :foodId")
     suspend fun setFavorite(foodId: String, isFavorite: Boolean)
 
+    @Query("DELETE FROM foods WHERE id = :id")
+    suspend fun deleteFood(id: String)
+
     @Query("SELECT COUNT(*) FROM foods")
     suspend fun getCount(): Int
 
