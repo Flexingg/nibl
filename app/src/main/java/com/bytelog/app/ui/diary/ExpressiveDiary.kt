@@ -47,6 +47,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalDrink
@@ -585,7 +586,8 @@ fun ExpressiveTopBar(
     syncing: Boolean,
     onSync: () -> Unit,
     onChat: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    onFamily: (() -> Unit)? = null
 ) {
     val cs = MaterialTheme.colorScheme
     val reduce = LocalReduceMotion.current
@@ -595,6 +597,11 @@ fun ExpressiveTopBar(
                 IconButton(onClick = onSync, modifier = Modifier.pressBounce(0.85f)) {
                     if (syncing) MorphingLoadingIndicator(indicatorSize = 30.dp)
                     else Icon(Icons.Default.Sync, contentDescription = "Sync with Sparky", tint = cs.onSurfaceVariant)
+                }
+                if (onFamily != null) {
+                    IconButton(onClick = onFamily, modifier = Modifier.pressBounce(0.85f)) {
+                        Icon(Icons.Default.Groups, contentDescription = "Family", tint = cs.onSurfaceVariant)
+                    }
                 }
                 IconButton(onClick = onChat, modifier = Modifier.pressBounce(0.85f)) {
                     Icon(Icons.Default.AutoAwesome, contentDescription = "Sparky AI Coach", tint = cs.primary)

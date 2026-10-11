@@ -38,6 +38,8 @@ import com.bytelog.app.ui.navigation.NavMotion
 import com.bytelog.app.ui.screens.RecentMealsScreen
 import com.bytelog.app.ui.viewmodel.DiaryViewModel
 import com.bytelog.app.ui.viewmodel.FastSearchViewModel
+import com.bytelog.app.ui.viewmodel.FamilyViewModel
+import com.bytelog.app.ui.viewmodel.MemberViewModel
 import com.bytelog.app.ui.viewmodel.FoodEditorViewModel
 import com.bytelog.app.ui.viewmodel.MyFoodsViewModel
 import com.bytelog.app.ui.foods.FoodEditorScreen
@@ -137,6 +139,10 @@ fun ByteLogNavHost(
         }
     }
 
+    // Family (people who share their Sparky diary with the user), shared by the Diary and the family pages
+    val familyRepo = remember { com.bytelog.app.data.family.FamilyRepository(app.sparkyApiClient, foodRepo) }
+    val familyViewModel: FamilyViewModel = viewModel { FamilyViewModel(familyRepo) }
+
     val reduceMotion = LocalReduceMotion.current
     NavHost(
         navController = navController,
@@ -173,7 +179,10 @@ fun ByteLogNavHost(
                 },
                 onOpenRecentMeals = {
                     navController.navigate(NavMotion.RECENT_MEALS) { launchSingleTop = true }
-                }
+                },
+                familyViewModel = familyViewModel,
+                onOpenFamily = { navController.navigate("family") { launchSingleTop = true } },
+                onOpenFamilyMember = { id -> navController.navigate("family/${android.net.Uri.encode(id)}") { launchSingleTop = true } }
             )
         }
 
@@ -267,8 +276,26 @@ fun ByteLogNavHost(
                 weightRepository = app.weightRepository,
                 mealTemplateRepository = app.mealTemplateRepository,
                 onNavigateBack = { navController.popBackStack() },
-                onOpenMyFoods = { navController.navigate("my_foods") { launchSingleTop = true } }
+                onOpenMyFoods = { navController.navigate("my_foods") { launchSingleTop = true } },
+                onOpenFamily = { navController.navigate("family") { launchSingleTop = true } }
             )
+        }
+
+        // 4d. Family: everyone sharing their diary, and one person's diary
+        composable("family") {
+            com.bytelog.app.ui.family.FamilyScreen(
+                viewModel = familyViewModel,
+                onBack = { navController.popBackStack() },
+                onOpenMember = { id -> navController.navigate("family/${android.net.Uri.encode(id)}") { launchSingleTop = true } }
+            )
+        }
+        composable(
+            route = "family/{userId}",
+            arguments = listOf(navArgument("userId") { type = NavType.StringType })
+        ) { entry ->
+            val userId = entry.arguments?.getString("userId").orEmpty()
+            val vm: MemberViewModel = viewModel { MemberViewModel(familyRepo, foodRepo, userId) }
+            com.bytelog.app.ui.family.MemberDiaryScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }
 
         // 4b. The user's own foods on Sparky

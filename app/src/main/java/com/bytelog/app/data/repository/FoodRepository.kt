@@ -113,6 +113,9 @@ class FoodRepository(
         link
     }
 
+    /** The Sparky food and serving [entry] belongs to (food id, variant id), creating the food on Sparky if needed. */
+    suspend fun sparkyLinkFor(entry: FoodEntry): Result<Pair<String, String>> = linkToSparkyFood(entry)
+
     /** Sends one new entry; on success it carries Sparky's id and is marked uploaded. */
     private suspend fun pushCreate(entry: FoodEntry): Boolean {
         val link = linkToSparkyFood(entry).getOrElse { e ->
