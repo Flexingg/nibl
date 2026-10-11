@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CloudOff
@@ -128,8 +129,12 @@ fun DiaryScreen(
     onNavigateToBarcode: (mealTypeId: String, mealName: String, date: String) -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onOpenRecentMeals: () -> Unit
+    onOpenRecentMeals: () -> Unit,
+    familyViewModel: com.bytelog.app.ui.viewmodel.FamilyViewModel? = null,
+    onOpenFamily: () -> Unit = {},
+    onOpenFamilyMember: (String) -> Unit = {}
 ) {
+    val family by (familyViewModel?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(com.bytelog.app.ui.viewmodel.FamilyState(loading = false)) }).collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val dailySummary by viewModel.dailySummary.collectAsState()
     val entries by viewModel.entriesForDate.collectAsState()
@@ -208,6 +213,7 @@ fun DiaryScreen(
     var savingTemplateMealName by remember { mutableStateOf<String?>(null) }
     var showTemplatesSheet by remember { mutableStateOf(false) }
     var templateTargetMeal by remember { mutableStateOf<DisplayMealGroup?>(null) }
+    var shareTarget by remember { mutableStateOf<DisplayMealGroup?>(null) }
     var showRecipeBuilderSheet by remember { mutableStateOf(false) }
 
     // Changing day: the new day's cards slide in from the side you moved towards and settle with a bounce.
@@ -299,7 +305,8 @@ fun DiaryScreen(
                     viewModel.manualSync()
                 },
                 onChat = onNavigateToChat,
-                onSettings = onNavigateToSettings
+                onSettings = onNavigateToSettings,
+                onFamily = if (familyViewModel != null) onOpenFamily else null
             )
 
           // Header and list: swipe sideways here to change day
@@ -394,6 +401,13 @@ fun DiaryScreen(
                             },
                             onOpen = { openBatch = it }
                         )
+                      }
+                    }
+                }
+                if (family.members.isNotEmpty()) {
+                    item(key = "family") {
+                      Box(Modifier.hideWhenScrolledAway(listState, "family")) {
+                        com.bytelog.app.ui.family.FamilyStrip(family.members, family.today, onOpenFamilyMember, onOpenFamily)
                       }
                     }
                 }
@@ -512,6 +526,10 @@ fun DiaryScreen(
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 savingTemplateMealName = group.mealName
                             },
+                            onShare = if (family.members.any { it.canWriteDiary }) ({
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                shareTarget = group
+                            }) else null,
                             onOpenTemplates = {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 templateTargetMeal = group
@@ -919,6 +937,29 @@ fun DiaryScreen(
     }
 
     // Adaptive Calorie & Macro Goal Adjust Dialog
+    // Share a meal with family: split by percent or copy
+    shareTarget?.let { group ->
+        com.bytelog.app.ui.family.ShareMealSheet(
+            mealName = group.mealName,
+            entries = group.entries,
+            members = family.members,
+            onDismiss = { shareTarget = null },
+            onConfirm = { shares, mode ->
+                shareTarget = null
+                familyViewModel?.share(group.entries, shares, mode) { outcomes ->
+                    scope.launch {
+                        val msg = if (outcomes.all { it.ok }) {
+                            outcomes.joinToString("; ") { "${it.member?.displayName}: ${it.sent} item${if (it.sent == 1) "" else "s"}" }.let { "Shared ${group.mealName} — $it" }
+                        } else {
+                            outcomes.filter { !it.ok }.joinToString("; ") { "${it.member?.displayName}: ${it.error?.take(90)}" }.let { "Couldn't share with $it" }
+                        }
+                        snackbarHostState.showSnackbar(msg)
+                    }
+                }
+            }
+        )
+    }
+
     if (showGoalAdjustDialog) {
         GoalAdjustDialog(
             currentTdee = adaptiveCalc.tdee,
@@ -1045,6 +1086,7 @@ fun MealCard(
     onClearMeal: () -> Unit,
     onSaveTemplate: () -> Unit,
     onOpenTemplates: () -> Unit,
+    onShare: (() -> Unit)? = null,
     onEditEntry: (FoodEntry) -> Unit,
     onMoveEntry: (FoodEntry) -> Unit,
     onCopyEntry: (FoodEntry) -> Unit,
@@ -1185,6 +1227,20 @@ fun MealCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    if (entries.isNotEmpty() && onShare != null) {
+                        IconButton(
+                            onClick = onShare,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Groups,
+                                contentDescription = "Share $mealName with family",
+                                tint = ByteCreamMuted,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
                     if (entries.isNotEmpty()) {
                         IconButton(
                             onClick = onSaveTemplate,

@@ -60,6 +60,8 @@ class SparkyApiClient(
             // Callers that need another Accept (the MCP endpoint wants "application/json, text/event-stream") set their own.
             if (original.header("Accept") == null) builder.header("Accept", "application/json")
             builder.header("X-Meal-Model-Version", "2")
+            // Requests made for a family member carry Sparky's active-user cookie
+            original.tag(ActingAs::class.java)?.let { builder.header("Cookie", "sparky_active_user_id=${it.userId}") }
 
             // Session token authentication
             authToken?.let { token ->
@@ -343,11 +345,12 @@ class SparkyApiClient(
     /**
      * Fetch meal types from Sparky Fitness Server.
      */
-    suspend fun fetchMealTypes(): Result<List<MealType>> = withContext(Dispatchers.IO) {
+    suspend fun fetchMealTypes(actingAs: String? = null): Result<List<MealType>> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
                 .url("$baseUrl/api/meal-types")
                 .get()
+                .tag(ActingAs::class.java, actingAs?.let { ActingAs(it) })
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -579,11 +582,12 @@ class SparkyApiClient(
     /**
      * Fetch diary entries for date (YYYY-MM-DD) from /api/food-entries/by-date/:date.
      */
-    suspend fun fetchEntriesForDate(date: String): Result<List<FoodEntry>> = withContext(Dispatchers.IO) {
+    suspend fun fetchEntriesForDate(date: String, userId: String? = null): Result<List<FoodEntry>> = withContext(Dispatchers.IO) {
         try {
             val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
+            val who = userId?.let { "?userId=$it" }.orEmpty()
             val request = Request.Builder()
-                .url("$baseUrl/api/food-entries/by-date/$cleanDate")
+                .url("$baseUrl/api/food-entries/by-date/$cleanDate$who")
                 .get()
                 .build()
 
@@ -634,7 +638,12 @@ class SparkyApiClient(
      * Logs an entry on Sparky. Sparky only accepts entries that point at a food in its library ([foodId] with its
      * serving [variantId]); the entry's own amount and nutrition are sent too and override the food's.
      */
-    suspend fun createFoodEntry(entry: FoodEntry, foodId: String? = null, variantId: String? = null): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun createFoodEntry(
+        entry: FoodEntry,
+        foodId: String? = null,
+        variantId: String? = null,
+        forUserId: String? = null
+    ): Result<String> = withContext(Dispatchers.IO) {
         try {
             val isUuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
             val cleanMealName = entry.mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
@@ -648,6 +657,8 @@ class SparkyApiClient(
                     append("\"food_id\":\"$foodId\",")
                     append("\"variant_id\":\"$variantId\",")
                 }
+                // Logging into a family member's diary: Sparky checks the family-access grant for this user
+                if (forUserId != null) append("\"user_id\":\"$forUserId\",")
                 if (isUuid.matches(entry.mealTypeId)) {
                     append("\"meal_type_id\":\"${entry.mealTypeId}\",")
                 }
@@ -773,12 +784,13 @@ class SparkyApiClient(
     /**
      * Fetch user's daily nutrition goals from Sparky Fitness Server for a given date.
      */
-    suspend fun fetchGoalsForDate(date: String): Result<UserMacroGoals> = withContext(Dispatchers.IO) {
+    suspend fun fetchGoalsForDate(date: String, actingAs: String? = null): Result<UserMacroGoals> = withContext(Dispatchers.IO) {
         try {
             val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
             val request = Request.Builder()
                 .url("$baseUrl/api/goals/by-date/$cleanDate")
                 .get()
+                .tag(ActingAs::class.java, actingAs?.let { ActingAs(it) })
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -1411,6 +1423,25 @@ class SparkyApiClient(
                     val err = response.body?.string().orEmpty()
                     Result.failure(IOException("Create custom food failed: HTTP ${response.code} $err"))
                 }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // --- Family access ---
+
+    /** GET /api/identity/users/accessible-users — everyone who has shared their data with the signed-in user. */
+    suspend fun fetchFamilyMembers(): Result<List<FamilyMember>> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder().url("$baseUrl/api/identity/users/accessible-users").get().build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@use Result.failure(IOException("Couldn't load family: ${errorText(response.code, body)}"))
+                val root = json.parseToJsonElement(body)
+                val arr = (root as? kotlinx.serialization.json.JsonArray)
+                    ?: (root as? kotlinx.serialization.json.JsonObject)?.get("users")?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+                Result.success(arr.mapNotNull { (it as? kotlinx.serialization.json.JsonObject)?.let(FamilyMember::parse) })
             }
         } catch (e: Exception) {
             Result.failure(e)

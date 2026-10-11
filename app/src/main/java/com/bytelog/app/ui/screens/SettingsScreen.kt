@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
@@ -109,7 +110,8 @@ fun SettingsScreen(
     weightRepository: WeightRepository? = null,
     mealTemplateRepository: MealTemplateRepository? = null,
     onNavigateBack: () -> Unit,
-    onOpenMyFoods: (() -> Unit)? = null
+    onOpenMyFoods: (() -> Unit)? = null,
+    onOpenFamily: (() -> Unit)? = null
 ) {
     val serverUrlPref by settingsRepository.serverUrl.collectAsState(initial = "http://10.0.2.2:3010")
     val authTokenPref by settingsRepository.authToken.collectAsState(initial = null)
@@ -255,6 +257,30 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("My foods", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Text("Edit names, servings and nutrition on Sparky", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
+                }
+            }
+
+            if (onOpenFamily != null) {
+                val cs = MaterialTheme.colorScheme
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(cs.surfaceContainer)
+                        .clickable(onClick = onOpenFamily)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier.size(40.dp).clip(RoundedCornerShape(14.dp)).background(cs.tertiaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Default.Groups, contentDescription = null, tint = cs.onTertiaryContainer) }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Family", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("See their diets, split and share meals", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
                     }
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
