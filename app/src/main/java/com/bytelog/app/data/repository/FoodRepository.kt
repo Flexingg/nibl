@@ -351,7 +351,10 @@ class FoodRepository(
 
     suspend fun lookupBarcode(barcode: String): FoodItem? {
         val localMatch = foodDao.getFoodByBarcode(barcode)
-        if (localMatch != null) return localMatch
+        // Earlier versions saved unreadable lookups as a blank "Scanned Product"; those aren't real matches
+        if (localMatch != null && localMatch.name == "Scanned Product" && localMatch.calories == 0f) {
+            foodDao.deleteFood(localMatch.id)
+        } else if (localMatch != null) return localMatch
 
         val remoteResult = sparkyApiClient.getFoodByBarcode(barcode)
         val remoteFood = remoteResult.getOrNull()

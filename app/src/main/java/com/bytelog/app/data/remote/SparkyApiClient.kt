@@ -555,39 +555,16 @@ class SparkyApiClient(
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val content = response.body?.string().orEmpty()
-                    val obj = json.parseToJsonElement(content).jsonObject
-                    val variant = obj["default_variant"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonObject
-                        ?: obj["variants"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonArray?.firstOrNull()?.jsonObject
-
-                    val calories = variant?.get("calories")?.jsonPrimitive?.floatOrNull
-                        ?: obj["calories"]?.jsonPrimitive?.floatOrNull ?: 0f
-                    val protein = variant?.get("protein")?.jsonPrimitive?.floatOrNull
-                        ?: obj["protein"]?.jsonPrimitive?.floatOrNull ?: 0f
-                    val carbs = variant?.get("carbs")?.jsonPrimitive?.floatOrNull
-                        ?: obj["carbs"]?.jsonPrimitive?.floatOrNull ?: 0f
-                    val fat = variant?.get("fat")?.jsonPrimitive?.floatOrNull
-                        ?: obj["fat"]?.jsonPrimitive?.floatOrNull ?: 0f
-                    val fiber = variant?.get("dietary_fiber")?.jsonPrimitive?.floatOrNull
-                        ?: obj["dietary_fiber"]?.jsonPrimitive?.floatOrNull ?: 0f
-                    val servingSize = variant?.get("serving_size")?.jsonPrimitive?.floatOrNull
-                        ?: obj["serving_size"]?.jsonPrimitive?.floatOrNull ?: 100f
-                    val servingUnit = variant?.get("serving_unit")?.jsonPrimitive?.content
-                        ?: obj["serving_unit"]?.jsonPrimitive?.content ?: "g"
-
-                    val item = FoodItem(
-                        id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
-                        name = obj["name"]?.jsonPrimitive?.content ?: "Scanned Product",
-                        brand = obj["brand"]?.jsonPrimitive?.content,
-                        barcode = barcode,
-                        servingSize = servingSize,
-                        servingUnit = servingUnit,
-                        calories = calories,
-                        protein = protein,
-                        carbs = carbs,
-                        fat = fat,
-                        fiber = fiber
-                    )
-                    Result.success(item)
+                    // Sparky answers {"source": "local|openfoodfacts|...|not_found", "food": {...} | null}
+                    val root = json.parseToJsonElement(content).jsonObject
+                    val foodObj = (root["food"] as? kotlinx.serialization.json.JsonObject) ?: return@use Result.success(null)
+                    val parsed = SparkyFood.parse(foodObj)
+                    // A product with no name isn't a usable result (it would log as a blank item)
+                    if (parsed.name == SparkyFood.UNNAMED || parsed.name.isBlank()) return@use Result.success(null)
+                    val local = root["source"]?.jsonPrimitive?.content == "local" && parsed.id.isNotBlank()
+                    // Products found online aren't in the user's Sparky library yet: "off_<barcode>" until they are
+                    val id = if (local) parsed.id else "off_$barcode"
+                    Result.success(parsed.copy(id = id, barcode = barcode).toFoodItem())
                 } else if (response.code == 404) {
                     Result.success(null)
                 } else {

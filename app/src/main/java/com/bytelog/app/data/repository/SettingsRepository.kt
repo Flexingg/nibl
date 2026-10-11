@@ -119,7 +119,8 @@ class SettingsRepository(
     }
 
     val autoAdjustCalories: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[KEY_AUTO_ADJUST_CALORIES] ?: true
+        // Off unless chosen: the goal synced from Sparky is the one shown, not the app's own estimate
+        prefs[KEY_AUTO_ADJUST_CALORIES] ?: false
     }
 
     val calorieGoalMode: Flow<String> = context.dataStore.data.map { prefs ->

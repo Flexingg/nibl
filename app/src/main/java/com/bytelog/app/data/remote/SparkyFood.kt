@@ -46,6 +46,7 @@ data class SparkyFood(
     )
 
     companion object {
+        const val UNNAMED = "Unnamed food"
         private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull?.takeIf { it.isNotBlank() }
         private fun JsonObject.num(k: String) = (this[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.let { it.floatOrNull ?: it.contentOrNull?.toFloatOrNull() }
 
@@ -54,7 +55,7 @@ data class SparkyFood(
             val v = (obj["default_variant"] as? JsonObject) ?: obj
             return SparkyFood(
                 id = obj.str("id").orEmpty(),
-                name = obj.str("name") ?: "Unnamed food",
+                name = obj.str("name") ?: UNNAMED,
                 brand = obj.str("brand"),
                 barcode = obj.str("barcode"),
                 userId = obj.str("user_id"),

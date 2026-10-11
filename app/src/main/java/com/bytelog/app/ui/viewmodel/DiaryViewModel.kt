@@ -73,7 +73,7 @@ class DiaryViewModel(
     val selectedChartRangeDays: StateFlow<Int> = _selectedChartRangeDays.asStateFlow()
 
     val autoAdjustCalories: StateFlow<Boolean> = settingsRepository.autoAdjustCalories
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val calorieGoalMode: StateFlow<String> = settingsRepository.calorieGoalMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "cut")
@@ -162,9 +162,9 @@ class DiaryViewModel(
         entriesForDate,
         adaptiveTdeeCalculation,
         goalSettingsFlow,
-        settingsRepository.targetProtein,
-        settingsRepository.targetCarbs
-    ) { entries, adaptiveCalc, settings, targetP, targetC ->
+        combine(settingsRepository.targetProtein, settingsRepository.targetCarbs, settingsRepository.targetFat) { p, c, f -> Triple(p, c, f) }
+    ) { entries, adaptiveCalc, settings, macroTargets ->
+        val (targetP, targetC, targetF) = macroTargets
         val totalCal = entries.sumOf { it.calories.toDouble() }.toFloat()
         val totalP = entries.sumOf { it.protein.toDouble() }.toFloat()
         val totalC = entries.sumOf { it.carbs.toDouble() }.toFloat()
@@ -188,7 +188,7 @@ class DiaryViewModel(
             totalCarbs = totalC,
             targetCarbs = autoMacros?.carbs ?: targetC,
             totalFat = totalF,
-            targetFat = autoMacros?.fat ?: (targetCal * 0.28f / 9f)
+            targetFat = autoMacros?.fat ?: targetF
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DailySummary(date = _selectedDate.value))
 

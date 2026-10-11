@@ -281,7 +281,8 @@ class FastSearchViewModel(
     suspend fun handleScannedBarcode(barcode: String): FoodItem? {
         val food = foodRepository.lookupBarcode(barcode)
         if (food != null) {
-            stageFood(food)
+            // A code scanned again after leaving the frame adds another portion rather than a duplicate line
+            tapFood(food)
         }
         return food
     }

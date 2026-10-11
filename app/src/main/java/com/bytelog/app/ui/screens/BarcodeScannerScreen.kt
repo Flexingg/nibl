@@ -100,8 +100,7 @@ fun BarcodeScannerScreen(
     val stagedEntries by viewModel.stagedEntries.collectAsState()
     val activeStagedId by viewModel.activeStagedId.collectAsState()
     var scannedNotification by remember { mutableStateOf<String?>(null) }
-    var lastScannedBarcode by remember { mutableStateOf("") }
-    var lastScanTimestamp by remember { mutableStateOf(0L) }
+    val scanGate = remember { com.bytelog.app.ui.logging.ScanGate() }
 
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val barcodeScanner = remember { BarcodeScanning.getClient() }
@@ -167,18 +166,15 @@ fun BarcodeScannerScreen(
                                         .addOnSuccessListener { barcodes ->
                                             val firstBarcode = barcodes.firstOrNull()?.rawValue
                                             if (!firstBarcode.isNullOrBlank()) {
-                                                val now = System.currentTimeMillis()
-                                                if (firstBarcode != lastScannedBarcode || now - lastScanTimestamp > 2500) {
-                                                    lastScannedBarcode = firstBarcode
-                                                    lastScanTimestamp = now
-
+                                                // One scan per code held in view; again only after it leaves and returns
+                                                if (scanGate.accept(firstBarcode, System.currentTimeMillis())) {
                                                     scope.launch {
                                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                         val food = viewModel.handleScannedBarcode(firstBarcode)
                                                         scannedNotification = if (food != null) {
                                                             "Added ${food.name}"
                                                         } else {
-                                                            "Unknown barcode: $firstBarcode"
+                                                            "Product not found: $firstBarcode"
                                                         }
                                                         delay(2000)
                                                         scannedNotification = null
