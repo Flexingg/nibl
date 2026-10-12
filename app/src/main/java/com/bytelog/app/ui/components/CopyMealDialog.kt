@@ -149,57 +149,7 @@ fun CopyMealDialog(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Quick Date Chips: Today, Tomorrow, Same Day
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    listOf(
-                        "Today" to today,
-                        "Tomorrow" to tomorrow,
-                        "Same Day" to sourceDate
-                    ).forEach { (label, dateVal) ->
-                        val isSelected = targetDate == dateVal
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    targetDate = dateVal
-                                }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                color = if (isSelected) ByteOnTomato else ByteCreamMuted,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = targetDate,
-                    onValueChange = { targetDate = it },
-                    leadingIcon = {
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = ByteCreamMuted, modifier = Modifier.size(16.dp))
-                    },
-                    label = { Text("Date (YYYY-MM-DD)", color = ByteCreamMuted) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = ByteCream,
-                        unfocusedTextColor = ByteCream,
-                        focusedBorderColor = ByteTomato,
-                        unfocusedBorderColor = ByteSurfaceVariantDark
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                TargetDatePicker(date = targetDate, onDate = { targetDate = it }, sourceDate = sourceDate, accent = ByteTomato)
 
                 Spacer(modifier = Modifier.height(14.dp))
 

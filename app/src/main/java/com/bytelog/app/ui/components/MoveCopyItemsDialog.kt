@@ -241,62 +241,12 @@ fun MoveCopyItemsDialog(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Quick Date Pills
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    listOf(
-                        "Today" to today,
-                        "Tomorrow" to tomorrow,
-                        "Yesterday" to yesterday,
-                        "Same Day" to sourceDate
-                    ).distinctBy { it.second }.forEach { (label, dateVal) ->
-                        val isSelected = targetDate == dateVal
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) (if (mode == MoveCopyMode.MOVE) ByteTomato else MacroProtein) else ByteSurfaceVariantDark)
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    targetDate = dateVal
-                                }
-                                .padding(vertical = 7.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                color = if (isSelected) ByteCream else ByteCreamMuted,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = targetDate,
-                    onValueChange = { targetDate = it },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.CalendarToday,
-                            contentDescription = null,
-                            tint = ByteCreamMuted,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    label = { Text("Date (YYYY-MM-DD)", color = ByteCreamMuted, fontSize = 12.sp) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = ByteCream,
-                        unfocusedTextColor = ByteCream,
-                        focusedBorderColor = if (mode == MoveCopyMode.MOVE) ByteTomato else MacroProtein,
-                        unfocusedBorderColor = ByteSurfaceVariantDark
-                    ),
-                    modifier = Modifier.fillMaxWidth()
+                // Quick days (Today, Tomorrow, Yesterday, Same Day) and a calendar for any other day
+                TargetDatePicker(
+                    date = targetDate,
+                    onDate = { targetDate = it },
+                    sourceDate = sourceDate,
+                    accent = if (mode == MoveCopyMode.MOVE) ByteTomato else MacroProtein
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
