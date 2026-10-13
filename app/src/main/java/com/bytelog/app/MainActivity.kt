@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -55,9 +56,20 @@ class MainActivity : ComponentActivity() {
     /** Text shared into the app (usually a recipe page URL). Consumed by the nav host. */
     private val sharedText = mutableStateOf<String?>(null)
 
+    /** Where a home screen widget tap asked to go (see WidgetLinks), until the nav host has acted on it. */
+    private val widgetDestination = mutableStateOf<String?>(null)
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         readSharedText(intent)
+        readWidgetDestination(intent)
+    }
+
+    private fun readWidgetDestination(intent: Intent?) {
+        intent?.getStringExtra(com.bytelog.app.widget.WidgetLinks.EXTRA_DEST)?.let {
+            widgetDestination.value = it
+            intent.removeExtra(com.bytelog.app.widget.WidgetLinks.EXTRA_DEST)
+        }
     }
 
     private fun readSharedText(intent: Intent?) {
@@ -75,7 +87,10 @@ class MainActivity : ComponentActivity() {
         val app = application as ByteLogApplication
         val foodRepo = app.foodRepository
         val settingsRepo = app.settingsRepository
-        if (savedInstanceState == null) readSharedText(intent)
+        if (savedInstanceState == null) {
+            readSharedText(intent)
+            readWidgetDestination(intent)
+        }
 
         setContent {
             val themeMode by settingsRepo.themeMode.collectAsState(initial = com.bytelog.app.ui.theme.ThemeMode.SYSTEM)
@@ -104,7 +119,9 @@ class MainActivity : ComponentActivity() {
                             foodRepo = foodRepo,
                             settingsRepo = settingsRepo,
                             sharedText = sharedText.value,
-                            onSharedTextConsumed = { sharedText.value = null }
+                            onSharedTextConsumed = { sharedText.value = null },
+                            widgetDestination = widgetDestination.value,
+                            onWidgetDestinationConsumed = { widgetDestination.value = null }
                         )
                     }
                 }
@@ -122,9 +139,33 @@ fun ByteLogNavHost(
     foodRepo: com.bytelog.app.data.repository.FoodRepository,
     settingsRepo: com.bytelog.app.data.repository.SettingsRepository,
     sharedText: String? = null,
-    onSharedTextConsumed: () -> Unit = {}
+    onSharedTextConsumed: () -> Unit = {},
+    widgetDestination: String? = null,
+    onWidgetDestinationConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
+    // A widget's "share this meal with family" tap: the Diary opens the share sheet for that meal
+    var shareRequest by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(widgetDestination) {
+        val dest = com.bytelog.app.widget.WidgetLinks.parse(widgetDestination) ?: return@LaunchedEffect
+        onWidgetDestinationConsumed()
+        val date = java.time.LocalDate.now().toString()
+        suspend fun mealRoute(base: String, meal: String) {
+            val types = foodRepo.getAllMealTypes().first()
+            val type = types.firstOrNull { it.name.trim().equals(meal, ignoreCase = true) } ?: types.firstOrNull()
+            val id = type?.id ?: meal.lowercase()
+            val name = type?.name ?: meal
+            navController.navigate("$base/${android.net.Uri.encode(id)}/${android.net.Uri.encode(name)}/$date") { launchSingleTop = true }
+        }
+        when (dest) {
+            com.bytelog.app.widget.WidgetDestination.Diary -> navController.popBackStack("diary", false)
+            com.bytelog.app.widget.WidgetDestination.Family -> navController.navigate("family") { launchSingleTop = true }
+            is com.bytelog.app.widget.WidgetDestination.Search -> mealRoute("search", dest.meal)
+            is com.bytelog.app.widget.WidgetDestination.Scan -> mealRoute("barcode", dest.meal)
+            is com.bytelog.app.widget.WidgetDestination.Share -> { shareRequest = dest.meal; navController.popBackStack("diary", false) }
+        }
+    }
     // Activity-scoped so the diary, recipe pages and cook mode share one recipes/batches state.
     val recipesViewModel: RecipesViewModel = viewModel {
         RecipesViewModel(app.recipeRepository, app.mealPrepRepository, app.mealTemplateRepository, foodRepo)
@@ -140,7 +181,7 @@ fun ByteLogNavHost(
     }
 
     // Family (people who share their Sparky diary with the user), shared by the Diary and the family pages
-    val familyRepo = remember { com.bytelog.app.data.family.FamilyRepository(app.sparkyApiClient, foodRepo) }
+    val familyRepo = app.familyRepository
     val familyViewModel: FamilyViewModel = viewModel { FamilyViewModel(familyRepo) }
 
     val reduceMotion = LocalReduceMotion.current
@@ -182,7 +223,9 @@ fun ByteLogNavHost(
                 },
                 familyViewModel = familyViewModel,
                 onOpenFamily = { navController.navigate("family") { launchSingleTop = true } },
-                onOpenFamilyMember = { id -> navController.navigate("family/${android.net.Uri.encode(id)}") { launchSingleTop = true } }
+                onOpenFamilyMember = { id -> navController.navigate("family/${android.net.Uri.encode(id)}") { launchSingleTop = true } },
+                openShareFor = shareRequest,
+                onShareRequestHandled = { shareRequest = null }
             )
         }
 

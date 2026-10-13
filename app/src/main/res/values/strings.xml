@@ -5,4 +5,14 @@
     <string name="log_meal">Log Meal</string>
     <string name="quick_add">Quick Add</string>
     <string name="barcode_scan">Scan Barcode</string>
+    <string name="widget_today_label">ByteLog Today</string>
+    <string name="widget_calories_label">ByteLog Calories</string>
+    <string name="widget_water_label">ByteLog Water</string>
+    <string name="widget_quick_log_label">ByteLog Quick log</string>
+    <string name="widget_family_label">ByteLog Family</string>
+    <string name="widget_today_description">Calories, macros and water for today, with one-tap add food and water</string>
+    <string name="widget_calories_description">Calories eaten today against your goal</string>
+    <string name="widget_water_description">Today\'s water; tap the glass to add a bottle</string>
+    <string name="widget_quick_log_description">Jump straight to logging breakfast, lunch, dinner, a snack, or scanning a barcode</string>
+    <string name="widget_family_description">See what your family has eaten today and split a meal with them</string>
 </resources>
