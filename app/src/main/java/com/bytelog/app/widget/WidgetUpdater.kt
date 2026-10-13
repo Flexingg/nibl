@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-fun WidgetKind.providerClass(): Class<*> = when (this) {
+fun WidgetKind.providerClass(): Class<out android.appwidget.AppWidgetProvider> = when (this) {
     WidgetKind.TODAY -> TodayWidgetProvider::class.java
     WidgetKind.CALORIES -> CaloriesWidgetProvider::class.java
     WidgetKind.WATER -> WaterWidgetProvider::class.java
