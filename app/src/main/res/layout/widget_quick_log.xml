@@ -22,31 +22,31 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="horizontal">
-        <View
+        <FrameLayout
             android:id="@+id/tap_breakfast"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:contentDescription="Log breakfast" />
-        <View
+        <FrameLayout
             android:id="@+id/tap_lunch"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:contentDescription="Log lunch" />
-        <View
+        <FrameLayout
             android:id="@+id/tap_dinner"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:contentDescription="Log dinner" />
-        <View
+        <FrameLayout
             android:id="@+id/tap_snack"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:contentDescription="Log a snack" />
-        <View
+        <FrameLayout
             android:id="@+id/tap_scan"
             android:layout_width="0dp"
             android:layout_height="match_parent"
