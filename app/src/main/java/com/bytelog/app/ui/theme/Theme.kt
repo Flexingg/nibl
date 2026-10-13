@@ -75,6 +75,13 @@ fun byteColorScheme(darkTheme: Boolean, dynamicColor: Boolean): ColorScheme {
     }
 }
 
+/** The app's colours without a composition (home screen widgets): device colours when allowed, else the seed theme. */
+fun byteColorSchemeFor(context: android.content.Context, darkTheme: Boolean, dynamicColor: Boolean): ColorScheme = when {
+    dynamicColor && supportsDeviceColors -> if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    darkTheme -> SeedDark
+    else -> SeedLight
+}
+
 @Composable
 fun ByteLogTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

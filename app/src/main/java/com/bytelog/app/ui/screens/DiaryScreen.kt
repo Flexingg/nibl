@@ -132,7 +132,9 @@ fun DiaryScreen(
     onOpenRecentMeals: () -> Unit,
     familyViewModel: com.bytelog.app.ui.viewmodel.FamilyViewModel? = null,
     onOpenFamily: () -> Unit = {},
-    onOpenFamilyMember: (String) -> Unit = {}
+    onOpenFamilyMember: (String) -> Unit = {},
+    openShareFor: String? = null,
+    onShareRequestHandled: () -> Unit = {}
 ) {
     val family by (familyViewModel?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(com.bytelog.app.ui.viewmodel.FamilyState(loading = false)) }).collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
@@ -937,6 +939,20 @@ fun DiaryScreen(
     }
 
     // Adaptive Calorie & Macro Goal Adjust Dialog
+    // A widget asked to share a meal: open the sheet for it once that meal shows up in the day
+    LaunchedEffect(openShareFor, loggedMealGroups) {
+        val wanted = openShareFor ?: return@LaunchedEffect
+        val group = loggedMealGroups.firstOrNull { it.mealName.equals(wanted, ignoreCase = true) }
+        if (group != null) {
+            shareTarget = group
+            onShareRequestHandled()
+        } else {
+            kotlinx.coroutines.delay(2500)   // the day may still be loading; if the meal never appears there's nothing to share
+            onShareRequestHandled()
+            snackbarHostState.showSnackbar("Log $wanted first, then share it with family")
+        }
+    }
+
     // Share a meal with family: split by percent or copy
     shareTarget?.let { group ->
         com.bytelog.app.ui.family.ShareMealSheet(

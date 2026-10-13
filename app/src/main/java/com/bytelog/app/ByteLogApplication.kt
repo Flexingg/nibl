@@ -79,6 +79,10 @@ class ByteLogApplication : Application() {
         )
     }
 
+    val familyRepository by lazy {
+        com.bytelog.app.data.family.FamilyRepository(sparkyApiClient, foodRepository)
+    }
+
     val chatRepository by lazy {
         com.bytelog.app.data.repository.SparkyChatRepository(
             sparkyApiClient = sparkyApiClient,
@@ -107,6 +111,9 @@ class ByteLogApplication : Application() {
                 sparkyApiClient.updateConfig(url, token, key)
             }.collect()
         }
+
+        // 2b. Keep the home screen widgets current as the diary, water and goals change
+        com.bytelog.app.widget.WidgetSync.start(this, applicationScope)
 
         // 3. Initialize daily reminder notification channel and active schedule
         com.bytelog.app.notifications.DailyReminderScheduler.createNotificationChannel(this)
