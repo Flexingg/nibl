@@ -107,20 +107,23 @@ object DailyReminderScheduler {
         }
     }
 
-    fun showNotification(context: Context, title: String, message: String) {
-        createNotificationChannel(context)
-
+    fun openDiaryIntent(context: Context): PendingIntent {
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("navigate_to", "diary")
         }
-
-        val pendingIntent = PendingIntent.getActivity(
+        return PendingIntent.getActivity(
             context,
             0,
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
+
+    fun showNotification(context: Context, title: String, message: String, actions: List<NotificationCompat.Action> = emptyList()) {
+        createNotificationChannel(context)
+
+        val pendingIntent = openDiaryIntent(context)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
@@ -131,6 +134,7 @@ object DailyReminderScheduler {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+        actions.forEach { builder.addAction(it) }
 
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build())

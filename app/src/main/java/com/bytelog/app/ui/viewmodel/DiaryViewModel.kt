@@ -12,6 +12,9 @@ import com.bytelog.app.data.local.model.MealTemplate
 import com.bytelog.app.data.local.model.TemplateIngredient
 import com.bytelog.app.data.local.model.WeightEntry
 import com.bytelog.app.data.repository.FoodRepository
+import com.bytelog.app.data.repository.LoggedBatch
+import com.bytelog.app.data.repository.MealPatterns
+import com.bytelog.app.data.repository.MealShortcuts
 import com.bytelog.app.data.repository.MealTemplateRepository
 import com.bytelog.app.data.repository.SettingsRepository
 import com.bytelog.app.data.repository.WaterRepository
@@ -30,7 +33,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -300,6 +305,57 @@ class DiaryViewModel(
         viewModelScope.launch {
             weightRepository.repairKgStoredAsLbs()
             weightRepository.syncWeightHistory()
+        }
+    }
+
+    // ----- One-tap logging: shortcuts for empty meals, undo, amounts changed in place -----
+
+    /** For each meal (by [MealPatterns.mealKey]): yesterday's foods and the usual, for the day being shown. */
+    val mealShortcuts: StateFlow<Map<String, MealShortcuts>> = combine(
+        _selectedDate.flatMapLatest { d ->
+            val day = runCatching { LocalDate.parse(d) }.getOrElse { LocalDate.now() }
+            foodRepository.mealHistory(day).map { day to it }
+        },
+        mealTypes
+    ) { (day, history), types ->
+        (if (types.isNotEmpty()) types else MealType.DEFAULT_MEAL_TYPES)
+            .associate { MealPatterns.mealKey(it.name) to MealShortcuts.of(history, it.name, day) }
+            .filterValues { !it.isEmpty }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Foods logged from search that the diary should offer to undo. */
+    val pendingUndo: StateFlow<LoggedBatch?> = foodRepository.pendingUndo.asStateFlow()
+
+    fun consumePendingUndo(batch: LoggedBatch) { foodRepository.pendingUndo.compareAndSet(batch, null) }
+
+    fun undoLogged(entries: List<FoodEntry>) {
+        viewModelScope.launch { foodRepository.undoLogged(entries) }
+    }
+
+    /** Logs a shortcut's foods to [mealName] on the day shown, at the same amounts. */
+    fun logShortcut(source: List<FoodEntry>, mealTypeId: String, mealName: String, onLogged: (LoggedBatch) -> Unit) {
+        if (source.isEmpty()) return
+        viewModelScope.launch {
+            val copies = MealPatterns.copiesFor(source, _selectedDate.value, mealTypeId, mealName)
+            foodRepository.commitMultiAdd(copies)
+            onLogged(LoggedBatch(copies, mealName))
+        }
+    }
+
+    /** The food behind an entry, for changing its amount; rebuilt from the entry when it isn't in the library. */
+    suspend fun foodForEntry(entry: FoodEntry): FoodItem =
+        entry.foodId?.let { foodRepository.getLocalFood(it) }?.takeIf { it.servingSize > 0f } ?: foodRepository.foodFromEntry(entry)
+
+    /** A new amount or unit for a logged entry, with nutrition worked out again from its food. */
+    fun setEntryPortion(entry: FoodEntry, food: FoodItem, portion: com.bytelog.app.ui.logging.Portion) {
+        viewModelScope.launch {
+            // The stored entry, since it may have been sent to Sparky (and re-keyed) since it was shown
+            val current = foodRepository.getEntry(entry.id)
+                ?: foodRepository.getEntriesForDate(entry.entryDate).first().firstOrNull { it.createdAt == entry.createdAt && it.foodName == entry.foodName }
+                ?: return@launch
+            if (current.quantity == portion.quantity && current.unit == portion.unit) return@launch
+            val m = com.bytelog.app.ui.logging.Portions.macros(food, portion)
+            foodRepository.updateEntry(current.copy(quantity = portion.quantity, unit = portion.unit, calories = m.calories, protein = m.protein, carbs = m.carbs, fat = m.fat))
         }
     }
 

@@ -80,7 +80,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.FoodItem
 import com.bytelog.app.ui.components.CustomFoodDialog
@@ -119,7 +119,13 @@ fun FastSearchScreen(
     val activeStagedId by viewModel.activeStagedId.collectAsState()
     val lastPortions by viewModel.lastPortions.collectAsState()
 
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    // The tab last used (Suggested, Recents or Favorites) is where the next search opens
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val tabPrefs = remember { context.getSharedPreferences("bytelog_search", android.content.Context.MODE_PRIVATE) }
+    var selectedTabIndex by remember { mutableIntStateOf(runCatching { tabPrefs.getInt("tab", 0) }.getOrDefault(0).coerceIn(0, 2)) }
+    LaunchedEffect(selectedTabIndex) { runCatching { tabPrefs.edit().putInt("tab", selectedTabIndex).apply() } }
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var searchFocused by remember { mutableStateOf(false) }
     var showQuickAddDialog by remember { mutableStateOf(false) }
     var showVoiceLogDialog by remember { mutableStateOf(false) }
@@ -132,10 +138,12 @@ fun FastSearchScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
+    // The keyboard would cover the suggestions, so it only opens by itself when there is nothing to suggest yet
     LaunchedEffect(Unit) {
-        delay(200)
-        focusRequester.requestFocus()
-        keyboardController?.show()
+        if (viewModel.shouldFocusSearchOnOpen()) {
+            runCatching { focusRequester.requestFocus() }
+            keyboardController?.show()
+        }
     }
 
     val haptic = LocalHapticFeedback.current
@@ -163,23 +171,13 @@ fun FastSearchScreen(
                 // While typing a search the tray shrinks to its chips and button so results stay visible
                 compact = searchFocused,
                 editableFoodId = viewModel::editableFoodId,
-                onEditFood = { focusManager.clearFocus(); onEditFood(it) }
-            )
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // Expressive header: title, a big pill search field and the other ways to add food
-            com.bytelog.app.ui.components.ScreenHeader(
-                title = "Log food",
-                subtitle = "Search, scan, speak or add your own",
-                onBack = onNavigateBack,
-                statusBarPadding = false
-            )
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                onEditFood = { focusManager.clearFocus(); onEditFood(it) },
+                meals = availableMealTypes.distinctBy { it.name.trim().lowercase() }.map { mt ->
+                    mt.id to mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                },
+                onPickMeal = { id, name -> viewModel.setTargetMeal(id, name) },
+                // Search sits at the bottom, by the tray and the keyboard, so typing, picking and logging stay in thumb reach
+                header = {
                 TextField(
                     value = searchQuery,
                     onValueChange = { viewModel.setSearchQuery(it) },
@@ -213,11 +211,28 @@ fun FastSearchScreen(
                     shape = RoundedCornerShape(50),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(58.dp)
+                        .height(54.dp)
                         .focusRequester(focusRequester)
                         .onFocusChanged { searchFocused = it.isFocused }
                 )
-
+                }
+            )
+        },
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // Expressive header: title, a big pill search field and the other ways to add food
+            com.bytelog.app.ui.components.ScreenHeader(
+                title = "Log food",
+                subtitle = "Search, scan, speak or add your own",
+                onBack = onNavigateBack,
+                statusBarPadding = false
+            )
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 val cs = MaterialTheme.colorScheme
                 com.bytelog.app.ui.diary.ConnectedButtonGroup(
                     listOf(
@@ -502,6 +517,19 @@ fun FastSearchScreen(
                             onEdit = { onEditFood(food.id) },
                             onToggleFavorite = {
                                 viewModel.toggleFavorite(food)
+                            },
+                            onSwipeLog = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.logNow(food) { logged ->
+                                    scope.launch {
+                                        snackbarHostState.currentSnackbarData?.dismiss()
+                                        val r = snackbarHostState.showSnackbar(
+                                            "Logged ${food.name} to $selectedMealName", actionLabel = "Undo",
+                                            duration = androidx.compose.material3.SnackbarDuration.Short
+                                        )
+                                        if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.undoLogged(logged)
+                                    }
+                                }
                             }
                         )
                     }
@@ -598,7 +626,54 @@ fun FoodSearchRow(
     inTray: Boolean = false,
     onQuickAdd: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onEdit: () -> Unit = {}
+    onEdit: () -> Unit = {},
+    /** Swipe right: log it now at this amount, without the tray. */
+    onSwipeLog: (() -> Unit)? = null
+) {
+    if (onSwipeLog == null) {
+        FoodSearchRowContent(food, shape, modifier, portion, inTray, onQuickAdd, onToggleFavorite, onEdit)
+        return
+    }
+    val cs = MaterialTheme.colorScheme
+    val latestLog = androidx.compose.runtime.rememberUpdatedState(onSwipeLog)
+    val state = androidx.compose.material3.rememberSwipeToDismissBoxState(
+        confirmValueChange = { v ->
+            if (v == androidx.compose.material3.SwipeToDismissBoxValue.StartToEnd) latestLog.value()
+            false // snaps back; the food is logged, not removed from the list
+        },
+        positionalThreshold = { it * 0.35f }
+    )
+    androidx.compose.material3.SwipeToDismissBox(
+        state = state,
+        modifier = modifier,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            // Only while swiping: rows in the tray are tinted see-through
+            if (state.dismissDirection == androidx.compose.material3.SwipeToDismissBoxValue.StartToEnd) Row(
+                Modifier.fillMaxSize().clip(shape).background(cs.primary).padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Log now · ${portion.label}", color = cs.onPrimary, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+    ) {
+        FoodSearchRowContent(food, shape, Modifier, portion, inTray, onQuickAdd, onToggleFavorite, onEdit)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FoodSearchRowContent(
+    food: FoodItem,
+    shape: androidx.compose.ui.graphics.Shape,
+    modifier: Modifier,
+    portion: Portion,
+    inTray: Boolean,
+    onQuickAdd: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onEdit: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
     val cs = MaterialTheme.colorScheme

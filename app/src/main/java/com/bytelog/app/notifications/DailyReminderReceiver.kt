@@ -53,7 +53,12 @@ class DailyReminderReceiver : BroadcastReceiver() {
                     message = "Don't break your streak! Take 30 seconds to log today's meals and hydration."
                 }
 
-                DailyReminderScheduler.showNotification(context, title, message)
+                // Buttons that log the meal it is time for in one tap, when there is something to repeat
+                val app = context.applicationContext as? com.bytelog.app.ByteLogApplication
+                val shortcut = app?.let { runCatching { ReminderShortcuts.forNow(it.foodRepository) }.getOrNull() }
+                val actions = shortcut?.let { (meal, sc) -> ReminderShortcuts.actions(context, meal, sc) }.orEmpty()
+
+                DailyReminderScheduler.showNotification(context, title, message, actions)
 
                 // Re-schedule for next day
                 DailyReminderScheduler.scheduleDailyReminder(context, hour, minute)
