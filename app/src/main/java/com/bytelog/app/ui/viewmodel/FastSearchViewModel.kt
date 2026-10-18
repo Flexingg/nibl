@@ -64,8 +64,13 @@ class FastSearchViewModel(
     val favoriteFoods: StateFlow<List<FoodItem>> = foodRepository.getFavoriteFoods()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val suggestedFoods: StateFlow<List<FoodItem>> = foodRepository.getMealSuggestions(targetMealName)
+    // What is usually logged at the meal being logged to; follows the meal picker
+    val suggestedFoods: StateFlow<List<FoodItem>> = _selectedMealName
+        .flatMapLatest { foodRepository.getMealSuggestions(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Opening the keyboard straight away only helps when there are no suggestions to tap instead. */
+    suspend fun shouldFocusSearchOnOpen(): Boolean = !foodRepository.hasAnyEntries()
 
     // Remote search status for OpenFoodFacts & Sparky database
     private val _isSearchingRemote = MutableStateFlow(false)
@@ -267,12 +272,39 @@ class FastSearchViewModel(
 
         viewModelScope.launch {
             foodRepository.commitMultiAdd(entriesToCommit)
+            // The diary offers to undo this once it is back on screen
+            foodRepository.pendingUndo.value = com.bytelog.app.data.repository.LoggedBatch(entriesToCommit, targetMealName)
             _stagedEntries.value = emptyList()
             stagedFoods.clear()
             libraryBacked.clear()
             _activeStagedId.value = null
             onSuccess()
         }
+    }
+
+    /**
+     * Swipe on a result: logged straight away at its usual amount to the meal being logged to, skipping the tray.
+     * Returns what was logged, for an undo.
+     */
+    fun logNow(food: FoodItem, onLogged: (List<FoodEntry>) -> Unit) {
+        val p = portionFor(food)
+        val m = Portions.macros(food, p)
+        val entry = FoodEntry(
+            id = UUID.randomUUID().toString(), foodId = food.id, foodName = food.name, brandName = food.brand,
+            mealTypeId = targetMealTypeId, mealName = targetMealName, quantity = p.quantity, unit = p.unit,
+            calories = m.calories, protein = m.protein, carbs = m.carbs, fat = m.fat,
+            entryDate = targetDate.ifBlank { java.time.LocalDate.now().toString() },
+            syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT
+        )
+        viewModelScope.launch {
+            foodRepository.commitMultiAdd(listOf(entry))
+            _lastPortions.value = _lastPortions.value + (food.id to p)
+            onLogged(listOf(entry))
+        }
+    }
+
+    fun undoLogged(entries: List<FoodEntry>) {
+        viewModelScope.launch { foodRepository.undoLogged(entries) }
     }
 
     /**

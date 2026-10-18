@@ -27,6 +27,9 @@ interface FoodEntryDao {
     """)
     suspend fun getLatestEntriesForFoods(foodIds: List<String>): List<FoodEntry>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM food_entries LIMIT 1)")
+    suspend fun hasAnyEntries(): Boolean
+
     @Query("SELECT * FROM food_entries WHERE id = :id LIMIT 1")
     suspend fun getEntryById(id: String): FoodEntry?
 

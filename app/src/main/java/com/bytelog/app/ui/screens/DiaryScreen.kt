@@ -42,6 +42,10 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -176,6 +180,33 @@ fun DiaryScreen(
         recipesViewModel.messages.collect { message ->
             snackbarHostState.showSnackbar(message)
         }
+    }
+
+    // "Logged 3 to Lunch · Undo" after coming back from search, so a mis-tap is one tap to take back
+    val pendingUndo by viewModel.pendingUndo.collectAsState()
+    LaunchedEffect(pendingUndo) {
+        val batch = pendingUndo ?: return@LaunchedEffect
+        viewModel.consumePendingUndo(batch)
+        snackbarHostState.currentSnackbarData?.dismiss()
+        val r = snackbarHostState.showSnackbar(batch.label, actionLabel = "Undo", duration = androidx.compose.material3.SnackbarDuration.Long)
+        if (r == SnackbarResult.ActionPerformed) viewModel.undoLogged(batch.entries)
+    }
+    val showLogged: (com.bytelog.app.data.repository.LoggedBatch) -> Unit = { batch ->
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val r = snackbarHostState.showSnackbar(batch.label, actionLabel = "Undo", duration = androidx.compose.material3.SnackbarDuration.Long)
+            if (r == SnackbarResult.ActionPerformed) viewModel.undoLogged(batch.entries)
+        }
+    }
+    val mealShortcuts by viewModel.mealShortcuts.collectAsState()
+    val waterSizes = remember(waterContainers, defaultContainerOz, defaultContainerName) {
+        val out = LinkedHashMap<String, Float>()
+        waterContainers.forEach { c -> if (c.volumeOz >= 1f && kotlin.math.abs(c.volumeOz - defaultContainerOz) >= 0.5f) out.putIfAbsent(c.name, c.volumeOz) }
+        listOf("Small glass" to 8f, "Glass" to 12f, "Pint" to 16f, "Large bottle" to 24f, "Quart" to 32f).forEach { (name, oz) ->
+            if (kotlin.math.abs(oz - defaultContainerOz) >= 0.5f && out.values.none { kotlin.math.abs(it - oz) < 0.5f }) out[name] = oz
+        }
+        out["2 × $defaultContainerName"] = defaultContainerOz * 2f
+        out.entries.sortedBy { it.value }.map { it.key to it.value }
     }
 
     val activeBatches by recipesViewModel.activeBatches.collectAsState()
@@ -347,7 +378,9 @@ fun DiaryScreen(
                             viewModel.quickAddWaterOz(amountOz = defaultContainerOz * 2f, containerName = "${defaultContainerName} x2")
                         },
                         onCustom = { showHydrationSheet = true },
-                        onUndo = { viewModel.undoLastDrink() }
+                        onUndo = { viewModel.undoLastDrink() },
+                        sizes = waterSizes,
+                        onLogAmount = { oz, label -> viewModel.quickAddWaterOz(amountOz = oz, containerName = label) }
                     )
                 },
                 waterCompact = {
@@ -355,7 +388,10 @@ fun DiaryScreen(
                         currentOz = waterTotalOz,
                         targetOz = waterGoalOz,
                         defaultOz = defaultContainerOz,
-                        onLogDefault = { viewModel.logDefaultDrink() }
+                        onLogDefault = { viewModel.logDefaultDrink() },
+                        sizes = waterSizes,
+                        onLogAmount = { oz, label -> viewModel.quickAddWaterOz(amountOz = oz, containerName = label) },
+                        onCustom = { showHydrationSheet = true }
                     )
                 },
                 weightExpanded = {
@@ -541,6 +577,15 @@ fun DiaryScreen(
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 editingEntry = entry
                             },
+                            inlineEditor = { entry, onClose, onDelete ->
+                                InlineEntryEditor(
+                                    entry = entry,
+                                    viewModel = viewModel,
+                                    onDelete = onDelete,
+                                    onMore = { onClose(); editingEntry = entry },
+                                    onDone = onClose
+                                )
+                            },
                             onMoveEntry = { entry ->
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 activeMoveCopy = MoveCopyTarget(
@@ -648,6 +693,24 @@ fun DiaryScreen(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.5.sp
                         )
+
+                        // One tap logs a whole meal: what you had yesterday, or your usual
+                        val loggedKeys = loggedMealGroups.map { com.bytelog.app.data.repository.MealPatterns.mealKey(it.mealName) }.toSet()
+                        candidateMeals.forEach { mt ->
+                            val key = com.bytelog.app.data.repository.MealPatterns.mealKey(mt.name)
+                            val sc = mealShortcuts[key]
+                            if (sc != null && key !in loggedKeys) {
+                                val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                MealShortcutRow(
+                                    mealName = cleanName,
+                                    shortcuts = sc,
+                                    onLog = { source ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.logShortcut(source, mt.id, cleanName, showLogged)
+                                    }
+                                )
+                            }
+                        }
 
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1111,10 +1174,14 @@ fun MealCard(
     onDeleteEntry: (FoodEntry) -> Unit,
     onBatchMove: (List<FoodEntry>) -> Unit,
     onBatchCopy: (List<FoodEntry>) -> Unit,
-    onBatchDelete: (List<FoodEntry>) -> Unit
+    onBatchDelete: (List<FoodEntry>) -> Unit,
+    /** Amount editor opened under a food by tapping it: (entry, close, delete). Null opens [onEditEntry] instead. */
+    inlineEditor: (@Composable (FoodEntry, () -> Unit, () -> Unit) -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
     var isSelectionMode by remember { mutableStateOf(false) }
+    // Keyed by when the entry was made, which survives Sparky giving it a new id
+    var expandedKey by remember { mutableStateOf<String?>(null) }
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -1449,9 +1516,12 @@ fun MealCard(
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 entries.forEachIndexed { index, entry ->
                     val isLast = index == entries.lastIndex && !isSelectionMode
+                    val entryKey = "${entry.createdAt}|${entry.foodName}"
+                    val expanded = inlineEditor != null && !isSelectionMode && expandedKey == entryKey
                     key(entry.id) {
+                      Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         SwipeableFoodEntryRow(
-                            shape = if (isLast) RoundedCornerShape(topStart = segInner, topEnd = segInner, bottomStart = segOuter, bottomEnd = segOuter)
+                            shape = if (isLast && !expanded) RoundedCornerShape(topStart = segInner, topEnd = segInner, bottomStart = segOuter, bottomEnd = segOuter)
                                 else RoundedCornerShape(segInner),
                             entry = entry,
                             isSelectionMode = isSelectionMode,
@@ -1468,13 +1538,42 @@ fun MealCard(
                                 isSelectionMode = true
                                 selectedIds = setOf(entry.id)
                             },
-                            onEdit = { onEditEntry(entry) },
+                            onEdit = {
+                                if (inlineEditor != null) expandedKey = if (expanded) null else entryKey else onEditEntry(entry)
+                            },
+                            onEditFull = { expandedKey = null; onEditEntry(entry) },
                             onMove = { onMoveEntry(entry) },
                             onCopy = { onCopyEntry(entry) },
                             onDuplicate = { onDuplicateEntry(entry) },
                             onQuickIncrement = { onQuickIncrementEntry(entry) },
                             onDelete = { onDeleteEntry(entry) }
                         )
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = expanded,
+                            enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                            exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+                        ) {
+                            // Scrolled into view as it opens, so it isn't hidden under the toolbar at the bottom
+                            val bring = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+                            LaunchedEffect(Unit) {
+                                kotlinx.coroutines.delay(220)
+                                runCatching { bring.bringIntoView() }
+                            }
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .bringIntoViewRequester(bring)
+                                    .clip(
+                                        if (isLast) RoundedCornerShape(topStart = segInner, topEnd = segInner, bottomStart = segOuter, bottomEnd = segOuter)
+                                        else RoundedCornerShape(segInner)
+                                    )
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .padding(14.dp)
+                            ) {
+                                inlineEditor?.invoke(entry, { expandedKey = null }, { expandedKey = null; onDeleteEntry(entry) })
+                            }
+                        }
+                      }
                     }
                 }
             }
@@ -1612,7 +1711,9 @@ fun SwipeableFoodEntryRow(
     onCopy: () -> Unit,
     onDuplicate: () -> Unit,
     onQuickIncrement: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    /** The full edit sheet, from the item menu (a tap opens the amount editor in place). */
+    onEditFull: () -> Unit = onEdit
 ) {
     val haptic = LocalHapticFeedback.current
     var itemMenuExpanded by remember { mutableStateOf(false) }
@@ -1795,7 +1896,7 @@ fun SwipeableFoodEntryRow(
                             modifier = Modifier.background(ByteSurfaceDark)
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Edit Portion", color = ByteCream) },
+                                text = { Text("Edit details…", color = ByteCream) },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Default.Edit,
@@ -1806,7 +1907,7 @@ fun SwipeableFoodEntryRow(
                                 },
                                 onClick = {
                                     itemMenuExpanded = false
-                                    onEdit()
+                                    onEditFull()
                                 }
                             )
 
@@ -1908,6 +2009,120 @@ fun SwipeableFoodEntryRow(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** One-tap shortcuts for an empty meal: yesterday's foods, and the usual when it differs. */
+@Composable
+private fun MealShortcutRow(
+    mealName: String,
+    shortcuts: com.bytelog.app.data.repository.MealShortcuts,
+    onLog: (List<FoodEntry>) -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(mealName, color = cs.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(72.dp), maxLines = 1)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+            if (shortcuts.yesterday.isNotEmpty()) item(key = "y") {
+                ShortcutChip(Icons.Default.History, "Same as yesterday", shortcuts.yesterday, cs.secondaryContainer, cs.onSecondaryContainer) { onLog(shortcuts.yesterday) }
+            }
+            if (shortcuts.showUsual) item(key = "u") {
+                val usual = shortcuts.usual.orEmpty()
+                ShortcutChip(Icons.Default.Star, "Your usual", usual, cs.tertiaryContainer, cs.onTertiaryContainer) { onLog(usual) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShortcutChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    entries: List<FoodEntry>,
+    container: Color,
+    content: Color,
+    onClick: () -> Unit
+) {
+    val kcal = entries.sumOf { it.calories.toDouble() }.roundToInt()
+    val what = if (entries.size == 1) entries[0].foodName else "${entries.size} foods"
+    Row(
+        Modifier
+            .pressBounce(0.95f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(container)
+            .clickable(onClickLabel = "Log $label") { onClick() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+        Column {
+            Text(label, color = content, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text("$what · $kcal kcal", color = content.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
+        }
+    }
+}
+
+/**
+ * The amount editor opened under a logged food: − / + , units and quick amounts, saved as you go (after a short
+ * pause, and when it closes). "More" opens the full edit sheet.
+ */
+@Composable
+private fun InlineEntryEditor(
+    entry: FoodEntry,
+    viewModel: DiaryViewModel,
+    onDelete: () -> Unit,
+    onMore: () -> Unit,
+    onDone: () -> Unit
+) {
+    val key = "${entry.createdAt}|${entry.foodName}"
+    var food by remember(key) { mutableStateOf<com.bytelog.app.data.local.model.FoodItem?>(null) }
+    LaunchedEffect(key) { food = viewModel.foodForEntry(entry) }
+    var portion by remember(key) { mutableStateOf(com.bytelog.app.ui.logging.Portion(entry.quantity, entry.unit)) }
+    var saved by remember(key) { mutableStateOf(portion) }
+    val f = food
+    if (f != null) {
+        LaunchedEffect(portion) {
+            if (portion != saved) {
+                kotlinx.coroutines.delay(700)
+                viewModel.setEntryPortion(entry, f, portion)
+                saved = portion
+            }
+        }
+    }
+    // Closing straight after a change still saves it
+    val latest = androidx.compose.runtime.rememberUpdatedState(Triple(portion, saved, f))
+    androidx.compose.runtime.DisposableEffect(key) {
+        onDispose {
+            val (p, s, ff) = latest.value
+            if (ff != null && p != s) viewModel.setEntryPortion(entry, ff, p)
+        }
+    }
+    val cs = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (f == null) {
+            Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                com.bytelog.app.ui.diary.LoadingSpinner(modifier = Modifier.size(20.dp), color = cs.primary, strokeWidth = 2.dp)
+            }
+        } else {
+            com.bytelog.app.ui.logging.QuickPortionEditor(
+                food = f,
+                portion = portion,
+                units = com.bytelog.app.ui.logging.Portions.unitOptions(f),
+                onChange = { portion = it },
+                onRemove = onDelete
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.TextButton(onClick = onMore) { Text("More options", fontWeight = FontWeight.SemiBold) }
+            Spacer(Modifier.weight(1f))
+            androidx.compose.material3.FilledTonalButton(onClick = onDone) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Done", fontWeight = FontWeight.Bold)
             }
         }
     }

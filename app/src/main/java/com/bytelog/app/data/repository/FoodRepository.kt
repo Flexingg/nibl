@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -342,14 +343,71 @@ class FoodRepository(
         return foodEntryDao.getAllEntries()
     }
 
-    fun getMealSuggestions(mealName: String): Flow<List<FoodItem>> {
+    /** Diary entries from the [MealPatterns.HISTORY_DAYS] days before [date] (and [date] itself when asked). */
+    fun mealHistory(date: java.time.LocalDate, includeDay: Boolean = false): Flow<List<FoodEntry>> =
+        foodEntryDao.getEntriesInRange(
+            date.minusDays(MealPatterns.HISTORY_DAYS).toString(),
+            (if (includeDay) date else date.minusDays(1)).toString()
+        )
+
+    /**
+     * Foods for this meal, best first: what is usually logged at it (recent days and the same weekday weigh more),
+     * then the most used foods overall.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun getMealSuggestions(mealName: String, today: java.time.LocalDate = java.time.LocalDate.now()): Flow<List<FoodItem>> {
         val affinity = when (mealName.lowercase()) {
             "breakfast" -> "breakfast"
             "lunch" -> "lunch"
             "dinner" -> "dinner"
             else -> "snacks"
         }
-        return foodDao.getSuggestedFoodsForMeal(affinity)
+        return kotlinx.coroutines.flow.combine(
+            mealHistory(today, includeDay = true), foodDao.getSuggestedFoodsForMeal(affinity, 40)
+        ) { history, popular -> history to popular }
+            .mapLatest { (history, popular) -> suggestionsFrom(history, popular, mealName, today) }
+    }
+
+    private suspend fun suggestionsFrom(history: List<FoodEntry>, popular: List<FoodItem>, mealName: String, today: java.time.LocalDate): List<FoodItem> {
+        val ranked = MealPatterns.rankFoods(history, mealName, today).take(SUGGESTION_LIMIT)
+        val latest = history.groupBy(MealPatterns::foodKey).mapValues { (_, v) -> v.maxBy { it.createdAt } }
+        val libraryIds = ranked.filterNot { it.startsWith("name:") }
+        val library = withContext(Dispatchers.IO) { libraryIds.chunked(500).flatMap { foodDao.getFoodsByIds(it) } }.associateBy { it.id }
+        val out = LinkedHashMap<String, FoodItem>()
+        ranked.forEach { key ->
+            val food = library[key] ?: latest[key]?.let(::foodFromEntry) ?: return@forEach
+            out.putIfAbsent(food.id, food)
+        }
+        popular.forEach { if (out.size < SUGGESTION_LIMIT) out.putIfAbsent(it.id, it) }
+        return out.values.take(SUGGESTION_LIMIT)
+    }
+
+    /** A food rebuilt from a diary entry (for quick adds and foods no longer in the library). */
+    fun foodFromEntry(entry: FoodEntry) = FoodItem(
+        id = entry.foodId ?: entry.id, name = entry.foodName, brand = entry.brandName,
+        servingSize = entry.quantity, servingUnit = entry.unit,
+        calories = entry.calories, protein = entry.protein, carbs = entry.carbs, fat = entry.fat, fiber = 0f
+    )
+
+    /** True once anything has ever been logged on this phone. */
+    suspend fun hasAnyEntries(): Boolean = withContext(Dispatchers.IO) { foodEntryDao.hasAnyEntries() }
+
+    suspend fun getEntry(id: String): FoodEntry? = withContext(Dispatchers.IO) { foodEntryDao.getEntryById(id) }
+
+    /** Foods just logged from search, waiting for the diary to offer an undo. */
+    val pendingUndo = kotlinx.coroutines.flow.MutableStateFlow<LoggedBatch?>(null)
+
+    /**
+     * Takes back entries just logged. They may already have been sent to Sparky and given a new id, so they are
+     * found again by day, name and creation time (which a re-key keeps).
+     */
+    suspend fun undoLogged(entries: List<FoodEntry>) = withContext(Dispatchers.IO) {
+        if (entries.isEmpty()) return@withContext
+        val current = entries.map { it.entryDate }.distinct().flatMap { foodEntryDao.getEntriesForDateOnce(it) }
+        val wanted = entries.map { Triple(it.entryDate, it.foodName, it.createdAt) }.toSet()
+        val found = current.filter { it.id in entries.map { e -> e.id } || Triple(it.entryDate, it.foodName, it.createdAt) in wanted }
+            .filter { it.syncStatus != FoodEntry.SYNC_STATUS_PENDING_DELETE }
+        deleteEntries(found)
     }
 
     suspend fun lookupBarcode(barcode: String): FoodItem? {
@@ -877,5 +935,9 @@ class FoodRepository(
         }
 
         Result.failure(chatResult.exceptionOrNull() ?: java.io.IOException("AI food generation failed"))
+    }
+
+    private companion object {
+        const val SUGGESTION_LIMIT = 25
     }
 }

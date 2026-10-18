@@ -28,12 +28,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,10 +78,17 @@ fun MultiAddTray(
     compact: Boolean = false,
     /** The library food behind a staged entry, when it has one; enables the edit-food button. */
     editableFoodId: (String) -> String? = { null },
-    onEditFood: (String) -> Unit = {}
+    onEditFood: (String) -> Unit = {},
+    /** Meals (id, name) the tray can log to, picked from beside the Log button. */
+    meals: List<Pair<String, String>> = emptyList(),
+    onPickMeal: (String, String) -> Unit = { _, _ -> },
+    /** Shown above the tray, inside its bottom bar (the search field). */
+    header: (@Composable () -> Unit)? = null
 ) {
-    if (stagedEntries.isEmpty()) return
-
+    if (stagedEntries.isEmpty()) {
+        header?.let { Box(modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 10.dp)) { it() } }
+        return
+    }
     val cs = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
     val active = stagedEntries.firstOrNull { it.id == activeEntryId } ?: stagedEntries.last()
@@ -92,6 +106,8 @@ fun MultiAddTray(
             .animateContentSize(spring(dampingRatio = 0.8f, stiffness = 500f)),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        header?.invoke()
+
         // The item being adjusted
         if (activeFood != null) {
             AnimatedContent(
@@ -147,10 +163,11 @@ fun MultiAddTray(
             }
         }
 
-        // Log everything
+        // Log everything; the meal it goes to can be switched right beside it
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         MorphButton(
             { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLogAll() },
-            Modifier.fillMaxWidth().height(56.dp),
+            Modifier.weight(1f).height(56.dp),
             cs.primary,
             description = "Log ${stagedEntries.size} to $targetMealName"
         ) {
@@ -166,6 +183,26 @@ fun MultiAddTray(
                         .padding(horizontal = 10.dp, vertical = 3.dp)
                 ) { Text("$totalCalories kcal", color = cs.onPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             }
+        }
+        if (meals.size > 1) {
+            var open by remember { mutableStateOf(false) }
+            Box {
+                MorphButton(
+                    { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); open = true },
+                    Modifier.size(56.dp), cs.primaryContainer, description = "Change meal"
+                ) { Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = cs.onPrimaryContainer, modifier = Modifier.size(28.dp)) }
+                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    meals.forEach { (id, name) ->
+                        val current = name.equals(targetMealName, ignoreCase = true)
+                        DropdownMenuItem(
+                            text = { Text(name, fontWeight = if (current) FontWeight.Bold else FontWeight.Normal) },
+                            leadingIcon = if (current) ({ Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }) else null,
+                            onClick = { open = false; haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onPickMeal(id, name) }
+                        )
+                    }
+                }
+            }
+        }
         }
     }
 }

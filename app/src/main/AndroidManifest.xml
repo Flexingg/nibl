@@ -50,6 +50,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".notifications.ReminderActionReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".notifications.BootReceiver"
             android:exported="true">
             <intent-filter>

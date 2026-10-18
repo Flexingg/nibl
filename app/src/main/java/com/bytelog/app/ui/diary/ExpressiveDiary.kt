@@ -348,8 +348,12 @@ private fun WaterBadge(oz: Float, size: androidx.compose.ui.unit.Dp) {
 @Composable
 fun WaterExpanded(
     currentOz: Float, targetOz: Float, defaultOz: Float, containerName: String,
-    onLogDefault: () -> Unit, onLogDouble: () -> Unit, onCustom: () -> Unit, onUndo: () -> Unit
+    onLogDefault: () -> Unit, onLogDouble: () -> Unit, onCustom: () -> Unit, onUndo: () -> Unit,
+    /** Other sizes (label, oz) offered on a long press of the main button; empty keeps long press as "two". */
+    sizes: List<Pair<String, Float>> = emptyList(),
+    onLogAmount: (Float, String) -> Unit = { _, _ -> }
 ) {
+    var sizeMenu by remember { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
     val x = LocalByteExtraColors.current
     val haptic = LocalHapticFeedback.current
@@ -372,19 +376,55 @@ fun WaterExpanded(
                     label = "+${defaultOz.roundToInt()} oz", detail = containerName, icon = Icons.Default.LocalDrink, weight = 1.45f,
                     container = x.waterContainer, content = x.onWaterContainer,
                     onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onLogDefault() },
-                    onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLogDouble() }
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (sizes.isEmpty()) onLogDouble() else sizeMenu = true
+                    }
                 ),
                 GroupButton(label = "Custom", weight = 1f, container = cs.surfaceContainerHighest, content = cs.onSurface, onClick = onCustom),
                 GroupButton(icon = Icons.Default.Remove, description = "Undo last drink", weight = 0.55f, container = cs.surfaceContainerHighest, content = cs.onSurface,
                     onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onUndo() })
             )
         )
+        // Long press on the drink button: pick another size right there
+        Box { WaterSizeMenu(sizeMenu, { sizeMenu = false }, sizes, onLogAmount, onCustom) }
+    }
+}
+
+/** Drink sizes offered on a long press of the drink button. */
+@Composable
+fun WaterSizeMenu(
+    expanded: Boolean, onDismiss: () -> Unit, sizes: List<Pair<String, Float>>,
+    onLogAmount: (Float, String) -> Unit, onCustom: (() -> Unit)?
+) {
+    val cs = MaterialTheme.colorScheme
+    val x = LocalByteExtraColors.current
+    val haptic = LocalHapticFeedback.current
+    androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        sizes.forEach { (label, oz) ->
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(label, fontWeight = FontWeight.SemiBold) },
+                leadingIcon = { Icon(Icons.Default.LocalDrink, contentDescription = null, tint = x.water, modifier = Modifier.size(18.dp)) },
+                trailingIcon = { Text("+${oz.roundToInt()} oz", color = cs.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.Bold) },
+                onClick = { onDismiss(); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onLogAmount(oz, label) }
+            )
+        }
+        if (onCustom != null) {
+            androidx.compose.material3.DropdownMenuItem(text = { Text("Other amount…") }, onClick = { onDismiss(); onCustom() })
+        }
     }
 }
 
 /** Narrow water pill. */
 @Composable
-fun WaterPill(currentOz: Float, targetOz: Float, defaultOz: Float, onLogDefault: () -> Unit) {
+fun WaterPill(
+    currentOz: Float, targetOz: Float, defaultOz: Float, onLogDefault: () -> Unit,
+    sizes: List<Pair<String, Float>> = emptyList(),
+    onLogAmount: (Float, String) -> Unit = { _, _ -> },
+    onCustom: (() -> Unit)? = null
+) {
+    var sizeMenu by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
     val cs = MaterialTheme.colorScheme
     val x = LocalByteExtraColors.current
     val p by animateFloatAsState(if (targetOz > 0) currentOz / targetOz else 0f, spatial(), label = "water_pill")
@@ -397,8 +437,14 @@ fun WaterPill(currentOz: Float, targetOz: Float, defaultOz: Float, onLogDefault:
             }
             WavyLinearProgress(p, x.water, Modifier.fillMaxWidth(), height = 8.dp, amplitude = 1.6.dp, wavelength = 12.dp, stroke = 3.dp)
         }
-        MorphButton(onLogDefault, Modifier.size(38.dp), x.waterContainer, description = "Log ${defaultOz.roundToInt()} oz") {
-            Text("+${defaultOz.roundToInt()}", color = x.onWaterContainer, fontSize = 11.5.sp, fontWeight = FontWeight.Black)
+        Box {
+            MorphButton(
+                onLogDefault, Modifier.size(38.dp), x.waterContainer, description = "Log ${defaultOz.roundToInt()} oz",
+                onLongClick = if (sizes.isEmpty()) null else ({ haptic.performHapticFeedback(HapticFeedbackType.LongPress); sizeMenu = true })
+            ) {
+                Text("+${defaultOz.roundToInt()}", color = x.onWaterContainer, fontSize = 11.5.sp, fontWeight = FontWeight.Black)
+            }
+            WaterSizeMenu(sizeMenu, { sizeMenu = false }, sizes, onLogAmount, onCustom)
         }
     }
 }
@@ -556,8 +602,9 @@ fun ConnectedButtonGroup(buttons: List<GroupButton>, modifier: Modifier = Modifi
 }
 
 /** Round button whose corners tighten while pressed. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MorphButton(onClick: () -> Unit, modifier: Modifier, container: Color, description: String? = null, content: @Composable () -> Unit) {
+fun MorphButton(onClick: () -> Unit, modifier: Modifier, container: Color, description: String? = null, onLongClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val corner by animateDpAsState(if (pressed) 12.dp else 100.dp, fastSpatial(), label = "morph_btn")
@@ -566,7 +613,10 @@ fun MorphButton(onClick: () -> Unit, modifier: Modifier, container: Color, descr
             .pressBounce(0.92f)
             .clip(RoundedCornerShape(corner))
             .background(container)
-            .clickable(interactionSource = source, indication = androidx.compose.material3.ripple(), onClick = onClick)
+            .then(
+                if (onLongClick == null) Modifier.clickable(interactionSource = source, indication = androidx.compose.material3.ripple(), onClick = onClick)
+                else Modifier.combinedClickable(interactionSource = source, indication = androidx.compose.material3.ripple(), onClick = onClick, onLongClick = onLongClick)
+            )
             .semantics { if (description != null) contentDescription = description },
         contentAlignment = Alignment.Center
     ) { content() }
