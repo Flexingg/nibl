@@ -1,6 +1,8 @@
 package com.bytelog.app.ui.recipes
 
 import android.app.Activity
+import androidx.compose.ui.graphics.Color
+import com.bytelog.app.ui.theme.fluidBackdrop
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.WindowManager
@@ -114,7 +116,8 @@ fun CookModeScreen(viewModel: RecipesViewModel, templateId: String, onClose: () 
         }
     }
 
-    Scaffold(containerColor = ByteInkDark) { pad ->
+    Scaffold(
+        modifier = Modifier.fluidBackdrop(), containerColor = Color.Transparent) { pad ->
         val r = recipe ?: return@Scaffold
         val rows = remember(r.template.foodsJson) { TemplateNutrition.parseRows(r.template.foodsJson) }
         val steps = r.steps

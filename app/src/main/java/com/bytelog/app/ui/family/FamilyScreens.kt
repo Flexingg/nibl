@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.family
 
 import androidx.compose.foundation.background
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,7 +85,8 @@ fun FamilyScreen(viewModel: FamilyViewModel, onBack: () -> Unit, onOpenMember: (
     val popped = remember { mutableSetOf<Any>() }
 
     Scaffold(
-        containerColor = cs.surface,
+        modifier = Modifier.fluidBackdrop(),
+        containerColor = Color.Transparent,
         topBar = {
             ScreenHeader(
                 title = "Family",
@@ -196,7 +198,8 @@ fun MemberDiaryScreen(viewModel: MemberViewModel, onBack: () -> Unit) {
     val isToday = s.date == LocalDate.now().toString()
 
     Scaffold(
-        containerColor = cs.surface,
+        modifier = Modifier.fluidBackdrop(),
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             ScreenHeader(

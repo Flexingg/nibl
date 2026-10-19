@@ -1,6 +1,8 @@
 package com.bytelog.app.ui.recipes
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -90,7 +92,8 @@ fun RecipeDetailScreen(
     var logging by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = ByteInkDark) { pad ->
+    Scaffold(
+        modifier = Modifier.fluidBackdrop(),snackbarHost = { SnackbarHost(snackbar) }, containerColor = Color.Transparent) { pad ->
         val r = recipe
         if (r == null) {
             Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {

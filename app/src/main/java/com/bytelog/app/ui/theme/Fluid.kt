@@ -18,6 +18,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -160,9 +161,7 @@ fun Modifier.glass(
 fun Modifier.fluidCard(shape: Shape = RoundedCornerShape(FluidRadius.lg)): Modifier = composed {
     val f = LocalFluid.current
     val cs = androidx.compose.material3.MaterialTheme.colorScheme
-    var m = this.clip(shape).background(cs.surfaceContainer)
-    if (f.dark) m = m.border(1.dp, f.edge, shape)
-    m
+    this.clip(shape).background(cs.surfaceContainer).border(1.dp, f.edge, shape)
 }
 
 /**
@@ -204,3 +203,28 @@ fun Modifier.touchGlow(color: Color? = null): Modifier = composed {
 
 /** Marks content that floating glass on the same screen blurs. */
 fun Modifier.blurSource(state: HazeState): Modifier = if (blurSupported) this.then(Modifier.hazeSource(state)) else this
+
+/**
+ * The ambient backdrop behind every page: a soft gradient with large blooms of light tinted from the accent,
+ * so the translucent cards and floating glass have colour to frost. Plain with reduced transparency.
+ */
+fun Modifier.fluidBackdrop(): Modifier = composed {
+    val cs = androidx.compose.material3.MaterialTheme.colorScheme
+    val f = LocalFluid.current
+    val x = LocalByteExtraColors.current
+    val reduce = LocalReduceTransparency.current
+    if (reduce) return@composed this.background(if (f.dark) Color.Black else Color(0xFFF2F3F5))
+    val top = if (f.dark) Color(0xFF0B0A0C) else Color(0xFFFFF3EE)
+    val bottom = if (f.dark) Color(0xFF07080B) else Color(0xFFEDF0F7)
+    val a = if (f.dark) 0.30f else 0.34f
+    val blooms = listOf(cs.primary.copy(alpha = a), x.water.copy(alpha = a * 0.75f), x.fat.copy(alpha = a * 0.6f))
+    this.drawBehind {
+        drawRect(Brush.verticalGradient(listOf(top, bottom)))
+        val w = size.width; val h = size.height
+        fun bloom(c: Color, cx: Float, cy: Float, r: Float) =
+            drawCircle(Brush.radialGradient(listOf(c, Color.Transparent), Offset(cx, cy), r), r, Offset(cx, cy))
+        bloom(blooms[0], w * 0.05f, h * 0.12f, w * 0.95f)
+        bloom(blooms[1], w * 1.0f, h * 0.48f, w * 0.85f)
+        bloom(blooms[2], w * 0.2f, h * 0.92f, w * 0.9f)
+    }
+}

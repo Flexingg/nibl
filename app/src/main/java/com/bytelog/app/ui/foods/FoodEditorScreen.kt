@@ -1,6 +1,8 @@
 package com.bytelog.app.ui.foods
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.graphics.Color
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -105,7 +107,8 @@ fun FoodEditorScreen(
     }
 
     Scaffold(
-        containerColor = cs.surface,
+        modifier = Modifier.fluidBackdrop(),
+        containerColor = Color.Transparent,
         topBar = {
             ScreenHeader(
                 title = when {

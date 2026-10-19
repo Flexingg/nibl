@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -175,7 +176,8 @@ fun FastSearchScreen(
     )
 
     Scaffold(
-        containerColor = ByteInkDark,
+        modifier = Modifier.fluidBackdrop(),
+        containerColor = Color.Transparent,
         bottomBar = {
             MultiAddTray(
                 stagedEntries = stagedEntries,
@@ -354,7 +356,7 @@ fun FastSearchScreen(
                 val tabs = listOf("Suggested", "Recents", "Favorites")
                 TabRow(
                     selectedTabIndex = selectedTabIndex,
-                    containerColor = ByteInkDark,
+                    containerColor = Color.Transparent,
                     contentColor = ByteCream,
                     indicator = { tabPositions ->
                         TabRowDefaults.SecondaryIndicator(

@@ -1,6 +1,8 @@
 package com.bytelog.app.ui.foods
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,7 +62,8 @@ fun MyFoodsScreen(viewModel: MyFoodsViewModel, onBack: () -> Unit, onOpenFood: (
     val popped = remember { mutableSetOf<Any>() }
 
     Scaffold(
-        containerColor = cs.surface,
+        modifier = Modifier.fluidBackdrop(),
+        containerColor = Color.Transparent,
         topBar = { ScreenHeader(title = "My foods", subtitle = "Your Sparky library", onBack = onBack, fraction = rememberScrollFraction(list)) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {

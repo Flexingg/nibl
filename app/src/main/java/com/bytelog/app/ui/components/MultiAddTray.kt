@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.FoodItem
 import com.bytelog.app.ui.diary.MorphButton
+import com.bytelog.app.ui.theme.glass
 import com.bytelog.app.ui.logging.Portion
 import com.bytelog.app.ui.logging.QuickPortionEditor
 import com.bytelog.app.ui.logging.unitLabel
@@ -98,8 +99,7 @@ fun MultiAddTray(
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
-            .background(cs.surfaceContainer)
+            .glass(com.bytelog.app.ui.theme.GlassLevel.Thick, RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
             .navigationBarsPadding()
             .imePadding()
             .padding(horizontal = 16.dp, vertical = 14.dp)
