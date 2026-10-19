@@ -102,9 +102,10 @@ fun animateBouncy(target: Float, label: String = "bouncy"): Float {
 fun Modifier.pressBounce(scaleDown: Float = 0.965f): Modifier = composed {
     val reduce = LocalReduceMotion.current
     var pressed by remember { mutableStateOf(false) }
+    // Living Flow feedback: compress quickly on press, rebound with one small overshoot on release
     val scale by animateFloatAsState(
         if (pressed && !reduce) scaleDown else 1f,
-        spring(dampingRatio = 0.45f, stiffness = 500f),
+        if (pressed) com.bytelog.app.ui.theme.FluidMotion.press() else com.bytelog.app.ui.theme.FluidMotion.release(),
         label = "press"
     )
     this
@@ -342,7 +343,7 @@ fun MacroStrip(summary: DailySummary, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column(modifier = Modifier.width(78.dp)) {
-            Text("${summary.remainingCalories.roundToInt()}", color = ByteCream, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            Text("${summary.remainingCalories.roundToInt()}", color = ByteCream, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text("KCAL LEFT", color = ByteCreamMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
         }
         val bar = animateBouncy(summary.calorieProgress, "strip_cal")
@@ -371,7 +372,7 @@ private fun MacroRing(letter: String, progress: Float, color: Color) {
             drawArc(cTrack, 0f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(stroke))
             drawArc(color, -90f, 360f * sweep.coerceIn(0f, 1f), false, Offset(inset, inset), arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
         }
-        Text(letter, color = color, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+        Text(letter, color = color, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -388,7 +389,7 @@ fun WaterStrip(currentOz: Float, targetOz: Float, defaultOz: Float, onLogDefault
         SplashingDrop(currentOz, size = 26.dp, iconSize = 14.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("${currentOz.roundToInt()}", color = ByteCream, fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                Text("${currentOz.roundToInt()}", color = ByteCream, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text("/${targetOz.roundToInt()} oz", color = ByteCreamMuted, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(ByteSurfaceVariantDark)) {
@@ -404,7 +405,7 @@ fun WaterStrip(currentOz: Float, targetOz: Float, defaultOz: Float, onLogDefault
                 .clickable(onClick = onLogDefault),
             contentAlignment = Alignment.Center
         ) {
-            Text("+${defaultOz.roundToInt()}", color = MacroProtein, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            Text("+${defaultOz.roundToInt()}", color = MacroProtein, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
@@ -423,7 +424,7 @@ fun WeightStrip(weight: Float?, unit: String, delta: Float?, modifier: Modifier 
         Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
             Text(
                 if (weight != null) String.format(java.util.Locale.US, "%.1f", weight) else "—",
-                color = ByteCream, fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1
+                color = ByteCream, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
             )
             Text(" $unit", color = ByteCreamMuted, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
@@ -432,7 +433,7 @@ fun WeightStrip(weight: Float?, unit: String, delta: Float?, modifier: Modifier 
             val color = if (good) MacroProtein else com.bytelog.app.ui.theme.ByteTomato
             val arrow = if (good) "↓" else "↑"
             Box(Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.13f)).padding(horizontal = 6.dp, vertical = 3.dp)) {
-                Text("$arrow${String.format(java.util.Locale.US, "%.1f", abs(delta))}", color = color, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                Text("$arrow${String.format(java.util.Locale.US, "%.1f", abs(delta))}", color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             }
         }
     }

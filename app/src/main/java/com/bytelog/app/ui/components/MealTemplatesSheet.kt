@@ -211,7 +211,7 @@ fun MealTemplatesSheet(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(24.dp))
                                 .background(ByteCardDark)
                                 .clickable { onOpenRecipe(template.id) }
                                 .padding(14.dp)

@@ -230,11 +230,14 @@ fun SettingsScreen(
             // Appearance: light/dark and device colours
             val themeMode by settingsRepository.themeMode.collectAsState(initial = com.bytelog.app.ui.theme.ThemeMode.SYSTEM)
             val deviceColors by settingsRepository.useDeviceColors.collectAsState(initial = true)
+            val reduceTransparency by settingsRepository.reduceTransparency.collectAsState(initial = false)
             com.bytelog.app.ui.components.AppearanceCard(
                 mode = themeMode,
                 deviceColors = deviceColors,
                 onMode = { scope.launch { settingsRepository.saveThemeMode(it) } },
-                onDeviceColors = { scope.launch { settingsRepository.saveUseDeviceColors(it) } }
+                onDeviceColors = { scope.launch { settingsRepository.saveUseDeviceColors(it) } },
+                reduceTransparency = reduceTransparency,
+                onReduceTransparency = { scope.launch { settingsRepository.saveReduceTransparency(it) } }
             )
 
             // Your food library on Sparky
@@ -250,7 +253,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(14.dp)).background(cs.primaryContainer),
+                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) { Icon(Icons.Default.Restaurant, contentDescription = null, tint = cs.onPrimaryContainer) }
                     Spacer(Modifier.width(12.dp))
@@ -274,7 +277,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(14.dp)).background(cs.tertiaryContainer),
+                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.tertiaryContainer),
                         contentAlignment = Alignment.Center
                     ) { Icon(Icons.Default.Groups, contentDescription = null, tint = cs.onTertiaryContainer) }
                     Spacer(Modifier.width(12.dp))
@@ -304,7 +307,7 @@ fun SettingsScreen(
                         text = "SPARKY FITNESS SERVER",
                         color = ByteTomato,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         letterSpacing = 0.5.sp
                     )
                 }
@@ -435,9 +438,9 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(bgColor)
-                            .border(1.dp, borderColor.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                            .border(1.dp, borderColor.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                             .padding(12.dp),
                         verticalAlignment = Alignment.Top,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -479,7 +482,7 @@ fun SettingsScreen(
                     text = "AUTHENTICATION",
                     color = ByteTomato,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.5.sp
                 )
 
@@ -673,7 +676,7 @@ fun SettingsScreen(
                     text = "DATA & CACHE",
                     color = ByteTomato,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.5.sp
                 )
 
@@ -727,7 +730,7 @@ fun SettingsScreen(
                     text = "DAILY MACRO GOALS",
                     color = ByteTomato,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.5.sp
                 )
 
@@ -937,7 +940,7 @@ fun SettingsScreen(
                                 text = "DAILY LOGGING REMINDERS",
                                 color = ByteTomato,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 letterSpacing = 0.5.sp
                             )
                             Text(
@@ -1007,7 +1010,7 @@ fun SettingsScreen(
                                 text = formatReminderTime(reminderHour, reminderMinute),
                                 color = ByteCream,
                                 fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
 
@@ -1192,7 +1195,7 @@ fun SettingsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(28.dp))
+                        .clip(RoundedCornerShape(24.dp))
                         .background(ByteSurfaceDark)
                         .padding(20.dp)
                 ) {
@@ -1260,7 +1263,7 @@ fun SettingsScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (!isPm) ByteTomato else ByteSurfaceVariantDark)
                                         .clickable {
                                             if (isPm) dialogHour -= 12
@@ -1271,7 +1274,7 @@ fun SettingsScreen(
                                 }
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(12.dp))
                                         .background(if (isPm) ByteTomato else ByteSurfaceVariantDark)
                                         .clickable {
                                             if (!isPm) dialogHour += 12

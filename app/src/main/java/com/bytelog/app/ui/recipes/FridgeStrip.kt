@@ -99,9 +99,9 @@ fun FridgeStrip(
                 Column(
                     Modifier
                         .width(190.dp)
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(24.dp))
                         .background(ByteSurfaceDark)
-                        .border(1.dp, if (warn) ByteTomato.copy(alpha = 0.6f) else ByteOutlineDark.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                        .border(1.dp, if (warn) ByteTomato.copy(alpha = 0.6f) else ByteOutlineDark.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
                         .combinedClickable(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)

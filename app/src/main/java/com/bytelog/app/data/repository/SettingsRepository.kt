@@ -46,6 +46,7 @@ class SettingsRepository(
 
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_DEVICE_COLORS = androidx.datastore.preferences.core.booleanPreferencesKey("device_colors")
+        val KEY_REDUCE_TRANSPARENCY = androidx.datastore.preferences.core.booleanPreferencesKey("reduce_transparency")
         val KEY_RESEARCH_PROVIDER = stringPreferencesKey("research_provider")
         val KEY_RESEARCH_TAVILY = stringPreferencesKey("research_tavily_key")
         val KEY_RESEARCH_ASK_WRITES = androidx.datastore.preferences.core.booleanPreferencesKey("research_ask_before_writing")
@@ -180,6 +181,13 @@ class SettingsRepository(
 
     suspend fun saveThemeMode(mode: com.bytelog.app.ui.theme.ThemeMode) {
         context.dataStore.edit { it[KEY_THEME_MODE] = mode.name }
+    }
+
+    /** Solid surfaces instead of frosted glass (easier to read on busy backgrounds). */
+    val reduceTransparency: Flow<Boolean> = context.dataStore.data.map { it[KEY_REDUCE_TRANSPARENCY] ?: false }
+
+    suspend fun saveReduceTransparency(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_REDUCE_TRANSPARENCY] = enabled }
     }
 
     suspend fun saveUseDeviceColors(enabled: Boolean) {

@@ -264,7 +264,7 @@ fun BarcodeScannerScreen(
                 modifier = Modifier
                     .size(260.dp)
                     .align(Alignment.Center)
-                    .border(2.dp, ByteTomato, RoundedCornerShape(28.dp))
+                    .border(2.dp, ByteTomato, RoundedCornerShape(24.dp))
             )
 
             // Scanned Notification Toast

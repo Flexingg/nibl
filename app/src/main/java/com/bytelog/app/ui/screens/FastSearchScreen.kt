@@ -686,7 +686,7 @@ fun FoodSearchRow(
             ) {
                 Icon(Icons.Default.Check, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Log now · ${portion.label}", color = cs.onPrimary, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Log now · ${portion.label}", color = cs.onPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     ) {
@@ -749,7 +749,7 @@ private fun FoodSearchRowContent(
                             .background(cs.primary.copy(alpha = 0.18f))
                             .padding(horizontal = 5.dp, vertical = 1.dp)
                     ) {
-                        Text(text = "DB", color = cs.primary, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(text = "DB", color = cs.primary, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -775,7 +775,7 @@ private fun FoodSearchRowContent(
                     text = "$kcal kcal",
                     color = if (inTray) cs.onPrimary else cs.onPrimaryContainer,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.width(4.dp))
                 Icon(

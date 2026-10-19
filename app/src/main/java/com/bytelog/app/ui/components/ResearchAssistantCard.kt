@@ -70,7 +70,7 @@ fun ResearchAssistantCard(settings: SettingsRepository, modifier: Modifier = Mod
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("WEB RESEARCH ASSISTANT", color = ByteTomato, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+        Text("WEB RESEARCH ASSISTANT", color = ByteTomato, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
         Text(
             "In Sparky chat, switch on \"Web search\" to let a model search the internet and read your Sparky food library and diary. " +
                 "It can log what it finds straight into your diary (you approve each change), or pass the job to Sparky's own AI. " +

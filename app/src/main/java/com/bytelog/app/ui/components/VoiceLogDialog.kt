@@ -100,7 +100,7 @@ fun VoiceLogDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = ByteSurfaceDark),
             modifier = Modifier.fillMaxWidth().padding(16.dp)
         ) {
@@ -112,7 +112,7 @@ fun VoiceLogDialog(
                     text = "Natural Language & Dictation",
                     color = ByteCream,
                     fontSize = 20.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.SemiBold
                 )
 
                 Text(

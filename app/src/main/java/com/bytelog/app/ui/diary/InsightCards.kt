@@ -78,7 +78,7 @@ fun WhatFitsCard(
                         if (proteinLeft >= 10) append(" · $proteinLeft g protein")
                         append(" left")
                     },
-                    color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
+                    color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -119,7 +119,7 @@ fun WeeklyReviewCard(review: WeeklyReview, weightUnit: String, onDismiss: () -> 
     val cs = MaterialTheme.colorScheme
     val x = LocalByteExtraColors.current
     Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer).padding(16.dp),
+        modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -132,7 +132,7 @@ fun WeeklyReviewCard(review: WeeklyReview, weightUnit: String, onDismiss: () -> 
                 Text(
                     "${review.start.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${review.start.dayOfMonth} – " +
                         "${review.end.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${review.end.dayOfMonth}",
-                    color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
+                    color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold
                 )
             }
             Box(
@@ -193,9 +193,9 @@ fun WeeklyReviewCard(review: WeeklyReview, weightUnit: String, onDismiss: () -> 
 
 @Composable
 private fun Stat(label: String, value: String, detail: String, modifier: Modifier, bg: androidx.compose.ui.graphics.Color, fg: androidx.compose.ui.graphics.Color) {
-    Column(modifier.clip(RoundedCornerShape(18.dp)).background(bg).padding(horizontal = 10.dp, vertical = 10.dp)) {
+    Column(modifier.clip(RoundedCornerShape(24.dp)).background(bg).padding(horizontal = 10.dp, vertical = 10.dp)) {
         Text(label, color = fg.copy(alpha = 0.75f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-        Text(value, color = fg, fontSize = 19.sp, fontWeight = FontWeight.Black, maxLines = 1)
+        Text(value, color = fg, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         Text(detail, color = fg.copy(alpha = 0.75f), fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

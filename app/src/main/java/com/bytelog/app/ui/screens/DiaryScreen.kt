@@ -107,6 +107,7 @@ import com.bytelog.app.ui.components.SaveMealTemplateDialog
 import com.bytelog.app.ui.components.WeightLogDialog
 import com.bytelog.app.ui.components.WeightVsCaloriesCard
 import com.bytelog.app.ui.theme.ByteCream
+import com.bytelog.app.ui.theme.blurSource
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
 import com.bytelog.app.ui.theme.ByteSurfaceDark
@@ -291,7 +292,7 @@ fun DiaryScreen(
     }
     val dayDate = remember(selectedDate) { runCatching { LocalDate.parse(selectedDate) }.getOrElse { LocalDate.now() } }
     val heroShape = com.bytelog.app.ui.diary.BlobShape.forDay(dayDate.toEpochDay())
-    val weightShape = if (dayDate.toEpochDay() % 2 == 0L) com.bytelog.app.ui.diary.BlobShape.SQUIRCLE else com.bytelog.app.ui.diary.BlobShape.PENTAGON
+    val weightShape = com.bytelog.app.ui.diary.BlobShape.CIRCLE
 
     val headerState = com.bytelog.app.ui.components.rememberHeaderCollapseState()
     val headerFraction = com.bytelog.app.ui.components.rememberHeaderFraction(headerState)
@@ -330,10 +331,13 @@ fun DiaryScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = ByteInkDark
     ) { paddingValues ->
+      // The diary is the backdrop the floating toolbar and add button blur
+      val haze = remember { dev.chrisbanes.haze.HazeState() }
       Box(Modifier.fillMaxSize().padding(paddingValues)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .then(Modifier.blurSource(haze))
                 .padding(horizontal = 16.dp)
         ) {
             // Large title that shrinks as the header folds
@@ -475,7 +479,7 @@ fun DiaryScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(24.dp))
                                 .background(ByteSurfaceDark.copy(alpha = 0.5f))
                                 .padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -499,7 +503,7 @@ fun DiaryScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                         .background(MacroProtein.copy(alpha = 0.15f))
                                         .clickable {
                                             templateTargetMeal = null
@@ -517,7 +521,7 @@ fun DiaryScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                         .background(ByteTomato.copy(alpha = 0.15f))
                                         .clickable {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -853,6 +857,7 @@ fun DiaryScreen(
         )
 
         // Floating day toolbar (hides while scrolling down) and the add menu
+        androidx.compose.runtime.CompositionLocalProvider(com.bytelog.app.ui.theme.LocalHazeState provides haze) {
         com.bytelog.app.ui.diary.DayToolbar(
             hidden = toolbarScroll.hidden && !fabMenuOpen,
             dayLabel = describeDay(selectedDate),
@@ -897,6 +902,7 @@ fun DiaryScreen(
                 }
             )
         )
+        }
       }
     }
 
@@ -1250,7 +1256,7 @@ fun MealCard(
                 if (hasBottom) RoundedCornerShape(topStart = segOuter, topEnd = segOuter, bottomStart = segInner, bottomEnd = segInner)
                 else RoundedCornerShape(segOuter)
             )
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .padding(14.dp)
       ) {
         if (isSelectionMode) {
@@ -1744,7 +1750,7 @@ fun MealCard(
 @Composable
 fun SwipeableFoodEntryRow(
     entry: FoodEntry,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(14.dp),
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
     onToggleSelection: () -> Unit = {},

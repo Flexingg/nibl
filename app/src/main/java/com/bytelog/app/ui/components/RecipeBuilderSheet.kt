@@ -188,7 +188,7 @@ fun RecipeBuilderSheet(
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Column(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(ByteCardDark).padding(14.dp)
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(ByteCardDark).padding(14.dp)
                     ) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Per serving", color = ByteTomato, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -212,7 +212,7 @@ fun RecipeBuilderSheet(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(ByteCardDark)
                             .clickable { editingIndex = index }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -240,7 +240,7 @@ fun RecipeBuilderSheet(
 
                 item {
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { showDetails = !showDetails }.padding(vertical = 8.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { showDetails = !showDetails }.padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Directions & notes", color = ByteCream, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))

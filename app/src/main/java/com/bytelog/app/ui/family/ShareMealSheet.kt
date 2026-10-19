@@ -110,7 +110,7 @@ internal fun ShareMealContent(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Column {
-                Text("Share $mealName", color = cs.onSurface, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                Text("Share $mealName", color = cs.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Text("${entries.size} item${if (entries.size == 1) "" else "s"} • ${totalKcal.roundToInt()} kcal", color = cs.onSurfaceVariant, fontSize = 13.sp)
             }
 
@@ -129,7 +129,7 @@ internal fun ShareMealContent(
                 Text(
                     "No one has let you add to their diary yet. Ask them to turn on \"manage diary\" for you in Sparky's Family Access settings.",
                     color = cs.onSurface, fontSize = 14.sp,
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(cs.secondaryContainer).padding(14.dp)
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer).padding(14.dp)
                 )
             }
 
@@ -187,7 +187,7 @@ internal fun ShareMealContent(
                             splitting -> "Split with ${picked.size} ${if (picked.size == 1) "person" else "people"}"
                             else -> "Copy to ${picked.size} ${if (picked.size == 1) "person" else "people"}"
                         },
-                        color = if (canConfirm) cs.onPrimary else cs.onSurfaceVariant, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
+                        color = if (canConfirm) cs.onPrimary else cs.onSurfaceVariant, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -219,13 +219,13 @@ private fun PersonRow(
     val cs = MaterialTheme.colorScheme
     val bg by animateColorAsState(if (selected) cs.surfaceContainerHigh else cs.surfaceContainer, label = "person_bg")
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(bg)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(bg)
             .then(if (member != null) Modifier.clickable(onClick = onToggle) else Modifier).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (member != null) Avatar(member, 38)
         else Box(Modifier.size(38.dp).clip(androidx.compose.foundation.shape.CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
-            Text("Me", color = cs.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.Black)
+            Text("Me", color = cs.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
@@ -237,7 +237,7 @@ private fun PersonRow(
         }
         if (selected && steps) {
             StepButton(Icons.Default.Remove, "Less for $name", onMinus)
-            Text("$percent%", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(56.dp).padding(horizontal = 4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text("$percent%", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp).padding(horizontal = 4.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             StepButton(Icons.Default.Add, "More for $name", onPlus)
         } else if (selected) {
             Icon(Icons.Default.Check, null, tint = cs.primary)

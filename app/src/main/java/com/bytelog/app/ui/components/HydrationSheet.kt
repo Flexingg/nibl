@@ -160,12 +160,12 @@ fun HydrationSheet(
 
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(ByteSurfaceVariantDark)
                                 .border(
                                     width = if (isCurrentDefault) 1.dp else 0.dp,
                                     color = if (isCurrentDefault) HydrationCyan else Color.Transparent,
-                                    shape = RoundedCornerShape(14.dp)
+                                    shape = RoundedCornerShape(16.dp)
                                 )
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -191,7 +191,7 @@ fun HydrationSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .background(ByteSurfaceVariantDark)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -205,7 +205,7 @@ fun HydrationSheet(
                     text = if (customAmountText.isEmpty()) "0" else customAmountText,
                     color = ByteCream,
                     fontSize = 32.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.SemiBold
                 )
 
                 Text(

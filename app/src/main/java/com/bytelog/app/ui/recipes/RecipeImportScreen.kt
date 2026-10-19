@@ -367,12 +367,12 @@ private fun IngredientRow(
                 Text(
                     "${fmt1(Math.round(m.quantity * 10f) / 10f)} $unitLabel",
                     color = MacroProtein, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onAmount).padding(4.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onAmount).padding(4.dp)
                 )
                 m.grams?.takeIf { m.unit != "g" }?.let { Text("≈${fmt0(it)} g", color = ByteTextSecondary, fontSize = 10.sp) }
                 if (m.needsReview && m.include) {
                     Text("Looks right", color = OkGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onConfirm).padding(4.dp))
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onConfirm).padding(4.dp))
                 }
             }
         }

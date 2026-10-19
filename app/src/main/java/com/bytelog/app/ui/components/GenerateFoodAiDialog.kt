@@ -105,7 +105,7 @@ fun GenerateFoodAiDialog(
     AlertDialog(
         onDismissRequest = { if (!isGenerating) onDismiss() },
         containerColor = ByteSurfaceDark,
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(

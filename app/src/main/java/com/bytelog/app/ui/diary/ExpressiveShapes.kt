@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -67,7 +68,9 @@ enum class BlobShape(private val radius: (Double) -> Double) {
 
     companion object {
         /** A different shape for each day, so moving between days visibly changes the hero. */
-        fun forDay(epochDay: Long): BlobShape = listOf(COOKIE9, CLOVER4, FLOWER8, PENTAGON, SUNNY12, COOKIE9, FLOWER8)[Math.floorMod(epochDay, 7L).toInt()]
+        // Living Flow: one calm circle, every day
+        @Suppress("UNUSED_PARAMETER")
+        fun forDay(epochDay: Long): BlobShape = CIRCLE
     }
 }
 
@@ -183,7 +186,10 @@ fun rememberWavePhase(): State<Float> {
     return t.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(1600, easing = LinearEasing)), label = "wave_phase")
 }
 
-/** Linear wavy progress: a moving wave up to the value, then a flat track with a stop dot. */
+/**
+ * Living Flow progress bar: a thick rounded track with a luminous fill and a soft glow at its leading edge
+ * (the "comet"). Name kept from the earlier wavy bar so every caller picks up the new look.
+ */
 @Composable
 fun WavyLinearProgress(
     progress: Float,
@@ -191,74 +197,73 @@ fun WavyLinearProgress(
     modifier: Modifier = Modifier,
     trackColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest,
     height: Dp = 12.dp,
-    amplitude: Dp = 2.4.dp,
-    wavelength: Dp = 18.dp,
-    stroke: Dp = 4.dp
+    @Suppress("UNUSED_PARAMETER") amplitude: Dp = 2.4.dp,
+    @Suppress("UNUSED_PARAMETER") wavelength: Dp = 18.dp,
+    stroke: Dp = 6.dp
 ) {
-    val phase = rememberWavePhase()
     Canvas(modifier.height(height)) {
         val w = size.width; val y = size.height / 2
-        val sw = stroke.toPx(); val amp = amplitude.toPx(); val wl = wavelength.toPx()
-        val end = progress.coerceIn(0f, 1f) * w
-        val gap = 5.dp.toPx()
-        if (end + gap < w - sw) {
-            drawLine(trackColor, Offset(end + gap, y), Offset(w - sw / 2, y), sw, StrokeCap.Round)
-            drawCircle(color, sw / 2, Offset(w - sw / 2, y))
-        }
-        if (end > sw) {
-            val p = Path()
-            var x = sw / 2
-            p.moveTo(x, y + amp * sin(x / wl * 2f * PI.toFloat() - phase.value))
-            while (x < end) {
-                x = min(end, x + 1.5f)
-                p.lineTo(x, y + amp * sin(x / wl * 2f * PI.toFloat() - phase.value))
-            }
-            drawPath(p, color, style = Stroke(sw, cap = StrokeCap.Round))
+        val sw = max(stroke.toPx(), 6.dp.toPx()).coerceAtMost(size.height)
+        drawLine(trackColor, Offset(sw / 2, y), Offset(w - sw / 2, y), sw, StrokeCap.Round)
+        val end = progress.coerceIn(0f, 1f) * (w - sw) + sw / 2
+        if (progress > 0.001f) {
+            drawLine(
+                androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(color.copy(alpha = 0.55f), color), startX = 0f, endX = end),
+                Offset(sw / 2, y), Offset(end, y), sw, StrokeCap.Round
+            )
+            drawFlowGlow(color, Offset(end, y), sw * 1.6f)
         }
     }
 }
 
-/** Draws a circular wavy progress ring of radius [ringRadius] around the centre. */
-fun DrawScope.drawWavyRing(progress: Float, phase: Float, color: Color, track: Color, ringRadius: Float, stroke: Float, amplitude: Float, waves: Int = 16) {
-    val start = -PI.toFloat() / 2
-    val sweep = 2 * PI.toFloat() * progress.coerceIn(0.001f, 1f)
-    val p = Path()
-    var a = start; var first = true
-    while (a <= start + sweep) {
-        val r = ringRadius + amplitude * sin(waves * (a - start) - phase)   // whole multiple of the phase, so the loop has no seam
-        val x = center.x + cos(a) * r; val y = center.y + sin(a) * r
-        if (first) { p.moveTo(x, y); first = false } else p.lineTo(x, y)
-        a += 0.02f
-    }
-    drawPath(p, color, style = Stroke(stroke, cap = StrokeCap.Round))
-    val gap = 0.12f
-    val t0 = start + sweep + gap; val t1 = start + 2 * PI.toFloat() - gap
-    if (t0 < t1) {
+/** A soft light at the head of a progress fill. */
+fun DrawScope.drawFlowGlow(color: Color, at: Offset, radius: Float) {
+    drawCircle(
+        androidx.compose.ui.graphics.Brush.radialGradient(listOf(color.copy(alpha = 0.45f), Color.Transparent), at, radius),
+        radius, at
+    )
+    drawCircle(Color.White.copy(alpha = 0.55f), radius * 0.16f, at)
+}
+
+/** Living Flow progress ring: smooth arc with a luminous gradient and a glowing head. */
+fun DrawScope.drawWavyRing(progress: Float, @Suppress("UNUSED_PARAMETER") phase: Float, color: Color, track: Color, ringRadius: Float, stroke: Float, @Suppress("UNUSED_PARAMETER") amplitude: Float, @Suppress("UNUSED_PARAMETER") waves: Int = 16) {
+    val topLeft = Offset(center.x - ringRadius, center.y - ringRadius)
+    val sz = androidx.compose.ui.geometry.Size(ringRadius * 2, ringRadius * 2)
+    drawArc(track, 0f, 360f, false, topLeft, sz, style = Stroke(stroke, cap = StrokeCap.Round))
+    val p = progress.coerceIn(0f, 1f)
+    if (p <= 0.001f) return
+    val sweep = 360f * p
+    // The gradient runs from the start of the arc (12 o'clock) to its head, brightest at the head
+    rotate(-90f, center) {
         drawArc(
-            track, t0 * 180f / PI.toFloat(), (t1 - t0) * 180f / PI.toFloat(), false,
-            Offset(center.x - ringRadius, center.y - ringRadius), androidx.compose.ui.geometry.Size(ringRadius * 2, ringRadius * 2),
-            style = Stroke(stroke, cap = StrokeCap.Round)
+            androidx.compose.ui.graphics.Brush.sweepGradient(0f to color.copy(alpha = 0.5f), p to color, center = center),
+            0f, sweep, false, topLeft, sz, style = Stroke(stroke, cap = StrokeCap.Round)
         )
     }
+    val a = ((sweep - 90f) / 180f * PI).toFloat()
+    drawFlowGlow(color, Offset(center.x + cos(a) * ringRadius, center.y + sin(a) * ringRadius), stroke * 1.8f)
 }
 
-/** Shape-shifting loading indicator: a shape that keeps morphing and turning inside a round container. */
+/** Loading: a comet of light running round a soft ring (name kept for its callers). */
 @Composable
 fun MorphingLoadingIndicator(modifier: Modifier = Modifier, indicatorSize: Dp = 32.dp) {
     val reduce = LocalReduceMotion.current
-    val state = remember { MorphState(BlobShape.COOKIE9) }
-    val spin = rememberInfiniteTransition(label = "loader").animateFloat(0f, 360f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "loader_spin")
-    LaunchedEffect(Unit) {
-        val seq = listOf(BlobShape.CLOVER4, BlobShape.PENTAGON, BlobShape.FLOWER8, BlobShape.SUNNY12, BlobShape.COOKIE9)
-        var i = 0
-        while (true) { delay(550); state.morphTo(seq[i++ % seq.size], 0f, reduce) }
-    }
-    val container = MaterialTheme.colorScheme.secondaryContainer
+    val spin = rememberInfiniteTransition(label = "loader").animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "loader_spin")
+    val track = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
     val active = MaterialTheme.colorScheme.primary
     Box(modifier.size(indicatorSize), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            drawCircle(container)
-            drawBlob(state.current(), if (reduce) 0f else spin.value, active, size.minDimension * 0.29f)
+            val sw = size.minDimension * 0.11f
+            val r = size.minDimension / 2f - sw
+            val tl = Offset(center.x - r, center.y - r); val sz = androidx.compose.ui.geometry.Size(r * 2, r * 2)
+            drawArc(track, 0f, 360f, false, tl, sz, style = Stroke(sw))
+            rotate(if (reduce) 0f else spin.value, center) {
+                drawArc(
+                    androidx.compose.ui.graphics.Brush.sweepGradient(0f to Color.Transparent, 0.3f to active, center = center),
+                    0f, 108f, false, tl, sz, style = Stroke(sw, cap = StrokeCap.Round)
+                )
+                drawFlowGlow(active, Offset(center.x + cos(108f / 180f * PI.toFloat()) * r, center.y + sin(108f / 180f * PI.toFloat()) * r), sw * 1.8f)
+            }
         }
     }
 }

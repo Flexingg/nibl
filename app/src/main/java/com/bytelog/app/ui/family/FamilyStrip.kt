@@ -41,16 +41,16 @@ fun FamilyStrip(
     modifier: Modifier = Modifier
 ) {
     val cs = MaterialTheme.colorScheme
-    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer).padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth().clickable(onClick = onOpenFamily).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("FAMILY TODAY", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
+            Text("FAMILY TODAY", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
             Icon(Icons.Default.ChevronRight, contentDescription = "Open family", tint = cs.onSurfaceVariant)
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(members, key = { it.userId }) { m ->
                 val t = today[m.userId]
                 Column(
-                    Modifier.width(132.dp).clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainerHigh)
+                    Modifier.width(132.dp).clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainerHigh)
                         .clickable { onOpenMember(m.userId) }.padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -60,7 +60,7 @@ fun FamilyStrip(
                         Text(m.displayName, color = cs.onSurface, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (t != null) {
-                        Text("${t.calories.roundToInt()} kcal", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                        Text("${t.calories.roundToInt()} kcal", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                         val goal = t.goal ?: 0f
                         if (goal > 0f) WavyLinearProgress((t.calories / goal).coerceIn(0f, 1f), cs.primary, Modifier.fillMaxWidth(), height = 8.dp, amplitude = 1.6.dp, wavelength = 12.dp)
                     } else {

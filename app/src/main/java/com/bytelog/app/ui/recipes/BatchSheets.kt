@@ -286,7 +286,7 @@ fun StartBatchDialog(
                 Text("Best within $shelf days", color = ByteTextSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                 Spacer(Modifier.height(10.dp))
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(ByteSurfaceVariantDark).padding(10.dp)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(ByteSurfaceVariantDark).padding(10.dp)
                 ) {
                     Text("Whole batch", color = ByteTextSecondary, fontSize = 11.sp)
                     MacroLine(total)

@@ -160,7 +160,7 @@ fun RecentMealsScreen(
                 when (row) {
                     is Row.Day -> Text(
                         row.label.uppercase(Locale.getDefault()),
-                        color = ByteTomato, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp,
+                        color = ByteTomato, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp,
                         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp).popIn(row.key, popped, stagger)
                     )
                     is Row.Meal -> MealRow(

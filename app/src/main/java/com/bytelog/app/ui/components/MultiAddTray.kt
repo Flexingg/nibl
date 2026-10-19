@@ -98,7 +98,7 @@ fun MultiAddTray(
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
             .background(cs.surfaceContainer)
             .navigationBarsPadding()
             .imePadding()
@@ -130,7 +130,7 @@ fun MultiAddTray(
                     onEditFood = editableFoodId(id)?.let { fid -> { onEditFood(fid) } },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(22.dp))
+                        .clip(RoundedCornerShape(24.dp))
                         .background(cs.surfaceContainerHigh)
                         .padding(14.dp)
                 )
@@ -176,7 +176,7 @@ fun MultiAddTray(
                 Spacer(Modifier.size(8.dp))
                 Text(
                     if (stagedEntries.size == 1) "Log to $targetMealName" else "Log ${stagedEntries.size} to $targetMealName",
-                    color = cs.onPrimary, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
+                    color = cs.onPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
                 )
                 Box(
                     Modifier.padding(start = 10.dp).clip(RoundedCornerShape(50)).background(cs.onPrimary.copy(alpha = 0.16f))

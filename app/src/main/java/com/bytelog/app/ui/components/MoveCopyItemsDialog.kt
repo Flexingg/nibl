@@ -90,7 +90,7 @@ fun MoveCopyItemsDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -169,7 +169,7 @@ fun MoveCopyItemsDialog(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(if (mode == MoveCopyMode.MOVE) ByteTomato else ByteSurfaceDark)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -200,7 +200,7 @@ fun MoveCopyItemsDialog(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(if (mode == MoveCopyMode.COPY) MacroProtein else ByteSurfaceDark)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -270,7 +270,7 @@ fun MoveCopyItemsDialog(
                         val isSelected = cleanName.equals(targetMealName, ignoreCase = true)
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(
                                     if (isSelected) (if (mode == MoveCopyMode.MOVE) ByteTomato else MacroProtein)
                                     else ByteSurfaceVariantDark

@@ -154,7 +154,7 @@ fun EditFoodEntrySheet(
                     val isSelected = mt.id == selectedMealTypeId || mt.name.equals(selectedMealName, ignoreCase = true)
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -255,7 +255,7 @@ fun EditFoodEntrySheet(
                     text = "${calculatedCalories.roundToInt()} kcal",
                     color = ByteTomato,
                     fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     text = "Live Calculated",
@@ -308,7 +308,7 @@ fun EditFoodEntrySheet(
                 text = if (quantityText.isEmpty()) "0" else quantityText,
                 color = ByteCream,
                 fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 8.dp)
             )
 
