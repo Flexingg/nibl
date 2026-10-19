@@ -63,7 +63,7 @@ val ExpressiveShapes = androidx.compose.material3.Shapes(
  * Living Flow surfaces: a calm neutral base (soft grey in light, true black in dark), opaque white or lifted-grey
  * cards, and the accent colours left as they are (tomato, or the wallpaper's accent with device colours on).
  */
-fun fluidize(scheme: ColorScheme, dark: Boolean): ColorScheme = if (dark) scheme.copy(
+fun fluidize(scheme: ColorScheme, dark: Boolean, solid: Boolean = false): ColorScheme = (if (dark) scheme.copy(
     background = Color(0xFF000000), surface = Color(0xFF000000), surfaceDim = Color(0xFF000000), surfaceBright = Color(0xFF2A2A2D),
     surfaceContainerLowest = Color(0xFF000000), surfaceContainerLow = Color(0xFF121214), surfaceContainer = Color(0xFF1C1C1E),
     surfaceContainerHigh = Color(0xFF2A2A2D), surfaceContainerHighest = Color(0xFF36363A),
@@ -77,20 +77,29 @@ fun fluidize(scheme: ColorScheme, dark: Boolean): ColorScheme = if (dark) scheme
     onBackground = Color(0xFF1A1A1C), onSurface = Color(0xFF1A1A1C), onSurfaceVariant = Color(0xFF5E5F63),
     surfaceVariant = Color(0xFFE8E9EC), outline = Color(0xFF8E8E93), outlineVariant = Color(0x14000000),
     inverseSurface = Color(0xFF2A2A2D), inverseOnSurface = Color(0xFFF2F3F5), scrim = Color(0xFF000000)
+)).let { if (solid) it else glassCards(it, dark) }
+
+/**
+ * Cards and rows become frosted: translucent enough for the backdrop's light to come through, opaque enough to
+ * keep text at full contrast. The page itself is see-through so the backdrop shows ([fluidBackdrop]).
+ */
+private fun glassCards(scheme: ColorScheme, dark: Boolean) = scheme.copy(
+    background = Color.Transparent,
+    surfaceContainer = if (dark) Color(0xB81C1C1E) else Color(0xC2FFFFFF)
 )
 
 /** Tomato accents tuned for the neutral Living Flow surfaces (contrast checked against white and #F2F3F5). */
-private val FluidSeedLight get() = fluidize(SeedLight.copy(
+private fun fluidSeedLight(solid: Boolean) = fluidize(SeedLight.copy(
     primary = Color(0xFFCC3B17), onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFFFE3D9), onPrimaryContainer = Color(0xFF5A1500),
     secondaryContainer = Color(0xFFFCE5DC), onSecondaryContainer = Color(0xFF4A1D10)
-), dark = false)
+), dark = false, solid = solid)
 
-private val FluidSeedDark get() = fluidize(SeedDark.copy(
+private fun fluidSeedDark(solid: Boolean) = fluidize(SeedDark.copy(
     primary = Color(0xFFFF7A55), onPrimary = Color(0xFF2B0A00),
     primaryContainer = Color(0xFF5A2010), onPrimaryContainer = Color(0xFFFFDBD0),
     secondaryContainer = Color(0xFF3A2620), onSecondaryContainer = Color(0xFFFFDBD0)
-), dark = true)
+), dark = true, solid = solid)
 
 /** Light, dark or follow the system. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -99,17 +108,17 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 val supportsDeviceColors: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
 @Composable
-fun byteColorScheme(darkTheme: Boolean, dynamicColor: Boolean): ColorScheme {
+fun byteColorScheme(darkTheme: Boolean, dynamicColor: Boolean, solid: Boolean = false): ColorScheme {
     val context = LocalContext.current
-    return byteColorSchemeFor(context, darkTheme, dynamicColor)
+    return byteColorSchemeFor(context, darkTheme, dynamicColor, solid)
 }
 
 /** The app's colours without a composition (home screen widgets): device colours when allowed, else the seed theme. */
-fun byteColorSchemeFor(context: android.content.Context, darkTheme: Boolean, dynamicColor: Boolean): ColorScheme = when {
+fun byteColorSchemeFor(context: android.content.Context, darkTheme: Boolean, dynamicColor: Boolean, solid: Boolean = true): ColorScheme = when {
     // The wallpaper supplies the accent; the surfaces stay Living Flow neutrals
-    dynamicColor && supportsDeviceColors -> fluidize(if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context), darkTheme)
-    darkTheme -> FluidSeedDark
-    else -> FluidSeedLight
+    dynamicColor && supportsDeviceColors -> fluidize(if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context), darkTheme, solid)
+    darkTheme -> fluidSeedDark(solid)
+    else -> fluidSeedLight(solid)
 }
 
 @Composable
@@ -119,7 +128,7 @@ fun ByteLogTheme(
     reduceTransparency: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = byteColorScheme(darkTheme, dynamicColor)
+    val colorScheme = byteColorScheme(darkTheme, dynamicColor, solid = reduceTransparency)
     val view = LocalView.current
 
     if (!view.isInEditMode) {

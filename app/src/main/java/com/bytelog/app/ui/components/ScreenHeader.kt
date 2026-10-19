@@ -49,7 +49,7 @@ fun ScreenHeader(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
-    Box(Modifier.fillMaxWidth().background(cs.surface).then(if (statusBarPadding) Modifier.statusBarsPadding() else Modifier)) {
+    Box(Modifier.fillMaxWidth().then(if (statusBarPadding) Modifier.statusBarsPadding() else Modifier)) {
         Layout(
             content = {
                 Box(Modifier.layoutId("back")) {

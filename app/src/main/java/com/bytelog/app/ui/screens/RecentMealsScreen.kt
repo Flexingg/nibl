@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.screens
 
 import androidx.compose.animation.animateColorAsState
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -93,7 +94,8 @@ fun RecentMealsScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val headerFraction = com.bytelog.app.ui.components.rememberScrollFraction(listState)
     Scaffold(
-        containerColor = ByteInkDark,
+        modifier = Modifier.fluidBackdrop(),
+        containerColor = Color.Transparent,
         topBar = {
             ScreenHeader(
                 title = "Recent meals",

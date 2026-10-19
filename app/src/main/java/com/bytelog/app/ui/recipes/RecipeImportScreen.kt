@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.recipes
 
 import androidx.compose.foundation.background
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -86,7 +87,8 @@ fun RecipeImportScreen(
         if (!initialInput.isNullOrBlank()) viewModel.startImport(initialInput)
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = ByteInkDark) { pad ->
+    Scaffold(
+        modifier = Modifier.fluidBackdrop(),snackbarHost = { SnackbarHost(snackbar) }, containerColor = Color.Transparent) { pad ->
         Column(Modifier.fillMaxSize().padding(pad)) {
             com.bytelog.app.ui.components.ScreenHeader(
                 title = if (state is ImportState.Review) "Review recipe" else "Import a recipe",

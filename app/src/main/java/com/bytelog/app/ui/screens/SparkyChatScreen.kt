@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.screens
 
 import android.graphics.Bitmap
+import com.bytelog.app.ui.theme.fluidBackdrop
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -264,8 +265,9 @@ fun SparkyChatScreen(
     }
 
     Scaffold(
+        modifier = Modifier.fluidBackdrop(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = ByteInkDark,
+        containerColor = Color.Transparent,
         topBar = {
             com.bytelog.app.ui.components.ScreenHeader(
                 title = "Sparky AI Coach",

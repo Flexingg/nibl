@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.screens
 
 import androidx.compose.foundation.background
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -208,8 +209,9 @@ fun SettingsScreen(
     val pageScroll = rememberScrollState()
     val headerFraction = com.bytelog.app.ui.components.rememberScrollFraction(pageScroll)
     Scaffold(
+        modifier = Modifier.fluidBackdrop(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = ByteInkDark,
+        containerColor = Color.Transparent,
         topBar = {
             com.bytelog.app.ui.components.ScreenHeader(
                 title = "Settings",

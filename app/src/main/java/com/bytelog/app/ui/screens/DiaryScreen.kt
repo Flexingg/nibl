@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -328,8 +329,9 @@ fun DiaryScreen(
     }
 
     Scaffold(
+        modifier = Modifier.fluidBackdrop(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = ByteInkDark
+        containerColor = Color.Transparent
     ) { paddingValues ->
       // The diary is the backdrop the floating toolbar and add button blur
       val haze = remember { dev.chrisbanes.haze.HazeState() }
