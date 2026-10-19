@@ -617,7 +617,10 @@ class SparkyApiClient(
                             fat = obj["fat"]?.jsonPrimitive?.floatOrNull ?: 0f,
                             entryDate = normalizedDate,
                             entryTime = obj["entry_time"]?.jsonPrimitive?.content,
-                            syncStatus = FoodEntry.SYNC_STATUS_SYNCED
+                            syncStatus = FoodEntry.SYNC_STATUS_SYNCED,
+                            // When it was logged on Sparky, not when this phone downloaded it (the fasting timer reads it)
+                            createdAt = com.bytelog.app.data.repository.parseServerTime((obj["created_at"] as? JsonPrimitive)?.content)
+                                ?: System.currentTimeMillis()
                         )
                     }
                     Result.success(entries)
@@ -2101,7 +2104,80 @@ class SparkyApiClient(
         }
     }
 
+    /**
+     * Estimates a photographed meal food by food: each item Sparky's AI sees, with its weight, calories and macros.
+     * [note] is anything the photo can't show ("cooked in butter", "the bowl is 400 g").
+     */
+    suspend fun estimateMealPhoto(
+        images: List<Pair<String, String>>,
+        note: String? = null
+    ): Result<PhotoMealEstimate> = withContext(Dispatchers.IO) {
+        try {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("images", kotlinx.serialization.json.buildJsonArray {
+                    images.forEach { (b64, mime) ->
+                        add(kotlinx.serialization.json.buildJsonObject {
+                            put("image", kotlinx.serialization.json.JsonPrimitive(if (b64.contains(",")) b64.substringAfter(",") else b64))
+                            put("mime_type", kotlinx.serialization.json.JsonPrimitive(mime))
+                        })
+                    }
+                })
+                if (!note.isNullOrBlank()) put("description", kotlinx.serialization.json.JsonPrimitive(note))
+            }
+            val request = Request.Builder()
+                .url("$baseUrl/api/foods/estimate-food-photo")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            aiClient.newCall(request).execute().use { response ->
+                val content = response.body?.string().orEmpty()
+                if (response.isSuccessful) {
+                    parsePhotoEstimate(content)?.let { Result.success(it) }
+                        ?: Result.failure(IOException("Sparky's photo estimate couldn't be read"))
+                } else {
+                    val msg = runCatching { json.parseToJsonElement(content).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull()
+                    Result.failure(IOException(msg ?: "Photo estimate failed: HTTP ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     companion object {
+        /** Reads Sparky's food photo estimate: the meal, and each food in it. Null if it isn't one. */
+        fun parsePhotoEstimate(content: String): PhotoMealEstimate? = runCatching {
+            val root = Json { ignoreUnknownKeys = true }.parseToJsonElement(content).jsonObject
+            fun kotlinx.serialization.json.JsonObject.f(k: String) = this[k]?.jsonPrimitive?.floatOrNull ?: 0f
+            fun kotlinx.serialization.json.JsonObject.s(k: String) = (this[k] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+            val items = (root["items"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                PhotoMealItem(
+                    name = o.s("name") ?: o.s("canonical_name") ?: return@mapNotNull null,
+                    canonicalName = o.s("canonical_name"),
+                    grams = o.f("estimated_grams"),
+                    portion = o.s("portion_description"),
+                    calories = o.f("calories_kcal"), protein = o.f("protein_g"), carbs = o.f("carbs_g"), fat = o.f("fat_g"),
+                    fiber = o.f("fiber_g"),
+                    confidence = o.s("item_confidence") ?: "medium"
+                )
+            }
+            val totals = root["totals"] as? kotlinx.serialization.json.JsonObject
+            // Older servers only send totals: the meal becomes one item
+            val all = items.ifEmpty {
+                if (totals == null) return@runCatching null
+                listOf(PhotoMealItem(root.s("meal_summary") ?: "Meal", null, totals.f("total_grams"), null,
+                    totals.f("calories_kcal"), totals.f("protein_g"), totals.f("carbs_g"), totals.f("fat_g"), totals.f("fiber_g"), "medium"))
+            }
+            PhotoMealEstimate(
+                summary = root.s("meal_summary") ?: "Meal",
+                confidence = root.s("overall_confidence") ?: "medium",
+                confidenceReason = root.s("confidence_reason"),
+                items = all,
+                questions = (root["clarifying_questions"] as? kotlinx.serialization.json.JsonArray).orEmpty()
+                    .mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { q -> q.isNotBlank() } }
+            )
+        }.getOrNull()
+
         /** Reads a JSON-RPC reply that is either plain JSON or a Server-Sent Events stream (last `data:` event wins). */
         fun parseMcpBody(body: String, contentType: String?): kotlinx.serialization.json.JsonObject? {
             val text = if (contentType?.contains("text/event-stream", ignoreCase = true) == true || body.trimStart().startsWith("event:") || body.trimStart().startsWith("data:")) {
@@ -2177,6 +2253,28 @@ class SparkyApiClient(
         }
     }
 }
+
+/** A photographed meal as Sparky's AI sees it. */
+data class PhotoMealEstimate(
+    val summary: String,
+    val confidence: String,
+    val confidenceReason: String?,
+    val items: List<PhotoMealItem>,
+    val questions: List<String> = emptyList()
+)
+
+data class PhotoMealItem(
+    val name: String,
+    val canonicalName: String?,
+    val grams: Float,
+    val portion: String?,
+    val calories: Float,
+    val protein: Float,
+    val carbs: Float,
+    val fat: Float,
+    val fiber: Float = 0f,
+    val confidence: String = "medium"
+)
 
 @kotlinx.serialization.Serializable
 data class FoodPhotoEstimateResult(

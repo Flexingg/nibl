@@ -42,8 +42,8 @@ class DailyReminderReceiver : BroadcastReceiver() {
                     }
                 }
 
-                val title: String
-                val message: String
+                var title: String
+                var message: String
 
                 if (smartNudge && hasLoggedToday) {
                     title = "ByteLog • Daily Check-in 🌟"
@@ -53,8 +53,23 @@ class DailyReminderReceiver : BroadcastReceiver() {
                     message = "Don't break your streak! Take 30 seconds to log today's meals and hydration."
                 }
 
-                // Buttons that log the meal it is time for in one tap, when there is something to repeat
                 val app = context.applicationContext as? com.bytelog.app.ByteLogApplication
+
+                // On Sunday the reminder also sums up the week
+                val day = LocalDate.now()
+                val weekLine = if (app != null && day.dayOfWeek == java.time.DayOfWeek.SUNDAY) runCatching {
+                    val review = com.bytelog.app.data.repository.WeeklyReview.of(
+                        app.foodRepository.mealHistory(day, includeDay = true).first(), day,
+                        settingsRepo.targetCalories.first(), settingsRepo.targetProtein.first()
+                    )
+                    review.takeIf { it.daysLogged > 0 }?.let { com.bytelog.app.data.repository.WeeklyReview.summaryLine(it) }
+                }.getOrNull() else null
+                if (weekLine != null) {
+                    title = "ByteLog • Your week 📊"
+                    message = "$weekLine $message"
+                }
+
+                // Buttons that log the meal it is time for in one tap, when there is something to repeat
                 val shortcut = app?.let { runCatching { ReminderShortcuts.forNow(it.foodRepository) }.getOrNull() }
                 val actions = shortcut?.let { (meal, sc) -> ReminderShortcuts.actions(context, meal, sc) }.orEmpty()
 

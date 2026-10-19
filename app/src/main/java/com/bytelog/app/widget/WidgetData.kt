@@ -28,9 +28,18 @@ data class WidgetData(
     /** The meal that fits the time of day: highlighted in Quick log, offered for sharing. */
     val suggestedMeal: String,
     /** The user first, then family members who share their diary. */
-    val family: List<FamilyPerson>
+    val family: List<FamilyPerson>,
+    /** When food was last eaten, for the fasting time on the Today widget. */
+    val lastMealAt: Long? = null,
+    /** When this was loaded. */
+    val at: Long = System.currentTimeMillis()
 ) {
     val left: Int get() = (goal - eaten).coerceAtLeast(0)
+
+    /** "Fasting 14h" once the fast is over an hour (whole hours: widgets refresh every half hour or so). */
+    val fastingLabel: String? get() = lastMealAt?.let { at - it }
+        ?.takeIf { it >= com.bytelog.app.data.repository.Fasting.SHOW_AFTER_MS }
+        ?.let { "Fasting ${it / 3_600_000L}h" }
 
     companion object {
         /** Sample numbers for previews. */
@@ -38,7 +47,8 @@ data class WidgetData(
             date = "2026-10-13", eaten = 1020, goal = 1700,
             protein = 69, proteinGoal = 166, carbs = 94, carbsGoal = 140, fat = 29, fatGoal = 53,
             waterOz = 42f, waterGoalOz = 64f, bottleOz = 20f, suggestedMeal = "Lunch",
-            family = listOf(FamilyPerson("You", 1020, 1700), FamilyPerson("Sam", 1420, 2400), FamilyPerson("Kim", 340, 2100), FamilyPerson("Alex", 1980, 2200))
+            family = listOf(FamilyPerson("You", 1020, 1700), FamilyPerson("Sam", 1420, 2400), FamilyPerson("Kim", 340, 2100), FamilyPerson("Alex", 1980, 2200)),
+            lastMealAt = 0L, at = 3L * 3_600_000L
         )
     }
 }
@@ -95,7 +105,12 @@ object WidgetDataLoader {
             waterOz = waterMl / ML_PER_FL_OZ, waterGoalOz = settings.targetWaterOz.first(),
             bottleOz = settings.defaultContainerOz.first(),
             suggestedMeal = suggestedMealAt(now.toLocalTime()),
-            family = listOf(FamilyPerson("You", eaten, goal)) + others
+            family = listOf(FamilyPerson("You", eaten, goal)) + others,
+            lastMealAt = com.bytelog.app.data.repository.Fasting.lastMealAt(
+                app.database.foodEntryDao().getEntriesInRange(now.toLocalDate().minusDays(1).toString(), date).first(),
+                now = now.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            ),
+            at = now.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
         )
     }
 

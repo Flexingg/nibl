@@ -25,7 +25,9 @@ object WidgetSync {
                 val sources: List<Flow<Any?>> = listOf(
                     app.database.foodEntryDao().getEntriesForDate(date),
                     app.database.waterLogDao().getTotalWaterForDate(date),
-                    s.targetCalories, s.targetProtein, s.targetCarbs, s.targetFat, s.targetWaterOz, s.defaultContainerOz, s.useDeviceColors
+                    s.targetCalories, s.targetProtein, s.targetCarbs, s.targetFat, s.targetWaterOz, s.defaultContainerOz, s.useDeviceColors,
+                    // the fasting time on the Today widget moves on by itself
+                    flow { while (true) { emit(System.currentTimeMillis() / 900_000L); delay(60_000) } }.distinctUntilChanged()
                 )
                 combine(sources) { it.size }
             }

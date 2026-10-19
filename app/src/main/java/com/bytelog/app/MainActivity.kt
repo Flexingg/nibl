@@ -212,6 +212,9 @@ fun ByteLogNavHost(
                 onNavigateToBarcode = { mealId, mealName, date ->
                     navController.navigate("barcode/$mealId/$mealName/$date")
                 },
+                onNavigateToPhoto = { mealId, mealName, date ->
+                    navController.navigate("search/$mealId/$mealName/$date?photo=true")
+                },
                 onNavigateToChat = {
                     navController.navigate(NavMotion.CHAT) { launchSingleTop = true }
                 },
@@ -250,13 +253,15 @@ fun ByteLogNavHost(
 
         // 2. Fast-Search & Multi-Add Staging
         composable(
-            route = "search/{mealTypeId}/{mealName}/{date}",
+            route = "search/{mealTypeId}/{mealName}/{date}?photo={photo}",
             arguments = listOf(
                 navArgument("mealTypeId") { type = NavType.StringType },
                 navArgument("mealName") { type = NavType.StringType },
-                navArgument("date") { type = NavType.StringType }
+                navArgument("date") { type = NavType.StringType },
+                navArgument("photo") { type = NavType.BoolType; defaultValue = false }
             )
         ) { backStackEntry ->
+            val startWithPhoto = backStackEntry.arguments?.getBoolean("photo") ?: false
             val mealTypeId = backStackEntry.arguments?.getString("mealTypeId") ?: "breakfast"
             val mealName = backStackEntry.arguments?.getString("mealName") ?: "Breakfast"
             val date = backStackEntry.arguments?.getString("date") ?: ""
@@ -281,7 +286,8 @@ fun ByteLogNavHost(
                 onNavigateToBarcode = {
                     navController.navigate("barcode/$mealTypeId/$mealName/$date")
                 },
-                onEditFood = { id -> navController.navigate("food/${android.net.Uri.encode(id)}") { launchSingleTop = true } }
+                onEditFood = { id -> navController.navigate("food/${android.net.Uri.encode(id)}") { launchSingleTop = true } },
+                startWithPhoto = startWithPhoto
             )
         }
 

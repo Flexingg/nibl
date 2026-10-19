@@ -307,6 +307,76 @@ class FastSearchViewModel(
         viewModelScope.launch { foodRepository.undoLogged(entries) }
     }
 
+    // ----- Photo logging: snap the plate, Sparky's AI lists each food, the chosen ones go in the tray -----
+
+    sealed interface PhotoState {
+        data object Idle : PhotoState
+        data class Estimating(val photo: android.graphics.Bitmap?) : PhotoState
+        data class Ready(val photo: android.graphics.Bitmap?, val estimate: com.bytelog.app.data.remote.PhotoMealEstimate) : PhotoState
+        data class Failed(val photo: android.graphics.Bitmap?, val message: String) : PhotoState
+    }
+
+    private val _photoState = MutableStateFlow<PhotoState>(PhotoState.Idle)
+    val photoState: StateFlow<PhotoState> = _photoState.asStateFlow()
+    private var photoBase64: String? = null
+    private var photoBitmap: android.graphics.Bitmap? = null
+    private var photoJob: Job? = null
+
+    /** Sends a photo for an estimate; [note] is anything the photo can't show ("cooked in butter"). */
+    fun estimatePhoto(photo: android.graphics.Bitmap, note: String = "") {
+        photoBitmap = photo
+        photoBase64 = null
+        reestimatePhoto(note)
+    }
+
+    fun reestimatePhoto(note: String = "") {
+        val bmp = photoBitmap ?: return
+        photoJob?.cancel()
+        _photoState.value = PhotoState.Estimating(bmp)
+        photoJob = viewModelScope.launch {
+            val b64 = photoBase64 ?: kotlinx.coroutines.withContext(Dispatchers.Default) {
+                com.bytelog.app.util.ImageUtils.convertBitmapToBase64(bmp, maxDim = 1280, quality = 85)
+            }.also { photoBase64 = it }
+            foodRepository.estimateMealPhoto(listOf(b64 to "image/jpeg"), note.trim().ifBlank { null })
+                .onSuccess { est ->
+                    _photoState.value = if (est.items.isEmpty()) PhotoState.Failed(bmp, "No food found in that photo. Try again closer up, or in better light.")
+                    else PhotoState.Ready(bmp, est)
+                }
+                .onFailure { _photoState.value = PhotoState.Failed(bmp, it.message ?: "Couldn't estimate that photo") }
+        }
+    }
+
+    fun dismissPhoto() {
+        photoJob?.cancel()
+        _photoState.value = PhotoState.Idle
+        photoBitmap = null
+        photoBase64 = null
+    }
+
+    /** The picked foods from a photo go in the tray at the estimated weight, ready to adjust and log. */
+    fun stagePhotoItems(items: List<com.bytelog.app.data.remote.PhotoMealItem>) {
+        if (items.isEmpty()) return
+        stageEntries(items.map { photoEntry(it) })
+        dismissPhoto()
+    }
+
+    private fun photoEntry(item: com.bytelog.app.data.remote.PhotoMealItem): FoodEntry {
+        val grams = item.grams.takeIf { it > 0f }
+        return FoodEntry(
+            id = UUID.randomUUID().toString(),
+            foodId = null,
+            foodName = item.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+            brandName = "Photo estimate",
+            mealTypeId = targetMealTypeId,
+            mealName = targetMealName,
+            quantity = grams ?: 1f,
+            unit = if (grams != null) "g" else "serving",
+            calories = item.calories, protein = item.protein, carbs = item.carbs, fat = item.fat,
+            entryDate = targetDate.ifBlank { java.time.LocalDate.now().toString() },
+            syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT
+        )
+    }
+
     /**
      * Continuous burst barcode scanner handler.
      */

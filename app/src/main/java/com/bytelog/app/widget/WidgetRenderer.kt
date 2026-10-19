@@ -98,6 +98,9 @@ object WidgetRenderer {
             cv.wavyBar(140f, by, 204f, 1.6f, 14f, fraction(vg.first, vg.second), 4f, color)
         }
 
+        // How long since food was last eaten, under the macros
+        d.fastingLabel?.let { cv.text(it, 344f, 113f, 10.5f, 700, c.muted, Paint.Align.RIGHT, 0.3f) }
+
         // water: one pill that fills as you drink, with the add button built in
         val pill = RectF(14f, 120f, 204f, 158f)
         val pillPath = Path().apply { addRoundRect(pill, 19f, 19f, Path.Direction.CW) }

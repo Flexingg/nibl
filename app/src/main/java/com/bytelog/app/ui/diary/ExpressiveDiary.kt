@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalDrink
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -637,7 +638,9 @@ fun ExpressiveTopBar(
     onSync: () -> Unit,
     onChat: () -> Unit,
     onSettings: () -> Unit,
-    onFamily: (() -> Unit)? = null
+    onFamily: (() -> Unit)? = null,
+    /** Shown beside the date (the fasting timer). */
+    badge: (@Composable () -> Unit)? = null
 ) {
     val cs = MaterialTheme.colorScheme
     val reduce = LocalReduceMotion.current
@@ -679,8 +682,13 @@ fun ExpressiveTopBar(
                         letterSpacing = (-0.5).sp
                     )
                 }
-                Text(subtitle, color = cs.onSurfaceVariant, fontSize = 14.sp, maxLines = 1,
-                    modifier = Modifier.graphicsLayer { alpha = clamp01(1f - clamp01(fraction()) * 2.2f) })
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.graphicsLayer { alpha = clamp01(1f - clamp01(fraction()) * 2.2f) }
+                ) {
+                    Text(subtitle, color = cs.onSurfaceVariant, fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                    if (badge != null) { Spacer(Modifier.width(8.dp)); badge() }
+                }
             }
         },
         modifier = Modifier.fillMaxWidth()
@@ -830,9 +838,10 @@ fun DiaryFabMenu(expanded: Boolean, onExpandedChange: (Boolean) -> Unit, items: 
 }
 
 /** Default menu entries for the Diary. */
-fun diaryMenuItems(onSearch: () -> Unit, onScan: () -> Unit, onImport: () -> Unit, onAsk: () -> Unit) = listOf(
+fun diaryMenuItems(onSearch: () -> Unit, onScan: () -> Unit, onImport: () -> Unit, onAsk: () -> Unit, onPhoto: (() -> Unit)? = null) = listOfNotNull(
     FabMenuItem("Ask Sparky", Icons.Default.AutoAwesome, onAsk),
     FabMenuItem("Import recipe", Icons.AutoMirrored.Filled.MenuBook, onImport),
+    onPhoto?.let { FabMenuItem("Log from photo", Icons.Default.PhotoCamera, it) },
     FabMenuItem("Scan barcode", Icons.Default.QrCodeScanner, onScan),
     FabMenuItem("Search food", Icons.Default.Search, onSearch)
 )

@@ -389,6 +389,10 @@ class FoodRepository(
         calories = entry.calories, protein = entry.protein, carbs = entry.carbs, fat = entry.fat, fiber = 0f
     )
 
+    /** Sparky's AI estimate of a photographed meal, food by food. */
+    suspend fun estimateMealPhoto(images: List<Pair<String, String>>, note: String?) =
+        sparkyApiClient.estimateMealPhoto(images, note)
+
     /** True once anything has ever been logged on this phone. */
     suspend fun hasAnyEntries(): Boolean = withContext(Dispatchers.IO) { foodEntryDao.hasAnyEntries() }
 

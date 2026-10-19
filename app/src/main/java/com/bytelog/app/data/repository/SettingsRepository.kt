@@ -36,6 +36,7 @@ class SettingsRepository(
         val KEY_REMINDER_HOUR = androidx.datastore.preferences.core.intPreferencesKey("reminder_hour")
         val KEY_REMINDER_MINUTE = androidx.datastore.preferences.core.intPreferencesKey("reminder_minute")
         val KEY_REMINDER_SMART_NUDGE = androidx.datastore.preferences.core.booleanPreferencesKey("reminder_smart_nudge")
+        val KEY_WEEKLY_REVIEW_DISMISSED = androidx.datastore.preferences.core.stringPreferencesKey("weekly_review_dismissed")
 
         val KEY_AUTO_ADJUST_CALORIES = androidx.datastore.preferences.core.booleanPreferencesKey("auto_adjust_calories")
         val KEY_CALORIE_GOAL_MODE = stringPreferencesKey("calorie_goal_mode")
@@ -112,6 +113,13 @@ class SettingsRepository(
 
     val reminderSmartNudge: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_REMINDER_SMART_NUDGE] ?: true
+    }
+
+    /** The last day of the week whose review was closed, so it doesn't come back for that week. */
+    val weeklyReviewDismissed: Flow<String> = context.dataStore.data.map { prefs -> prefs[KEY_WEEKLY_REVIEW_DISMISSED] ?: "" }
+
+    suspend fun dismissWeeklyReview(weekEnd: String) {
+        context.dataStore.edit { it[KEY_WEEKLY_REVIEW_DISMISSED] = weekEnd }
     }
 
     val weightUnit: Flow<String> = context.dataStore.data.map { prefs ->
