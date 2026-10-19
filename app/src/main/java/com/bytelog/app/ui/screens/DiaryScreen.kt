@@ -131,6 +131,7 @@ fun DiaryScreen(
     onImportRecipe: () -> Unit,
     onNavigateToSearch: (mealTypeId: String, mealName: String, date: String) -> Unit,
     onNavigateToBarcode: (mealTypeId: String, mealName: String, date: String) -> Unit,
+    onNavigateToPhoto: (mealTypeId: String, mealName: String, date: String) -> Unit = { _, _, _ -> },
     onNavigateToChat: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onOpenRecentMeals: () -> Unit,
@@ -199,6 +200,15 @@ fun DiaryScreen(
         }
     }
     val mealShortcuts by viewModel.mealShortcuts.collectAsState()
+    val whatFits by viewModel.whatFits.collectAsState()
+    val weeklyReview by viewModel.weeklyReview.collectAsState()
+
+    // Fasting timer: time since food was last eaten, shown on today's diary once it's over an hour
+    val lastMealAt by viewModel.lastMealAt.collectAsState()
+    var clock by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { clock = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) } }
+    val fastText = lastMealAt?.let { clock - it }?.takeIf { selectedDate == LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) && it >= com.bytelog.app.data.repository.Fasting.SHOW_AFTER_MS }
+        ?.let { "Fasting " + com.bytelog.app.data.repository.Fasting.format(it) }
     val waterSizes = remember(waterContainers, defaultContainerOz, defaultContainerName) {
         val out = LinkedHashMap<String, Float>()
         waterContainers.forEach { c -> if (c.volumeOz >= 1f && kotlin.math.abs(c.volumeOz - defaultContainerOz) >= 0.5f) out.putIfAbsent(c.name, c.volumeOz) }
@@ -331,7 +341,7 @@ fun DiaryScreen(
                 fraction = headerFraction,
                 date = selectedDate,
                 title = describeDay(selectedDate),
-                subtitle = dayDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+                subtitle = dayDate.format(DateTimeFormatter.ofPattern(if (fastText != null) "EEE, MMM d" else "EEEE, MMMM d")),
                 syncing = isSyncing,
                 onSync = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -339,7 +349,8 @@ fun DiaryScreen(
                 },
                 onChat = onNavigateToChat,
                 onSettings = onNavigateToSettings,
-                onFamily = if (familyViewModel != null) onOpenFamily else null
+                onFamily = if (familyViewModel != null) onOpenFamily else null,
+                badge = fastText?.let { t -> { com.bytelog.app.ui.diary.FastingPill(t) } }
             )
 
           // Header and list: swipe sideways here to change day
@@ -426,6 +437,16 @@ fun DiaryScreen(
                     .nestedScroll(headerState.connection),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                weeklyReview?.let { review ->
+                    item(key = "weekly_review") {
+                      Box(Modifier.hideWhenScrolledAway(listState, "weekly_review")) {
+                        com.bytelog.app.ui.diary.WeeklyReviewCard(review, weightUnit, onDismiss = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.dismissWeeklyReview(review)
+                        })
+                      }
+                    }
+                }
                 if (activeBatches.isNotEmpty()) {
                     item(key = "fridge") {
                       Box(Modifier.hideWhenScrolledAway(listState, "fridge")) {
@@ -673,6 +694,24 @@ fun DiaryScreen(
                     }
                 }
 
+                if (whatFits.isNotEmpty()) {
+                    item(key = "what_fits") {
+                        val fitMeal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
+                        val fitMealName = fitMeal.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                        com.bytelog.app.ui.diary.WhatFitsCard(
+                            caloriesLeft = (dailySummary.targetCalories - dailySummary.totalCalories).roundToInt(),
+                            proteinLeft = (dailySummary.targetProtein - dailySummary.totalProtein).roundToInt(),
+                            options = whatFits,
+                            mealName = fitMealName,
+                            onLog = { option ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.logFit(option, fitMeal.id, fitMealName, showLogged)
+                            },
+                            modifier = Modifier.hideWhenScrolledAway(listState, "what_fits")
+                        )
+                    }
+                }
+
                 // Quick Meal Selection Action Bar
                 item(key = "quick_meals") {
                     val candidateMeals = remember(mealTypes) {
@@ -851,7 +890,11 @@ fun DiaryScreen(
                     onNavigateToBarcode(meal.id, meal.name, selectedDate)
                 },
                 onImport = onImportRecipe,
-                onAsk = onNavigateToChat
+                onAsk = onNavigateToChat,
+                onPhoto = {
+                    val meal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
+                    onNavigateToPhoto(meal.id, meal.name, selectedDate)
+                }
             )
         )
       }

@@ -15,6 +15,12 @@ import com.bytelog.app.data.repository.FoodRepository
 import com.bytelog.app.data.repository.LoggedBatch
 import com.bytelog.app.data.repository.MealPatterns
 import com.bytelog.app.data.repository.MealShortcuts
+import com.bytelog.app.data.repository.FitOption
+import com.bytelog.app.data.repository.Fasting
+import com.bytelog.app.data.repository.Remaining
+import com.bytelog.app.data.repository.WeeklyReview
+import com.bytelog.app.data.repository.WhatFits
+import com.bytelog.app.data.repository.asDayWeights
 import com.bytelog.app.data.repository.MealTemplateRepository
 import com.bytelog.app.data.repository.SettingsRepository
 import com.bytelog.app.data.repository.WaterRepository
@@ -33,6 +39,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -322,6 +329,47 @@ class DiaryViewModel(
             .associate { MealPatterns.mealKey(it.name) to MealShortcuts.of(history, it.name, day) }
             .filterValues { !it.isEmpty }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    // ----- Insights: what fits, the weekly review, the fast -----
+
+    private fun todayIso() = LocalDate.now().format(dateFormatter)
+
+    /** The day shown with the diary history before it (and the day itself). */
+    private val historyWithDay = _selectedDate.flatMapLatest { d ->
+        val day = runCatching { LocalDate.parse(d) }.getOrElse { LocalDate.now() }
+        foodRepository.mealHistory(day, includeDay = true).map { day to it }
+    }
+
+    /** Foods you eat that fit what's left of today's goals (only for today). */
+    val whatFits: StateFlow<List<FitOption>> = combine(historyWithDay, dailySummary) { (day, history), s ->
+        if (day.toString() != todayIso()) return@combine emptyList()
+        val left = Remaining(s.targetCalories - s.totalCalories, s.targetProtein - s.totalProtein, s.targetCarbs - s.totalCarbs, s.targetFat - s.totalFat)
+        WhatFits.suggest(left, WhatFits.candidates(history.filter { it.entryDate != day.toString() }))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun logFit(option: FitOption, mealTypeId: String, mealName: String, onLogged: (LoggedBatch) -> Unit) =
+        logShortcut(option.foods, mealTypeId, mealName, onLogged)
+
+    /** The last seven days, shown on Sunday and Monday until closed. */
+    val weeklyReview: StateFlow<WeeklyReview?> = combine(
+        historyWithDay, dailySummary, allWeights, weightUnit, settingsRepository.weeklyReviewDismissed
+    ) { (day, history), s, weights, unit, dismissed ->
+        if (day.toString() != todayIso() || !WeeklyReview.isReviewDay(day)) return@combine null
+        val review = WeeklyReview.of(history, day, s.targetCalories, s.targetProtein,
+            weights.asDayWeights { com.bytelog.app.ui.components.displayWeight(it, unit) })
+        review.takeIf { it.end.toString() != dismissed && it.daysLogged > 0 }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun dismissWeeklyReview(review: WeeklyReview) {
+        viewModelScope.launch { settingsRepository.dismissWeeklyReview(review.end.toString()) }
+    }
+
+    /** When food was last eaten (today or yesterday), for the fasting timer. */
+    val lastMealAt: StateFlow<Long?> = kotlinx.coroutines.flow.flow {
+        while (true) { emit(LocalDate.now()); kotlinx.coroutines.delay(60_000) }
+    }.distinctUntilChanged().flatMapLatest { today ->
+        foodRepository.getEntriesInRange(today.minusDays(1).toString(), today.toString()).map { Fasting.lastMealAt(it) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /** Foods logged from search that the diary should offer to undo. */
     val pendingUndo: StateFlow<LoggedBatch?> = foodRepository.pendingUndo.asStateFlow()

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeRight
 import androidx.room.Room
@@ -134,6 +135,13 @@ class QuickerLoggingTest {
         File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** Scrolls the diary list to the item with [key]. */
+    private fun scrollTo(key: Any) {
+        val lists = compose.onAllNodes(androidx.compose.ui.test.hasScrollToKeyAction())
+        (0 until lists.fetchSemanticsNodes().size).firstOrNull { i -> runCatching { lists[i].performScrollToKey(key) }.isSuccess }
+        compose.waitForIdle()
+    }
+
     private fun todays() = runBlocking { db.foodEntryDao().getEntriesForDate(today.toString()).first() }
 
     @Test
@@ -198,11 +206,15 @@ class QuickerLoggingTest {
                 DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
             }
         }
+        // On Sundays and Mondays the weekly review sits above; scroll down to the meal shortcuts
+        waitFor { diaryVm.mealShortcuts.value.isNotEmpty() }
+        scrollTo("quick_meals")
         waitFor { compose.onAllNodesWithText("Your usual").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Same as yesterday").assertExists()
         shot("quick_4_diary_shortcuts")
 
         // Tapping a food opens its amount editor in place; + changes it, saved after a short pause
+        scrollTo("Lunch")
         compose.onNodeWithText("Chicken Breast").performClick()
         compose.mainClock.advanceTimeBy(400) // past the double-tap window (a double tap still adds a serving)
         waitFor { compose.onAllNodesWithContentDescription("More").fetchSemanticsNodes().isNotEmpty() }
@@ -216,6 +228,7 @@ class QuickerLoggingTest {
         compose.mainClock.advanceTimeBy(400)
 
         // One tap logs the usual breakfast, with an undo
+        scrollTo("quick_meals")
         compose.onNodeWithText("Your usual").performClick()
         waitFor { todays().count { it.mealName == "Breakfast" } == 2 }
         assertEquals(2f, todays().first { it.foodId == eggs.id }.quantity, 0f)

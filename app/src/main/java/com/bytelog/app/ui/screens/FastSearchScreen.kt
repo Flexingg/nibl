@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
@@ -105,7 +106,9 @@ fun FastSearchScreen(
     viewModel: FastSearchViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToBarcode: () -> Unit,
-    onEditFood: (String) -> Unit = {}
+    onEditFood: (String) -> Unit = {},
+    /** Opened from "Log from photo": the camera starts straight away. */
+    startWithPhoto: Boolean = false
 ) {
     val availableMealTypes by viewModel.availableMealTypes.collectAsState()
     val selectedMealName by viewModel.selectedMealName.collectAsState()
@@ -147,6 +150,29 @@ fun FastSearchScreen(
     }
 
     val haptic = LocalHapticFeedback.current
+
+    // Photo logging: the AI lists each food on the plate; the chosen ones join the tray
+    val photoState by viewModel.photoState.collectAsState()
+    val photoCapture = com.bytelog.app.ui.logging.rememberMealPhotoCapture(
+        onPhoto = { focusManager.clearFocus(); viewModel.estimatePhoto(it) },
+        onError = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+    )
+    var photoStarted by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(startWithPhoto) {
+        if (startWithPhoto && !photoStarted) { photoStarted = true; photoCapture.takePhoto() }
+    }
+    com.bytelog.app.ui.logging.PhotoEstimateSheet(
+        state = photoState,
+        mealName = selectedMealName,
+        onAdd = { items ->
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            viewModel.stagePhotoItems(items)
+        },
+        onRetake = photoCapture.takePhoto,
+        onGallery = photoCapture.pickFromGallery,
+        onReestimate = { viewModel.reestimatePhoto(it) },
+        onDismiss = { viewModel.dismissPhoto() }
+    )
 
     Scaffold(
         containerColor = ByteInkDark,
@@ -239,6 +265,11 @@ fun FastSearchScreen(
                         com.bytelog.app.ui.diary.GroupButton(
                             label = "Scan", icon = Icons.Default.QrCodeScanner, description = "Scan", weight = 1.1f,
                             container = cs.primaryContainer, content = cs.onPrimaryContainer, onClick = onNavigateToBarcode
+                        ),
+                        com.bytelog.app.ui.diary.GroupButton(
+                            icon = Icons.Default.PhotoCamera, description = "Log from photo", weight = 0.8f,
+                            container = cs.secondaryContainer, content = cs.onSecondaryContainer,
+                            onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); photoCapture.takePhoto() }
                         ),
                         com.bytelog.app.ui.diary.GroupButton(
                             icon = Icons.Default.Mic, description = "Voice Log", weight = 0.8f,

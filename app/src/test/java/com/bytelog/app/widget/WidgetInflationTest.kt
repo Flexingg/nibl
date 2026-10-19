@@ -52,7 +52,8 @@ class WidgetInflationTest {
         val view = place(WidgetKind.TODAY, R.layout.widget_today)
         view.findViewById<View>(R.id.tap_add).performClick()
         val add = shadowOf(app).nextStartedActivity
-        assertEquals("search:Lunch", add.getStringExtra(WidgetLinks.EXTRA_DEST))
+        val addDest = add.getStringExtra(WidgetLinks.EXTRA_DEST)
+        assertTrue(addDest, addDest in setOf("search:${WidgetData.Sample.suggestedMeal}", "search:${suggestedMealAt(java.time.LocalTime.now())}"))
 
         view.findViewById<View>(R.id.tap_open).performClick()
         assertEquals("diary", shadowOf(app).nextStartedActivity.getStringExtra(WidgetLinks.EXTRA_DEST))
@@ -63,11 +64,15 @@ class WidgetInflationTest {
 
     @Test fun quickLogButtonsOpenTheirMealAndTheScanner() {
         val view = place(WidgetKind.QUICK_LOG, R.layout.widget_quick_log)
-        val expected = mapOf(R.id.tap_breakfast to "search:Breakfast", R.id.tap_lunch to "search:Lunch", R.id.tap_dinner to "search:Dinner", R.id.tap_snack to "search:Snack", R.id.tap_scan to "scan:Lunch")
+        val expected = mapOf(R.id.tap_breakfast to "search:Breakfast", R.id.tap_lunch to "search:Lunch", R.id.tap_dinner to "search:Dinner", R.id.tap_snack to "search:Snack")
         for ((id, dest) in expected) {
             view.findViewById<View>(id).performClick()
             assertEquals(dest, shadowOf(app).nextStartedActivity.getStringExtra(WidgetLinks.EXTRA_DEST))
         }
+        // Scan goes to the meal for the time of day: the sample's, or now's if the widget's own refresh got there first
+        view.findViewById<View>(R.id.tap_scan).performClick()
+        val scan = shadowOf(app).nextStartedActivity.getStringExtra(WidgetLinks.EXTRA_DEST)
+        assertTrue(scan, scan in setOf("scan:${WidgetData.Sample.suggestedMeal}", "scan:${suggestedMealAt(java.time.LocalTime.now())}"))
     }
 
     @Test fun theFamilyWidgetOpensFamilyAndTheShareSheet() {

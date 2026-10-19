@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Meal photos taken for an AI estimate; kept in the cache and replaced by the next one -->
+<paths>
+    <cache-path name="meal_photos" path="meal_photos/" />
+</paths>
