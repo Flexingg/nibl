@@ -151,7 +151,7 @@ fun FoodEditorScreen(
                                     !s.dirty -> "No changes"
                                     else -> "Save to Sparky"
                                 },
-                                color = if (s.canSave) cs.onPrimary else cs.onSurfaceVariant, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
+                                color = if (s.canSave) cs.onPrimary else cs.onSurfaceVariant, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
@@ -218,7 +218,7 @@ fun FoodEditorScreen(
                     }
                     AnimatedVisibility(f.macrosDisagree) {
                         Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(cs.tertiaryContainer).padding(10.dp),
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.tertiaryContainer).padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.Default.Warning, null, tint = cs.onTertiaryContainer, modifier = Modifier.size(18.dp))
@@ -230,7 +230,7 @@ fun FoodEditorScreen(
                         }
                     }
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { showMore = !showMore }.padding(vertical = 6.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { showMore = !showMore }.padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("More nutrients", color = cs.primary, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -301,7 +301,7 @@ fun FoodEditorScreen(
 private fun Banner(text: String) {
     val cs = MaterialTheme.colorScheme
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.secondaryContainer).padding(14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(Icons.Default.ContentCopy, null, tint = cs.onSecondaryContainer, modifier = Modifier.size(20.dp))
@@ -314,10 +314,10 @@ private fun Banner(text: String) {
 private fun Section(title: String, content: @Composable () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer).padding(16.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(title.uppercase(), color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+        Text(title.uppercase(), color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
         content()
     }
 }
@@ -350,7 +350,7 @@ private fun Field(
                     value = value,
                     onValueChange = { raw -> onValue(if (keyboard == KeyboardType.Decimal) raw.replace(',', '.').filter { it.isDigit() || it == '.' } else raw) },
                     singleLine = true,
-                    textStyle = TextStyle(color = cs.onSurface, fontSize = if (big) 24.sp else 16.sp, fontWeight = if (big) FontWeight.ExtraBold else FontWeight.SemiBold),
+                    textStyle = TextStyle(color = cs.onSurface, fontSize = if (big) 24.sp else 16.sp, fontWeight = if (big) FontWeight.SemiBold else FontWeight.SemiBold),
                     cursorBrush = SolidColor(cs.primary),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = keyboard, imeAction = ImeAction.Next,

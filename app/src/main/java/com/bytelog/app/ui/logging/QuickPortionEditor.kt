@@ -95,7 +95,7 @@ fun QuickPortionEditor(
                     color = cs.onSurfaceVariant, fontSize = 12.sp
                 )
             }
-            Text("${m.calories.roundToInt()}", color = cs.primary, fontSize = 26.sp, fontWeight = FontWeight.Black)
+            Text("${m.calories.roundToInt()}", color = cs.primary, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
             Text(" kcal", color = cs.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
             Spacer(Modifier.width(4.dp))
             if (onEditFood != null) {
@@ -128,7 +128,7 @@ fun QuickPortionEditor(
                             cleaned.toFloatOrNull()?.takeIf { it > 0f }?.let { onChange(portion.copy(quantity = it)) }
                         },
                         singleLine = true,
-                        textStyle = TextStyle(color = cs.onSurface, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.End),
+                        textStyle = TextStyle(color = cs.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End),
                         cursorBrush = SolidColor(cs.primary),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),

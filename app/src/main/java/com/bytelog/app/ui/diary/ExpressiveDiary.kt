@@ -41,6 +41,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -75,6 +78,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.bytelog.app.ui.theme.GlassLevel
+import com.bytelog.app.ui.theme.LocalFluid
+import com.bytelog.app.ui.theme.glass
+import com.bytelog.app.ui.theme.touchGlow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -235,7 +242,7 @@ fun CalorieHero(eaten: Int, goal: Int, progress: Float, shape: BlobShape, fracti
             modifier = Modifier.graphicsLayer { alpha = clamp01(1f - clamp01(fraction()) * 2.6f) }
         ) {
             val shown = rememberCountUp(eaten)
-            Text(String.format(Locale.getDefault(), "%,d", shown), color = cs.onPrimaryContainer, fontSize = 36.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            Text(String.format(Locale.getDefault(), "%,d", shown), color = cs.onPrimaryContainer, fontSize = 36.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text(
                 String.format(Locale.getDefault(), "OF %,d KCAL", goal),
                 color = cs.onPrimaryContainer.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, maxLines = 1
@@ -279,7 +286,7 @@ private fun MacroRow(label: String, value: Float, target: Float, color: Color) {
             Text(label, color = cs.onSurfaceVariant, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, modifier = Modifier.weight(1f))
             Text("/ ${target.roundToInt()}", color = cs.onSurfaceVariant, fontSize = 11.sp)
         }
-        Text("${value.roundToInt()} g", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+        Text("${value.roundToInt()} g", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         WavyLinearProgress(p, color, Modifier.fillMaxWidth(), amplitude = 2.2.dp, wavelength = 16.dp)
     }
 }
@@ -292,7 +299,7 @@ fun HeroStrip(summary: DailySummary) {
     Row(Modifier.fillMaxSize().padding(start = 64.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(String.format(Locale.getDefault(), "%,d", rememberCountUp(summary.totalCalories.roundToInt())), color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                Text(String.format(Locale.getDefault(), "%,d", rememberCountUp(summary.totalCalories.roundToInt())), color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text(
                     String.format(Locale.getDefault(), " / %,d", summary.targetCalories.roundToInt()),
                     color = cs.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(bottom = 2.dp)
@@ -319,7 +326,7 @@ private fun SmallRing(letter: String, progress: Float, color: Color) {
             drawArc(track, 0f, 360f, false, Offset(inset, inset), arc, style = Stroke(sw))
             drawArc(color, -90f, 360f * clamp01(p), false, Offset(inset, inset), arc, style = Stroke(sw, cap = StrokeCap.Round))
         }
-        Text(letter, color = color, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+        Text(letter, color = color, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -366,9 +373,9 @@ fun WaterExpanded(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("HYDRATION", color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
-                Text("${currentOz.roundToInt()} / ${targetOz.roundToInt()} oz", color = cs.onSurface, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
+                Text("${currentOz.roundToInt()} / ${targetOz.roundToInt()} oz", color = cs.onSurface, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
             }
-            Text("${(clamp01(progress) * 100).roundToInt()}%", color = x.water, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+            Text("${(clamp01(progress) * 100).roundToInt()}%", color = x.water, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
         WavyLinearProgress(p, x.water, Modifier.fillMaxWidth(), wavelength = 20.dp)
         ConnectedButtonGroup(
@@ -433,7 +440,7 @@ fun WaterPill(
         WaterBadge(currentOz, 34.dp)
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("${currentOz.roundToInt()}", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                Text("${currentOz.roundToInt()}", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text("/${targetOz.roundToInt()} oz", color = cs.onSurfaceVariant, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
             WavyLinearProgress(p, x.water, Modifier.fillMaxWidth(), height = 8.dp, amplitude = 1.6.dp, wavelength = 12.dp, stroke = 3.dp)
@@ -443,7 +450,7 @@ fun WaterPill(
                 onLogDefault, Modifier.size(38.dp), x.waterContainer, description = "Log ${defaultOz.roundToInt()} oz",
                 onLongClick = if (sizes.isEmpty()) null else ({ haptic.performHapticFeedback(HapticFeedbackType.LongPress); sizeMenu = true })
             ) {
-                Text("+${defaultOz.roundToInt()}", color = x.onWaterContainer, fontSize = 11.5.sp, fontWeight = FontWeight.Black)
+                Text("+${defaultOz.roundToInt()}", color = x.onWaterContainer, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
             }
             WaterSizeMenu(sizeMenu, { sizeMenu = false }, sizes, onLogAmount, onCustom)
         }
@@ -472,7 +479,7 @@ fun WeightExpanded(weight: Float?, unit: String, delta: Float?, recent: List<Flo
             Text("BODYWEIGHT", color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp)
             if (weight != null) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(String.format(Locale.US, "%.1f", weight), color = cs.onSurface, fontSize = 30.sp, fontWeight = FontWeight.Black)
+                    Text(String.format(Locale.US, "%.1f", weight), color = cs.onSurface, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
                     Text(" $unit", color = cs.onSurfaceVariant, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 4.dp))
                 }
             } else {
@@ -491,8 +498,8 @@ private fun DeltaChip(delta: Float) {
     val color = if (delta < 0) x.protein else MaterialTheme.colorScheme.primary
     Text(
         (if (delta < 0) "↓" else "↑") + String.format(Locale.US, "%.1f", abs(delta)),
-        color = color, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold,
-        modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(color.copy(alpha = 0.14f)).padding(horizontal = 8.dp, vertical = 3.dp)
+        color = color, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = 0.14f)).padding(horizontal = 8.dp, vertical = 3.dp)
     )
 }
 
@@ -533,7 +540,7 @@ fun WeightPill(weight: Float?, unit: String, delta: Float?, shape: BlobShape) {
     Row(Modifier.fillMaxSize().padding(start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         WeightBadge(34.dp, shape)
         Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
-            Text(weight?.let { String.format(Locale.US, "%.1f", it) } ?: "—", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            Text(weight?.let { String.format(Locale.US, "%.1f", it) } ?: "—", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text(" $unit", color = cs.onSurfaceVariant, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
         if (delta != null) DeltaChip(delta)
@@ -585,6 +592,7 @@ fun ConnectedButtonGroup(buttons: List<GroupButton>, modifier: Modifier = Modifi
                     .fillMaxSize()
                     .clip(RoundedCornerShape(topStart = start, bottomStart = start, topEnd = end, bottomEnd = end))
                     .background(b.container)
+                    .touchGlow()
                     .combinedClickable(interactionSource = source, indication = androidx.compose.material3.ripple(), onClick = b.onClick, onLongClick = b.onLongClick)
                     .semantics { if (b.description != null) contentDescription = b.description },
                 horizontalArrangement = Arrangement.Center,
@@ -607,13 +615,12 @@ fun ConnectedButtonGroup(buttons: List<GroupButton>, modifier: Modifier = Modifi
 @Composable
 fun MorphButton(onClick: () -> Unit, modifier: Modifier, container: Color, description: String? = null, onLongClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val corner by animateDpAsState(if (pressed) 12.dp else 100.dp, fastSpatial(), label = "morph_btn")
     Box(
         modifier
-            .pressBounce(0.92f)
-            .clip(RoundedCornerShape(corner))
+            .pressBounce(0.93f)
+            .clip(RoundedCornerShape(percent = 50))
             .background(container)
+            .touchGlow()
             .then(
                 if (onLongClick == null) Modifier.clickable(interactionSource = source, indication = androidx.compose.material3.ripple(), onClick = onClick)
                 else Modifier.combinedClickable(interactionSource = source, indication = androidx.compose.material3.ripple(), onClick = onClick, onLongClick = onLongClick)
@@ -646,20 +653,20 @@ fun ExpressiveTopBar(
     val reduce = LocalReduceMotion.current
     Layout(
         content = {
-            Row(Modifier.layoutId("actions"), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onSync, modifier = Modifier.pressBounce(0.85f)) {
+            Row(Modifier.layoutId("actions"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(onClick = onSync, modifier = Modifier.pressBounce(0.88f).size(44.dp).glass(GlassLevel.Thin, CircleShape)) {
                     if (syncing) MorphingLoadingIndicator(indicatorSize = 30.dp)
                     else Icon(Icons.Default.Sync, contentDescription = "Sync with Sparky", tint = cs.onSurfaceVariant)
                 }
                 if (onFamily != null) {
-                    IconButton(onClick = onFamily, modifier = Modifier.pressBounce(0.85f)) {
+                    IconButton(onClick = onFamily, modifier = Modifier.pressBounce(0.88f).size(44.dp).glass(GlassLevel.Thin, CircleShape)) {
                         Icon(Icons.Default.Groups, contentDescription = "Family", tint = cs.onSurfaceVariant)
                     }
                 }
-                IconButton(onClick = onChat, modifier = Modifier.pressBounce(0.85f)) {
+                IconButton(onClick = onChat, modifier = Modifier.pressBounce(0.88f).size(44.dp).glass(GlassLevel.Thin, CircleShape)) {
                     Icon(Icons.Default.AutoAwesome, contentDescription = "Sparky AI Coach", tint = cs.primary)
                 }
-                IconButton(onClick = onSettings, modifier = Modifier.pressBounce(0.85f)) {
+                IconButton(onClick = onSettings, modifier = Modifier.pressBounce(0.88f).size(44.dp).glass(GlassLevel.Thin, CircleShape)) {
                     Icon(Icons.Default.Settings, contentDescription = "Settings", tint = cs.onSurfaceVariant)
                 }
             }
@@ -677,7 +684,7 @@ fun ExpressiveTopBar(
                     label = "day_title"
                 ) { (_, t) ->
                     Text(
-                        t, color = cs.onSurface, fontWeight = FontWeight.Black, maxLines = 1,
+                        t, color = cs.onSurface, fontWeight = FontWeight.SemiBold, maxLines = 1,
                         fontSize = lerpF(40f, 22f, clamp01(fraction())).sp,
                         letterSpacing = (-0.5).sp
                     )
@@ -733,20 +740,19 @@ fun DayToolbar(
     val cs = MaterialTheme.colorScheme
     val reduce = LocalReduceMotion.current
     val offset by animateFloatAsState(if (hidden) 1f else 0f, if (reduce) spring(stiffness = 10_000f) else fastSpatial(), label = "toolbar")
+    // A floating glass island over the diary, which blurs beneath it
     Row(
         modifier
             .graphicsLayer { translationY = offset * 110.dp.toPx(); alpha = 1f - offset * 0.3f }
-            .height(64.dp)
-            .shadow(6.dp, RoundedCornerShape(32.dp))
-            .clip(RoundedCornerShape(32.dp))
-            .background(cs.surfaceContainerHigh)
-            .padding(horizontal = 8.dp),
+            .height(60.dp)
+            .glass(GlassLevel.Thin, RoundedCornerShape(percent = 50), elevation = 8.dp)
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         ToolbarIcon(Icons.Default.ChevronLeft, "Previous Day", onPrev)
-        MorphButton(onToday, Modifier.height(48.dp).width(104.dp), cs.secondaryContainer, description = "Go to today") {
-            Text(dayLabel, color = cs.onSecondaryContainer, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        MorphButton(onToday, Modifier.height(46.dp).width(104.dp), cs.primary.copy(alpha = 0.14f), description = "Go to today") {
+            Text(dayLabel, color = cs.primary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 10.dp))
         }
         ToolbarIcon(Icons.Default.ChevronRight, "Next Day", onNext)
@@ -775,7 +781,7 @@ fun DiaryFabMenu(expanded: Boolean, onExpandedChange: (Boolean) -> Unit, items: 
         val scrim by animateFloatAsState(if (expanded) 1f else 0f, spring(stiffness = 1600f), label = "scrim")
         if (scrim > 0.01f) {
             Box(
-                Modifier.fillMaxSize().graphicsLayer { alpha = scrim }.background(cs.scrim.copy(alpha = 0.45f))
+                Modifier.fillMaxSize().graphicsLayer { alpha = scrim }.background(LocalFluid.current.scrim)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onExpandedChange(false) }
             )
         }
@@ -801,36 +807,41 @@ fun DiaryFabMenu(expanded: Boolean, onExpandedChange: (Boolean) -> Unit, items: 
                                 val s = lerpF(0.6f, 1f, v); scaleX = s; scaleY = s
                                 transformOrigin = TransformOrigin(1f, 0.5f)
                             }
-                            .height(56.dp),
-                        container = cs.primaryContainer
+                            .height(54.dp)
+                            .glass(GlassLevel.Regular, RoundedCornerShape(percent = 50), elevation = 6.dp),
+                        container = Color.Transparent
                     ) {
-                        Row(Modifier.padding(start = 18.dp, end = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(item.icon, contentDescription = null, tint = cs.onPrimaryContainer, modifier = Modifier.size(22.dp))
+                        Row(Modifier.padding(start = 16.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(32.dp).clip(RoundedCornerShape(percent = 50)).background(cs.primary.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                                Icon(item.icon, contentDescription = null, tint = cs.primary, modifier = Modifier.size(18.dp))
+                            }
                             Spacer(Modifier.width(12.dp))
-                            Text(item.label, color = cs.onPrimaryContainer, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(item.label, color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
             }
         }
         val open by animateFloatAsState(if (expanded) 1f else 0f, spec, label = "fab")
-        val corner = lerpF(20f, 28f, open).dp
+        // The add button: its own round accent island beside the toolbar, glowing softly in the accent colour
         Box(
             Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = lerpF(16f, 20f, open).dp, bottom = lerpF(18f, 22f, open).dp)
-                .size(lerpF(64f, 56f, open).dp)
+                .padding(end = 16.dp, bottom = 18.dp)
+                .size(60.dp)
                 .pressBounce(0.9f)
-                .shadow(6.dp, RoundedCornerShape(corner))
-                .clip(RoundedCornerShape(corner))
-                .background(if (open > 0.5f) cs.primary else cs.primaryContainer)
+                .shadow(12.dp, CircleShape, ambientColor = cs.primary.copy(alpha = 0.5f), spotColor = cs.primary.copy(alpha = 0.5f))
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(lerp(cs.primary, Color.White, 0.12f), cs.primary)))
+                .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.05f))), CircleShape)
+                .touchGlow()
                 .clickable { onExpandedChange(!expanded) }
                 .semantics { contentDescription = if (expanded) "Close menu" else "Add food" },
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 Icons.Default.Add, contentDescription = null,
-                tint = if (open > 0.5f) cs.onPrimary else cs.onPrimaryContainer,
+                tint = cs.onPrimary,
                 modifier = Modifier.size(26.dp).graphicsLayer { rotationZ = open * 135f }
             )
         }

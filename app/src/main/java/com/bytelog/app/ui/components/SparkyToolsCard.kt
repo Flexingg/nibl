@@ -41,7 +41,7 @@ fun SparkyToolsCard(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("SPARKY AI TOOLS", color = ByteTomato, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+        Text("SPARKY AI TOOLS", color = ByteTomato, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
         Text(
             "What Sparky can do when you chat with it or import a recipe. Tools run on your Sparky server and can read and change your data.",
             color = ByteCreamMuted, fontSize = 12.sp
@@ -56,7 +56,7 @@ fun SparkyToolsCard(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .clickable { onChange(if (on) enabled - c.slug else enabled + c.slug) }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically

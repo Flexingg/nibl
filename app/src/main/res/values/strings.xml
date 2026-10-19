@@ -1,15 +1,15 @@
 <resources>
-    <string name="app_name">ByteLog</string>
+    <string name="app_name">Nibl</string>
     <string name="tagline">Speed is the feature</string>
     <string name="search_foods_hint">Search foods, brands, or barcode…</string>
     <string name="log_meal">Log Meal</string>
     <string name="quick_add">Quick Add</string>
     <string name="barcode_scan">Scan Barcode</string>
-    <string name="widget_today_label">ByteLog Today</string>
-    <string name="widget_calories_label">ByteLog Calories</string>
-    <string name="widget_water_label">ByteLog Water</string>
-    <string name="widget_quick_log_label">ByteLog Quick log</string>
-    <string name="widget_family_label">ByteLog Family</string>
+    <string name="widget_today_label">Nibl Today</string>
+    <string name="widget_calories_label">Nibl Calories</string>
+    <string name="widget_water_label">Nibl Water</string>
+    <string name="widget_quick_log_label">Nibl Quick log</string>
+    <string name="widget_family_label">Nibl Family</string>
     <string name="widget_today_description">Calories, macros and water for today, with one-tap add food and water</string>
     <string name="widget_calories_description">Calories eaten today against your goal</string>
     <string name="widget_water_description">Today\'s water; tap the glass to add a bottle</string>

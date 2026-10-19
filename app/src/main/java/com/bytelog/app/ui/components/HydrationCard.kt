@@ -68,7 +68,7 @@ fun HydrationCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(ByteSurfaceDark)
             .combinedClickable(
                 onClick = {
@@ -111,7 +111,7 @@ fun HydrationCard(
                         text = "${currentOz.roundToInt()} / ${targetOz.roundToInt()} oz",
                         color = ByteCream,
                         fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
@@ -181,9 +181,9 @@ fun HydrationCard(
                 modifier = Modifier
                     .weight(1.3f)
                     .pressBounce(0.93f)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(ByteSurfaceVariantDark)
-                    .border(1.dp, HydrationCyan.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                    .border(1.dp, HydrationCyan.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                     .combinedClickable(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -238,7 +238,7 @@ fun HydrationCard(
                 modifier = Modifier
                     .weight(1f)
                     .pressBounce(0.93f)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(ByteSurfaceVariantDark)
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -277,7 +277,7 @@ fun HydrationCard(
                 modifier = Modifier
                     .size(36.dp)
                     .pressBounce(0.88f)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(ByteSurfaceVariantDark)
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)

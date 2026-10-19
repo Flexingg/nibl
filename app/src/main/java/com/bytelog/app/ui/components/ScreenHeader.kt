@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bytelog.app.ui.diary.MorphButton
+import com.bytelog.app.ui.theme.GlassLevel
+import com.bytelog.app.ui.theme.glass
 import kotlin.math.roundToInt
 
 /**
@@ -51,7 +53,7 @@ fun ScreenHeader(
         Layout(
             content = {
                 Box(Modifier.layoutId("back")) {
-                    MorphButton(onBack, Modifier.size(44.dp), cs.surfaceContainerHigh, description = "Back") {
+                    MorphButton(onBack, Modifier.size(44.dp).glass(GlassLevel.Thin, androidx.compose.foundation.shape.CircleShape), androidx.compose.ui.graphics.Color.Transparent, description = "Back") {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = cs.onSurface)
                     }
                 }
@@ -60,7 +62,7 @@ fun ScreenHeader(
                     if (leading != null) { leading(); Box(Modifier.padding(start = 10.dp)) }
                     Column {
                         Text(
-                            title, color = cs.onSurface, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            title, color = cs.onSurface, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             fontSize = (34f + (21f - 34f) * fraction().coerceIn(0f, 1f)).sp, letterSpacing = (-0.4).sp
                         )
                         if (subtitle != null) {

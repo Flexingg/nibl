@@ -117,7 +117,7 @@ fun MyFoodsScreen(viewModel: MyFoodsViewModel, onBack: () -> Unit, onOpenFood: (
                                     color = cs.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            Text("${food.nutrients.calories.roundToInt()} kcal", color = cs.primary, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("${food.nutrients.calories.roundToInt()} kcal", color = cs.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             Icon(Icons.Default.ChevronRight, null, tint = cs.onSurfaceVariant)
                         }
                     }

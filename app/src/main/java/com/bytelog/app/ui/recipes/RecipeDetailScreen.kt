@@ -182,7 +182,7 @@ private fun RecipeDetailContent(
                     Text(
                         "Open original recipe",
                         color = MacroProtein, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(10.dp))
+                        modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(12.dp))
                             .clickable { runCatching { uri.openUri(url) } }
                     )
                 }

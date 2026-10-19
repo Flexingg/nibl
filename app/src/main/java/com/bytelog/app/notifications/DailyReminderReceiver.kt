@@ -46,10 +46,10 @@ class DailyReminderReceiver : BroadcastReceiver() {
                 var message: String
 
                 if (smartNudge && hasLoggedToday) {
-                    title = "ByteLog • Daily Check-in 🌟"
+                    title = "Nibl • Daily Check-in 🌟"
                     message = "Great progress today! Take a quick moment to log any remaining snacks and hit your water goal."
                 } else {
-                    title = "ByteLog • Time to log! 🍽️"
+                    title = "Nibl • Time to log! 🍽️"
                     message = "Don't break your streak! Take 30 seconds to log today's meals and hydration."
                 }
 
@@ -65,7 +65,7 @@ class DailyReminderReceiver : BroadcastReceiver() {
                     review.takeIf { it.daysLogged > 0 }?.let { com.bytelog.app.data.repository.WeeklyReview.summaryLine(it) }
                 }.getOrNull() else null
                 if (weekLine != null) {
-                    title = "ByteLog • Your week 📊"
+                    title = "Nibl • Your week 📊"
                     message = "$weekLine $message"
                 }
 

@@ -39,7 +39,7 @@ fun DailyMacroHeader(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(ByteSurfaceDark)
             .padding(16.dp)
     ) {
@@ -61,7 +61,7 @@ fun DailyMacroHeader(
                     text = "${summary.remainingCalories.roundToInt()} kcal",
                     color = ByteCream,
                     fontSize = 28.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.SemiBold
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
@@ -149,7 +149,7 @@ fun MacroMiniPill(
                 text = label,
                 color = color,
                 fontSize = 10.sp,
-                fontWeight = FontWeight.ExtraBold
+                fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = "${(target - current).coerceAtLeast(0f).roundToInt()}g left",

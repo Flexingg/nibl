@@ -78,7 +78,7 @@ fun CustomFoodDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {

@@ -74,7 +74,7 @@ fun WeightLogDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -118,7 +118,7 @@ fun WeightLogDialog(
                 // Unit Selector (lbs / kg)
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(ByteSurfaceVariantDark.copy(alpha = 0.5f))
                         .padding(4.dp)
                 ) {
@@ -181,7 +181,7 @@ fun WeightLogDialog(
                         val label = if (step > 0) "+$step" else "$step"
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(ByteSurfaceVariantDark)
                                 .clickable { adjustWeight(step) }
                                 .padding(horizontal = 14.dp, vertical = 8.dp),

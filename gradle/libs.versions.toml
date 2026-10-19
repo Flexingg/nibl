@@ -19,6 +19,7 @@ guava = "33.3.1-android"
 datastore = "1.1.2"
 workManager = "2.10.0"
 jsoup = "1.18.3"
+haze = "1.5.4"
 robolectric = "4.14.1"
 androidxTestCore = "1.6.1"
 junit = "4.13.2"
@@ -42,6 +43,9 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
+
+# Frosted glass (backdrop blur) for floating bars and sheets
+haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
 
 # Coroutines & Serialization
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }

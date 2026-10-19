@@ -65,7 +65,7 @@ fun BodyweightCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(24.dp))
             .combinedClickable(
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -80,7 +80,7 @@ fun BodyweightCard(
                     onOpenLogDialog()
                 }
             ),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = ByteCardDark)
     ) {
         Column(
@@ -163,7 +163,7 @@ fun BodyweightCard(
                             text = String.format(Locale.US, "%.1f", weightVal),
                             color = ByteCream,
                             fontSize = 28.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -237,9 +237,9 @@ fun BodyweightCard(
 
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(MacroCarbs.copy(alpha = 0.15f))
-                            .border(1.dp, MacroCarbs.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+                            .border(1.dp, MacroCarbs.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(

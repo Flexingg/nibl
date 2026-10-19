@@ -83,8 +83,8 @@ fun WeightVsCaloriesCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp)),
-        shape = RoundedCornerShape(28.dp),
+            .clip(RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = ByteCardDark)
     ) {
         Column(
@@ -136,7 +136,7 @@ fun WeightVsCaloriesCard(
                 // Range Selector Pills (7D, 14D, 30D, 90D)
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(ByteSurfaceVariantDark)
                         .padding(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -172,7 +172,7 @@ fun WeightVsCaloriesCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(ByteSurfaceVariantDark.copy(alpha = 0.5f))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,

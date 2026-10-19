@@ -162,7 +162,7 @@ fun PhotoEstimateContent(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = cs.primary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Log from a photo", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Log from a photo", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         }
         if (photo != null) {
             Image(
@@ -241,7 +241,7 @@ private fun ReadyEstimate(
                 if (item.confidence.equals("low", ignoreCase = true)) {
                     Text("unsure", color = cs.tertiary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 6.dp))
                 }
-                Text("${item.calories.roundToInt()}", color = cs.primary, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                Text("${item.calories.roundToInt()}", color = cs.primary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 Text(" kcal", color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -278,7 +278,7 @@ private fun ReadyEstimate(
             Spacer(Modifier.width(8.dp))
             Text(
                 if (chosen.isEmpty()) "Pick at least one food" else "Add ${chosen.size} for $mealName · $kcal kcal",
-                color = if (chosen.isNotEmpty()) cs.onPrimary else cs.onSurfaceVariant, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
+                color = if (chosen.isNotEmpty()) cs.onPrimary else cs.onSurfaceVariant, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
             )
         }
     }

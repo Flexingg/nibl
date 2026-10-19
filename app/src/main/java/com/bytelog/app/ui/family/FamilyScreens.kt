@@ -71,7 +71,7 @@ import kotlin.math.roundToInt
 fun Avatar(member: FamilyMember, size: Int = 44) {
     val cs = MaterialTheme.colorScheme
     Box(Modifier.size(size.dp).clip(CircleShape).background(cs.tertiaryContainer), contentAlignment = Alignment.Center) {
-        Text(member.initial, color = cs.onTertiaryContainer, fontSize = (size * 0.42f).sp, fontWeight = FontWeight.Black)
+        Text(member.initial, color = cs.onTertiaryContainer, fontSize = (size * 0.42f).sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -136,7 +136,7 @@ private fun MemberCard(member: FamilyMember, today: MemberToday?, modifier: Modi
     val cs = MaterialTheme.colorScheme
     val x = LocalByteExtraColors.current
     Column(
-        modifier.fillMaxWidth().pressBounce(0.98f).clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer)
+        modifier.fillMaxWidth().pressBounce(0.98f).clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer)
             .clickable(enabled = true, onClick = onClick).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -159,7 +159,7 @@ private fun MemberCard(member: FamilyMember, today: MemberToday?, modifier: Modi
         if (today != null) {
             val goal = today.goal ?: 0f
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(String.format(Locale.getDefault(), "%,d", today.calories.roundToInt()), color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                Text(String.format(Locale.getDefault(), "%,d", today.calories.roundToInt()), color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                 if (goal > 0f) Text(String.format(Locale.getDefault(), " / %,d kcal today", goal.roundToInt()), color = cs.onSurfaceVariant, fontSize = 13.sp, modifier = Modifier.padding(bottom = 3.dp))
                 else Text(" kcal today", color = cs.onSurfaceVariant, fontSize = 13.sp, modifier = Modifier.padding(bottom = 3.dp))
             }
@@ -215,7 +215,7 @@ fun MemberDiaryScreen(viewModel: MemberViewModel, onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { viewModel.shiftDay(-1) }) { Icon(Icons.Default.ChevronLeft, "Previous day", tint = cs.onSurface) }
                     Text(
-                        describe(s.date), color = cs.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Black,
+                        describe(s.date), color = cs.onSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center, modifier = Modifier.weight(1f)
                     )
                     IconButton(onClick = { viewModel.shiftDay(1) }, enabled = !isToday) {
@@ -256,9 +256,9 @@ fun MemberDiaryScreen(viewModel: MemberViewModel, onBack: () -> Unit) {
 private fun DayTotals(day: MemberDay, p: Color, c: Color, f: Color) {
     val cs = MaterialTheme.colorScheme
     val goals = day.goals
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(String.format(Locale.getDefault(), "%,d", day.calories.roundToInt()), color = cs.onSurface, fontSize = 32.sp, fontWeight = FontWeight.Black)
+            Text(String.format(Locale.getDefault(), "%,d", day.calories.roundToInt()), color = cs.onSurface, fontSize = 32.sp, fontWeight = FontWeight.SemiBold)
             Text(
                 if (goals != null && goals.calories > 0f) String.format(Locale.getDefault(), " / %,d kcal", goals.calories.roundToInt()) else " kcal",
                 color = cs.onSurfaceVariant, fontSize = 14.sp, modifier = Modifier.padding(bottom = 4.dp)
@@ -288,8 +288,8 @@ private fun MacroLine(label: String, value: Float, goal: Float?, color: Color) {
 private fun WeekBars(week: List<Pair<String, Float?>>, goal: Float?) {
     val cs = MaterialTheme.colorScheme
     val top = maxOf(goal ?: 0f, week.maxOf { it.second ?: 0f }, 1f)
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer).padding(16.dp)) {
-        Text("LAST 7 DAYS", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp)) {
+        Text("LAST 7 DAYS", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth().height(96.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
             week.forEachIndexed { i, (date, kcal) ->
@@ -313,7 +313,7 @@ private fun WeekBars(week: List<Pair<String, Float?>>, goal: Float?) {
 @Composable
 private fun MealBlock(mealName: String, entries: List<FoodEntry>, onCopyToMe: () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(mealName, color = cs.onSurface, fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -333,7 +333,7 @@ private fun MealBlock(mealName: String, entries: List<FoodEntry>, onCopyToMe: ()
                     Text(e.foodName, color = cs.onSurface, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("${com.bytelog.app.ui.logging.Portion(e.quantity, e.unit).label} • P ${e.protein.roundToInt()} C ${e.carbs.roundToInt()} F ${e.fat.roundToInt()}", color = cs.onSurfaceVariant, fontSize = 12.sp)
                 }
-                Text("${e.calories.roundToInt()} kcal", color = cs.primary, fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold)
+                Text("${e.calories.roundToInt()} kcal", color = cs.primary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }

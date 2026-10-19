@@ -50,14 +50,47 @@ private val SeedLight = with(SeedTones) {
     )
 }
 
-/** Expressive corner sizes: rounder fields, cards, sheets and dialogs. */
+/** The Living Flow corner family (see [FluidRadius]). */
 val ExpressiveShapes = androidx.compose.material3.Shapes(
-    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-    small = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-    medium = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-    large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(32.dp)
+    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(FluidRadius.xs),
+    small = androidx.compose.foundation.shape.RoundedCornerShape(FluidRadius.sm),
+    medium = androidx.compose.foundation.shape.RoundedCornerShape(FluidRadius.md),
+    large = androidx.compose.foundation.shape.RoundedCornerShape(FluidRadius.lg),
+    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(FluidRadius.xl)
 )
+
+/**
+ * Living Flow surfaces: a calm neutral base (soft grey in light, true black in dark), opaque white or lifted-grey
+ * cards, and the accent colours left as they are (tomato, or the wallpaper's accent with device colours on).
+ */
+fun fluidize(scheme: ColorScheme, dark: Boolean): ColorScheme = if (dark) scheme.copy(
+    background = Color(0xFF000000), surface = Color(0xFF000000), surfaceDim = Color(0xFF000000), surfaceBright = Color(0xFF2A2A2D),
+    surfaceContainerLowest = Color(0xFF000000), surfaceContainerLow = Color(0xFF121214), surfaceContainer = Color(0xFF1C1C1E),
+    surfaceContainerHigh = Color(0xFF2A2A2D), surfaceContainerHighest = Color(0xFF36363A),
+    onBackground = Color(0xFFEBEBEB), onSurface = Color(0xFFEBEBEB), onSurfaceVariant = Color(0xFFA1A1A6),
+    surfaceVariant = Color(0xFF2A2A2D), outline = Color(0xFF6E6E73), outlineVariant = Color(0x1AFFFFFF),
+    inverseSurface = Color(0xFFEBEBEB), inverseOnSurface = Color(0xFF1C1C1E), scrim = Color(0xFF000000)
+) else scheme.copy(
+    background = Color(0xFFF2F3F5), surface = Color(0xFFF2F3F5), surfaceDim = Color(0xFFE6E7EA), surfaceBright = Color(0xFFFFFFFF),
+    surfaceContainerLowest = Color(0xFFFFFFFF), surfaceContainerLow = Color(0xFFFFFFFF), surfaceContainer = Color(0xFFFFFFFF),
+    surfaceContainerHigh = Color(0xFFF2F3F5), surfaceContainerHighest = Color(0xFFE8E9EC),
+    onBackground = Color(0xFF1A1A1C), onSurface = Color(0xFF1A1A1C), onSurfaceVariant = Color(0xFF5E5F63),
+    surfaceVariant = Color(0xFFE8E9EC), outline = Color(0xFF8E8E93), outlineVariant = Color(0x14000000),
+    inverseSurface = Color(0xFF2A2A2D), inverseOnSurface = Color(0xFFF2F3F5), scrim = Color(0xFF000000)
+)
+
+/** Tomato accents tuned for the neutral Living Flow surfaces (contrast checked against white and #F2F3F5). */
+private val FluidSeedLight get() = fluidize(SeedLight.copy(
+    primary = Color(0xFFCC3B17), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFFFE3D9), onPrimaryContainer = Color(0xFF5A1500),
+    secondaryContainer = Color(0xFFFCE5DC), onSecondaryContainer = Color(0xFF4A1D10)
+), dark = false)
+
+private val FluidSeedDark get() = fluidize(SeedDark.copy(
+    primary = Color(0xFFFF7A55), onPrimary = Color(0xFF2B0A00),
+    primaryContainer = Color(0xFF5A2010), onPrimaryContainer = Color(0xFFFFDBD0),
+    secondaryContainer = Color(0xFF3A2620), onSecondaryContainer = Color(0xFFFFDBD0)
+), dark = true)
 
 /** Light, dark or follow the system. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -68,24 +101,22 @@ val supportsDeviceColors: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION
 @Composable
 fun byteColorScheme(darkTheme: Boolean, dynamicColor: Boolean): ColorScheme {
     val context = LocalContext.current
-    return when {
-        dynamicColor && supportsDeviceColors -> if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        darkTheme -> SeedDark
-        else -> SeedLight
-    }
+    return byteColorSchemeFor(context, darkTheme, dynamicColor)
 }
 
 /** The app's colours without a composition (home screen widgets): device colours when allowed, else the seed theme. */
 fun byteColorSchemeFor(context: android.content.Context, darkTheme: Boolean, dynamicColor: Boolean): ColorScheme = when {
-    dynamicColor && supportsDeviceColors -> if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    darkTheme -> SeedDark
-    else -> SeedLight
+    // The wallpaper supplies the accent; the surfaces stay Living Flow neutrals
+    dynamicColor && supportsDeviceColors -> fluidize(if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context), darkTheme)
+    darkTheme -> FluidSeedDark
+    else -> FluidSeedLight
 }
 
 @Composable
 fun ByteLogTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
+    reduceTransparency: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = byteColorScheme(darkTheme, dynamicColor)
@@ -104,7 +135,9 @@ fun ByteLogTheme(
 
     CompositionLocalProvider(
         LocalReduceMotion provides rememberReduceMotion(),
-        LocalByteExtraColors provides if (darkTheme) DarkExtraColors else LightExtraColors
+        LocalByteExtraColors provides if (darkTheme) DarkExtraColors else LightExtraColors,
+        LocalFluid provides if (darkTheme) DarkFluid else LightFluid,
+        LocalReduceTransparency provides reduceTransparency
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

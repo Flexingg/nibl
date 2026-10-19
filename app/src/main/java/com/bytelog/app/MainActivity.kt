@@ -95,12 +95,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by settingsRepo.themeMode.collectAsState(initial = com.bytelog.app.ui.theme.ThemeMode.SYSTEM)
             val deviceColors by settingsRepo.useDeviceColors.collectAsState(initial = true)
+            val reduceTransparency by settingsRepo.reduceTransparency.collectAsState(initial = false)
             val dark = when (themeMode) {
                 com.bytelog.app.ui.theme.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
                 com.bytelog.app.ui.theme.ThemeMode.LIGHT -> false
                 com.bytelog.app.ui.theme.ThemeMode.DARK -> true
             }
-            ByteLogTheme(darkTheme = dark, dynamicColor = deviceColors) {
+            ByteLogTheme(darkTheme = dark, dynamicColor = deviceColors, reduceTransparency = reduceTransparency) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

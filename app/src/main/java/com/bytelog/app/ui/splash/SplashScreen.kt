@@ -1,225 +1,241 @@
 package com.bytelog.app.ui.splash
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
-import com.bytelog.app.ui.theme.BrandCream
 import com.bytelog.app.ui.theme.BrandTomato
+import com.bytelog.app.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
+/** Seconds the splash runs before handing over (the pill has filled the screen by then). */
+private const val DURATION = 4.0f
+
+/** The design's easing between keyframes: fast out, long gentle settle. */
+private val FLOW = CubicBezierEasing(0.2f, 0.9f, 0.1f, 1f)
+
+/** A value over time from (seconds, value) keyframes, eased between them; held before the first and after the last. */
+private fun kf(t: Float, vararg k: Pair<Float, Float>): Float {
+    if (t <= k.first().first) return k.first().second
+    for (i in 1 until k.size) {
+        val (t1, v1) = k[i]
+        if (t <= t1) {
+            val (t0, v0) = k[i - 1]
+            val p = if (t1 == t0) 1f else FLOW.transform((t - t0) / (t1 - t0))
+            return v0 + (v1 - v0) * p
+        }
+    }
+    return k.last().second
+}
+
+private class Palette(
+    val bgTop: Color, val bgBottom: Color, val blooms: List<Color>,
+    val glass: Color, val solid: Color, val edgeTop: Color, val edgeBottom: Color, val sheen: Color,
+    val glow: Color, val ripple: Color, val text: Color, val text2: Color, val sweep: Color
+)
+
+private val LightPalette = Palette(
+    Color(0xFFFFF6F1), Color(0xFFFFE6DB),
+    listOf(Color(0x6BF2542D), Color(0x80FFAA6E), Color(0x4DFF7896)),
+    Color(0x8CFFFFFF), Color(0xFFF2F3F5), Color(0xBFFFFFFF), Color(0x33FFFFFF), Color(0x8CFFFFFF),
+    Color(0x59F2542D), Color(0xF2FFFFFF), Color(0xE624100A), Color(0x9424100A), Color(0xB3FFFFFF)
+)
+
+private val DarkPalette = Palette(
+    Color(0xFF120B09), Color(0xFF0A0706),
+    listOf(Color(0x6BF2542D), Color(0x4DFF9A5C), Color(0x47D6345A)),
+    Color(0x85281E1C), Color(0xFF000000), Color(0x29FFFFFF), Color(0x0DFFFFFF), Color(0x1AFFFFFF),
+    Color(0x73FF7A50), Color(0xD9FFAA82), Color(0xEBFFFFFF), Color(0x9EFFFFFF), Color(0x38FFFFFF)
+)
+
+/**
+ * Nibl's Living Flow splash. A frosted-glass droplet blooms over drifting light; the cookie inside is nibbled
+ * three times (each bite squishes the glass and sends out a ring of light); the disc flows into a floating pill
+ * that lights up "nibl" and drops a glowing dot on the i; then the pill grows into the app's background, so
+ * the first screen appears from it rather than after a cut. Reduced motion shows the finished pill briefly.
+ */
 @Composable
-fun AnimatedSplashScreen(
-    onSplashFinished: () -> Unit
-) {
-    // Animation drivers based on Splash.dc.html
-    val cookieScale = remember { Animatable(0f) }
-    val bite1Scale = remember { Animatable(0f) }
-    val bite2Scale = remember { Animatable(0f) }
-    val bite3Scale = remember { Animatable(0f) }
-
-    val line1Alpha = remember { Animatable(0f) }
-    val line1OffsetX = remember { Animatable(34f) }
-
-    val line2Alpha = remember { Animatable(0f) }
-    val line2OffsetX = remember { Animatable(44f) }
-
-    val line3Alpha = remember { Animatable(0f) }
-    val line3OffsetX = remember { Animatable(34f) }
-
-    val brandAlpha = remember { Animatable(0f) }
-    val brandOffsetY = remember { Animatable(16f) }
-    val overallAlpha = remember { Animatable(1f) }
+fun AnimatedSplashScreen(onSplashFinished: () -> Unit) {
+    val reduceMotion = LocalReduceMotion.current
+    val dark = isSystemInDarkTheme()
+    val c = if (dark) DarkPalette else LightPalette
+    val time = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        // 1. Pop cookie circle with slight overshoot spring
-        launch {
-            cookieScale.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 480, easing = FastOutSlowInEasing)
-            )
+        if (reduceMotion) {
+            time.snapTo(2.9f)
+            delay(700)
+            time.snapTo(DURATION)
+        } else {
+            time.animateTo(DURATION, tween((DURATION * 1000).toInt(), easing = LinearEasing))
         }
-
-        // 2. Sequential bite animations
-        delay(420)
-        launch {
-            bite1Scale.animateTo(1f, animationSpec = tween(durationMillis = 140))
-        }
-        delay(120)
-        launch {
-            bite2Scale.animateTo(1f, animationSpec = tween(durationMillis = 140))
-        }
-        delay(120)
-        launch {
-            bite3Scale.animateTo(1f, animationSpec = tween(durationMillis = 140))
-        }
-
-        // 3. Trailing speed lines shoot out to the left
-        delay(100)
-        launch {
-            line2Alpha.animateTo(1f, tween(180))
-            line2OffsetX.animateTo(0f, tween(240, easing = FastOutSlowInEasing))
-        }
-        launch {
-            line1Alpha.animateTo(0.7f, tween(200))
-            line1OffsetX.animateTo(0f, tween(240, easing = FastOutSlowInEasing))
-        }
-        launch {
-            line3Alpha.animateTo(0.7f, tween(200))
-            line3OffsetX.animateTo(0f, tween(240, easing = FastOutSlowInEasing))
-        }
-
-        // 4. Brand text slides up
-        delay(150)
-        launch {
-            brandAlpha.animateTo(1f, tween(300))
-            brandOffsetY.animateTo(0f, tween(300, easing = FastOutSlowInEasing))
-        }
-
-        // Hold display and fade out smoothly into main app
-        delay(1100)
-        overallAlpha.animateTo(0f, tween(250, easing = LinearEasing))
         onSplashFinished()
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BrandTomato)
-            .graphicsLayer { alpha = overallAlpha.value },
-        contentAlignment = Alignment.Center
-    ) {
-        // Main Logo Canvas
-        val cCream = BrandCream
-        Canvas(
-            modifier = Modifier.size(200.dp)
-        ) {
-            val canvasW = size.width
-            val scale = canvasW / 312f
+    val measurer = rememberTextMeasurer()
+    val word = TextStyle(color = c.text, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
+    val tagStyle = TextStyle(color = c.text2, fontSize = 15.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.3.sp)
 
-            fun tx(x: Float) = (x - 100f) * scale
-            fun ty(y: Float) = (y - 100f) * scale
-            fun tr(r: Float) = r * scale
+    Canvas(Modifier.fillMaxSize().semantics { contentDescription = "Nibl" }) {
+        val t = time.value
+        val dp = density
+        val cx = size.width / 2f
+        val cy = size.height * 0.46f
 
-            val cX = tx(272f)
-            val cY = ty(256f)
-            val cR = tr(110f) * cookieScale.value
+        // ----- backdrop: warm gradient and drifting blooms of light -----
+        drawRect(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
+        val drift = (if (reduceMotion) 0f else t) / 14f
+        bloom(c.blooms[0], Offset(80f * dp + 60f * dp * drift, 270f * dp + 90f * dp * drift), 210f * dp)
+        bloom(c.blooms[1], Offset(size.width - 70f * dp - 70f * dp * drift, size.height * 0.55f - 60f * dp * drift), 230f * dp)
+        bloom(c.blooms[2], Offset(200f * dp + 40f * dp * drift, size.height - 180f * dp - 80f * dp * drift), 200f * dp)
 
-            if (cR > 0f) {
-                val cookiePath = Path().apply {
-                    addOval(Rect(cX - cR, cY - cR, cX + cR, cY + cR))
-                }
+        // ----- the disc → pill → screen -----
+        val w = kf(t, 0f to 168f, 1.5f to 168f, 1.8f to 300f, 1.92f to 284f, 2.02f to 290f, 2.12f to 288f, 3.55f to 288f, 4.0f to size.width / dp + 8f) * dp
+        val h = kf(t, 0f to 168f, 1.5f to 168f, 1.8f to 90f, 1.92f to 99f, 2.02f to 95f, 2.12f to 96f, 3.55f to 96f, 4.0f to size.height / dp + 8f) * dp
+        val radius = kf(t, 0f to 84f, 1.5f to 84f, 1.8f to 45f, 1.92f to 49.5f, 2.02f to 47.5f, 2.12f to 48f, 3.55f to 48f, 4.0f to 0f) * dp
+        val dy = kf(t, 3.55f to 0f, 4.0f to size.height / 2f - cy)
+        val pop = kf(t, 0f to 0.15f, 0.32f to 1.07f, 0.44f to 0.97f, 0.5f to 1f)
+        // a squish for each bite, then a rebound
+        fun squish(at: Float) = kf(t, at to 0f, at + 0.05f to 1f, at + 0.15f to -0.3f, at + 0.2f to 0f)
+        val sq = squish(0.70f) + squish(0.95f) + squish(1.20f) * 1.2f
+        val sx = pop * (1f + 0.05f * sq); val sy = pop * (1f - 0.05f * sq)
+        val discAlpha = kf(t, 0f to 0f, 0.18f to 1f)
+        val solid = kf(t, 3.55f to 0f, 4.0f to 1f)
+        val glowPulse = kf(t, 2.25f to 0f, 2.5f to 1f, 2.9f to 0f)
 
-                val bitesPath = Path()
-                // Bite 1
-                if (bite1Scale.value > 0f) {
-                    val b1X = tx(331f)
-                    val b1Y = ty(154f)
-                    val b1R = tr(30f) * bite1Scale.value
-                    bitesPath.addOval(Rect(b1X - b1R, b1Y - b1R, b1X + b1R, b1Y + b1R))
-                }
-                // Bite 2
-                if (bite2Scale.value > 0f) {
-                    val b2X = tx(369f)
-                    val b2Y = ty(188f)
-                    val b2R = tr(30f) * bite2Scale.value
-                    bitesPath.addOval(Rect(b2X - b2R, b2Y - b2R, b2X + b2R, b2Y + b2R))
-                }
-                // Bite 3
-                if (bite3Scale.value > 0f) {
-                    val b3X = tx(388f)
-                    val b3Y = ty(236f)
-                    val b3R = tr(30f) * bite3Scale.value
-                    bitesPath.addOval(Rect(b3X - b3R, b3Y - b3R, b3X + b3R, b3Y + b3R))
-                }
-
-                val finalCookiePath = Path().apply {
-                    op(cookiePath, bitesPath, PathOperation.Difference)
-                }
-
-                drawPath(path = finalCookiePath, color = cCream)
+        val rect = Rect(Offset(cx - w / 2f, cy + dy - h / 2f), Size(w, h))
+        withTransform({ scale(sx, sy, Offset(cx, cy + dy)) }) {
+            val shape = RoundRect(rect, CornerRadius(radius))
+            val path = Path().apply { addRoundRect(shape) }
+            // soft accent glow around the pill as it lights up, and a gentle shadow
+            if (glowPulse > 0f) {
+                drawRoundRect(c.glow.copy(alpha = c.glow.alpha * glowPulse), rect.topLeft - Offset(10f * dp, 10f * dp),
+                    Size(w + 20f * dp, h + 20f * dp), CornerRadius(radius + 10f * dp))
             }
-
-            // Speed lines on left
-            val sw = tr(18f)
-
-            // Line 1 (top)
-            if (line1Alpha.value > 0f) {
-                val x1 = tx(126f) + line1OffsetX.value * scale
-                val x2 = tx(146f) + line1OffsetX.value * scale
-                val y = ty(214f)
-                drawLine(
-                    color = cCream.copy(alpha = line1Alpha.value),
-                    start = Offset(x1, y),
-                    end = Offset(x2, y),
-                    strokeWidth = sw,
-                    cap = StrokeCap.Round
-                )
+            val fill = androidx.compose.ui.graphics.lerp(c.glass, c.solid, solid)
+            drawPath(path, fill.copy(alpha = fill.alpha * discAlpha))
+            clipPath(path) {
+                drawRect(Brush.verticalGradient(listOf(c.sheen.copy(alpha = c.sheen.alpha * discAlpha * (1f - solid)), Color.Transparent), rect.top, rect.top + h * 0.45f))
+                val content = discAlpha * kf(t, 3.5f to 1f, 3.65f to 0f)
+                if (content > 0f) drawPillContent(t, cx, cy + dy, dp, c, content, measurer, word)
             }
-
-            // Line 2 (center)
-            if (line2Alpha.value > 0f) {
-                val x1 = tx(112f) + line2OffsetX.value * scale
-                val x2 = tx(146f) + line2OffsetX.value * scale
-                val y = ty(256f)
-                drawLine(
-                    color = cCream.copy(alpha = line2Alpha.value),
-                    start = Offset(x1, y),
-                    end = Offset(x2, y),
-                    strokeWidth = sw,
-                    cap = StrokeCap.Round
-                )
-            }
-
-            // Line 3 (bottom)
-            if (line3Alpha.value > 0f) {
-                val x1 = tx(126f) + line3OffsetX.value * scale
-                val x2 = tx(146f) + line3OffsetX.value * scale
-                val y = ty(298f)
-                drawLine(
-                    color = cCream.copy(alpha = line3Alpha.value),
-                    start = Offset(x1, y),
-                    end = Offset(x2, y),
-                    strokeWidth = sw,
-                    cap = StrokeCap.Round
-                )
+            if (solid < 1f) {
+                drawPath(path, Brush.verticalGradient(listOf(c.edgeTop, c.edgeBottom), rect.top, rect.bottom),
+                    alpha = discAlpha * (1f - solid), style = Stroke(1f * dp))
             }
         }
 
-        // Brand typography anchored near bottom
-        Text(
-            text = "bytelog",
-            color = BrandCream,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = (-0.5).sp,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(y = (-68).dp + brandOffsetY.value.dp)
-                .graphicsLayer { alpha = brandAlpha.value }
+        // ----- tagline -----
+        val tag = kf(t, 2.45f to 0f, 2.75f to 1f, 3.5f to 1f, 3.65f to 0f)
+        if (tag > 0f) {
+            val layout = measurer.measure("bite-sized food logging", tagStyle)
+            drawText(layout, topLeft = Offset(cx - layout.size.width / 2f, cy + 70f * dp + (1f - tag) * 10f * dp), alpha = tag)
+        }
+    }
+}
+
+private fun DrawScope.bloom(color: Color, center: Offset, radius: Float) {
+    drawCircle(Brush.radialGradient(listOf(color, Color.Transparent), center, radius), radius, center)
+}
+
+/** The cookie, its bites and their rings of light, "nibl" with its glowing i-dot, and the light sweep. */
+private fun DrawScope.drawPillContent(
+    t: Float, cx: Float, cy: Float, dp: Float, c: Palette, alpha: Float,
+    measurer: androidx.compose.ui.text.TextMeasurer, word: TextStyle
+) {
+    // Cookie: 112 dp across at first, sliding left and shrinking into the pill
+    val shift = kf(t, 1.5f to 0f, 1.92f to -100f, 2.02f to -95f, 2.12f to -96f) * dp
+    val scale = kf(t, 1.5f to 1f, 1.92f to 0.48f, 2.02f to 0.51f, 2.12f to 0.5f)
+    val unit = 1.12f * dp * scale
+    val ox = cx + shift; val oy = cy
+    fun at(x: Float, y: Float) = Offset(ox + (x - 50f) * unit, oy + (y - 50f) * unit)
+
+    val cookie = Path().apply { addOval(Rect(at(50f, 50f), 42f * unit)) }
+    val bites = Path()
+    listOf(Triple(80f, 19f, 0.70f), Triple(92f, 38f, 0.95f), Triple(95f, 60f, 1.20f)).forEach { (x, y, start) ->
+        val b = kf(t, start to 0f, start + 0.1f to 1f)
+        if (b > 0f) bites.addOval(Rect(at(x, y), 13f * unit * b))
+    }
+    val bitten = Path().apply { op(cookie, bites, PathOperation.Difference) }
+    drawPath(bitten, Brush.linearGradient(listOf(Color(0xFFFF8A5B), Color(0xFFE8481F)), at(8f, 8f), at(92f, 92f)), alpha = alpha)
+    clipPath(bitten) {
+        listOf(
+            Triple(34f, 36f, 5f), Triple(52f, 26f, 4f), Triple(28f, 60f, 4.5f), Triple(54f, 54f, 5.2f),
+            Triple(72f, 72f, 4f), Triple(46f, 76f, 4.6f), Triple(74f, 46f, 3.6f)
+        ).forEach { (x, y, r) ->
+            drawOval(Color(0xFFFFF4E6), at(x - r, y - r * 0.85f), Size(r * 2 * unit, r * 1.7f * unit), alpha = alpha)
+        }
+    }
+    // A ring of light where each bite was taken
+    listOf(Triple(80f, 19f, 0.70f), Triple(92f, 38f, 0.95f), Triple(95f, 60f, 1.20f)).forEach { (x, y, start) ->
+        val p = kf(t, start to 0f, start + 0.32f to 1f)
+        val a = kf(t, start to 0f, start + 0.04f to 0.9f, start + 0.32f to 0f)
+        if (a > 0f) {
+            val r = 20f * dp * (0.3f + 1.9f * p)
+            drawCircle(c.ripple.copy(alpha = c.ripple.alpha * a * alpha), r, at(x, y), style = Stroke(2f * dp))
+        }
+    }
+
+    // "nibl", revealed left to right, with a dotless ı so its dot can drop in
+    val reveal = kf(t, 1.86f to 0f, 2.15f to 1f)
+    if (reveal > 0f) {
+        val left = cx - 40f * dp + (1f - reveal) * 10f * dp
+        val n = measurer.measure("n", word); val i = measurer.measure("ı", word); val bl = measurer.measure("bl", word)
+        val gap = -1f * dp
+        val top = cy - n.size.height / 2f
+        clipRect(left = left - 2f * dp, right = left + (n.size.width + i.size.width + bl.size.width) * reveal + 2f * dp) {
+            drawText(n, topLeft = Offset(left, top), alpha = alpha)
+            drawText(i, topLeft = Offset(left + n.size.width + gap, top), alpha = alpha)
+            drawText(bl, topLeft = Offset(left + n.size.width + i.size.width + gap * 2, top), alpha = alpha)
+        }
+        // the i-dot drops, squashes and settles, glowing tomato
+        val fall = kf(t, 2.25f to -64f, 2.4f to 0f, 2.5f to -6f, 2.58f to 0f) * dp
+        val dotA = kf(t, 2.25f to 0f, 2.28f to 1f)
+        if (dotA > 0f) {
+            val squash = kf(t, 2.38f to 1f, 2.4f to 0.65f, 2.5f to 1.1f, 2.58f to 1f)
+            val fontPx = 46f * dp * fontScale
+            val r = fontPx * 0.105f
+            val dc = Offset(left + n.size.width + gap + i.size.width / 2f, top + i.firstBaseline - fontPx * 0.53f - fontPx * 0.15f + fall)
+            drawCircle(Brush.radialGradient(listOf(BrandTomato.copy(alpha = 0.55f * dotA), Color.Transparent), dc, r * 2.6f), r * 2.6f, dc)
+            withTransform({ scale(2f - squash, squash, dc) }) { drawCircle(BrandTomato.copy(alpha = dotA * alpha), r, dc) }
+        }
+    }
+
+    // A band of light passes over the pill once the word is in
+    val sweep = kf(t, 2.2f to 0f, 2.6f to 1f)
+    if (sweep > 0f && sweep < 1f) {
+        val x = cx - 220f * dp + 430f * dp * sweep
+        drawRect(
+            Brush.horizontalGradient(listOf(Color.Transparent, c.sweep, Color.Transparent), x - 35f * dp, x + 35f * dp),
+            Offset(x - 35f * dp, cy - 80f * dp), Size(70f * dp, 160f * dp), alpha = alpha
         )
     }
 }

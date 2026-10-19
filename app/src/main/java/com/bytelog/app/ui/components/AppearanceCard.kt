@@ -36,14 +36,16 @@ fun AppearanceCard(
     deviceColors: Boolean,
     onMode: (ThemeMode) -> Unit,
     onDeviceColors: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reduceTransparency: Boolean = false,
+    onReduceTransparency: (Boolean) -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
     Column(
         modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("APPEARANCE", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+        Text("APPEARANCE", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
         // Connected segmented choice
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             val options = listOf(ThemeMode.SYSTEM to "System", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")
@@ -68,7 +70,7 @@ fun AppearanceCard(
                         .clickable { onMode(m) },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text((if (selected) "✓ " else "") + label, color = fg, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(label, color = fg, fontSize = 14.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
                 }
             }
         }
@@ -77,14 +79,24 @@ fun AppearanceCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Use device colors", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Accent from wallpaper", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (supportsDeviceColors) "Match your wallpaper (Material You). Off uses ByteLog's tomato palette."
-                    else "Needs Android 12 or later. Using ByteLog's tomato palette.",
+                    if (supportsDeviceColors) "Take the accent colour from your wallpaper. Off uses Nibl's tomato."
+                    else "Needs Android 12 or later. Using Nibl's tomato.",
                     color = cs.onSurfaceVariant, fontSize = 12.sp
                 )
             }
             Switch(checked = deviceColors && supportsDeviceColors, onCheckedChange = onDeviceColors, enabled = supportsDeviceColors)
+        }
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onReduceTransparency(!reduceTransparency) }.padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Reduce transparency", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Solid bars and menus instead of frosted glass. Easier to read.", color = cs.onSurfaceVariant, fontSize = 12.sp)
+            }
+            Switch(checked = reduceTransparency, onCheckedChange = onReduceTransparency)
         }
     }
 }

@@ -101,7 +101,7 @@ fun GoalAdjustDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             color = ByteCardDark,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -204,7 +204,7 @@ fun GoalAdjustDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(24.dp))
                         .background(ByteSurfaceVariantDark.copy(alpha = 0.6f))
                         .padding(14.dp)
                 ) {
@@ -316,9 +316,9 @@ fun GoalAdjustDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(24.dp))
                         .background(ByteTomato.copy(alpha = 0.1f))
-                        .border(1.dp, ByteTomato.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+                        .border(1.dp, ByteTomato.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
                         .padding(14.dp)
                 ) {
                     Column {
@@ -337,7 +337,7 @@ fun GoalAdjustDialog(
                                 text = "${computedCalories.roundToInt()} kcal",
                                 color = ByteTomato,
                                 fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
 

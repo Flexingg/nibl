@@ -69,7 +69,7 @@ fun QuickAddDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = ByteSurfaceDark),
             modifier = Modifier.fillMaxWidth().padding(16.dp)
         ) {
@@ -81,7 +81,7 @@ fun QuickAddDialog(
                     text = "Quick Macro Add",
                     color = ByteCream,
                     fontSize = 20.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontWeight = FontWeight.SemiBold
                 )
 
                 Text(

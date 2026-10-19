@@ -326,6 +326,10 @@ class RecipeScreensRenderTest {
         compose.waitForIdle()
 
         // Swiping a food row left still deletes that food, and the day stays put
+        // (scrolled into view first, so the row isn't under the floating toolbar or add button)
+        // (the drag starts on the meal list itself; the cards above it are the folding header)
+        root.performTouchInput { swipe(Offset(width * 0.5f, height * 0.8f), Offset(width * 0.5f, height * 0.4f), 400) }
+        compose.waitForIdle()
         compose.waitUntil(5_000) { compose.onAllNodesWithText("Test Oats").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Test Oats").performTouchInput { swipeLeft(startX = width * 0.9f, endX = -width * 0.2f, durationMillis = 250) }
         compose.waitUntil(5_000) { kotlinx.coroutines.runBlocking { db.foodEntryDao().getEntriesForDateOnce(today) }.none { it.id == "e-oats" && it.syncStatus != com.bytelog.app.data.local.model.FoodEntry.SYNC_STATUS_PENDING_DELETE } }

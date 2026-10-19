@@ -501,7 +501,7 @@ fun SparkyChatScreen(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(28.dp)),
+                            .clip(RoundedCornerShape(24.dp)),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -682,7 +682,7 @@ fun ChatMessageBubble(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = 200.dp)
-                                .clip(RoundedCornerShape(14.dp)),
+                                .clip(RoundedCornerShape(16.dp)),
                             contentScale = ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -731,7 +731,7 @@ fun ChatMessageBubble(
                                 val enabled = isLastAssistantMessage
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(28.dp))
+                                        .clip(RoundedCornerShape(24.dp))
                                         .background(
                                             if (enabled) ByteInkDark.copy(alpha = 0.85f)
                                             else ByteInkDark.copy(alpha = 0.35f)
@@ -740,7 +740,7 @@ fun ChatMessageBubble(
                                             1.dp,
                                             if (enabled) ByteTomato.copy(alpha = 0.7f)
                                             else ByteSurfaceVariantDark.copy(alpha = 0.4f),
-                                            RoundedCornerShape(28.dp)
+                                            RoundedCornerShape(24.dp)
                                         )
                                         .clickable(enabled = enabled) {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -771,7 +771,7 @@ fun ChatMessageBubble(
                 // Copy Action
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { onCopy(message.content) }
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -795,7 +795,7 @@ fun ChatMessageBubble(
                 if (isUser) {
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { onEdit(message) }
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
