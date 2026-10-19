@@ -3,6 +3,8 @@ package com.bytelog.app.ui.theme
 import android.os.Build
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -27,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
@@ -59,6 +62,8 @@ object FluidMotion {
     fun <T> release(): AnimationSpec<T> = spring(dampingRatio = 0.55f, stiffness = 450f)
     /** Container changes: menus, sheets, a pill growing into a page. */
     fun <T> morph(): AnimationSpec<T> = spring(dampingRatio = 0.82f, stiffness = 380f)
+    /** A list row gliding to a new place (the morph spring, for positions). */
+    fun placement(): FiniteAnimationSpec<IntOffset> = spring(dampingRatio = 0.82f, stiffness = 380f, visibilityThreshold = IntOffset.VisibilityThreshold)
     /** Fades, colour and glow. */
     fun <T> gentle(): AnimationSpec<T> = spring(dampingRatio = 1f, stiffness = 200f)
 }

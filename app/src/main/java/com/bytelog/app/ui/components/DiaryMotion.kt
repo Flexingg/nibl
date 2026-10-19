@@ -477,3 +477,11 @@ fun SplashingDrop(currentOz: Float, size: androidx.compose.ui.unit.Dp, iconSize:
         Icon(Icons.Default.WaterDrop, contentDescription = "Hydration", tint = MacroProtein, modifier = Modifier.size(iconSize))
     }
 }
+
+/**
+ * A home list section: glides to its new place when the sections are reordered or one above it comes or goes,
+ * and fades away under the header like every other row.
+ */
+fun Modifier.homeItem(scope: androidx.compose.foundation.lazy.LazyItemScope, state: LazyListState, key: Any): Modifier =
+    with(scope) { animateItem(fadeInSpec = null, fadeOutSpec = null, placementSpec = com.bytelog.app.ui.theme.FluidMotion.placement()) }
+        .hideWhenScrolledAway(state, key)

@@ -47,6 +47,7 @@ class SettingsRepository(
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_DEVICE_COLORS = androidx.datastore.preferences.core.booleanPreferencesKey("device_colors")
         val KEY_REDUCE_TRANSPARENCY = androidx.datastore.preferences.core.booleanPreferencesKey("reduce_transparency")
+        val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
         val KEY_RESEARCH_PROVIDER = stringPreferencesKey("research_provider")
         val KEY_RESEARCH_TAVILY = stringPreferencesKey("research_tavily_key")
         val KEY_RESEARCH_ASK_WRITES = androidx.datastore.preferences.core.booleanPreferencesKey("research_ask_before_writing")
@@ -188,6 +189,13 @@ class SettingsRepository(
 
     suspend fun saveReduceTransparency(enabled: Boolean) {
         context.dataStore.edit { it[KEY_REDUCE_TRANSPARENCY] = enabled }
+    }
+
+    /** The home screen's section order and hidden sections ([HomeLayout] encoding). */
+    val homeLayout: Flow<HomeLayout> = context.dataStore.data.map { HomeLayout.parse(it[KEY_HOME_LAYOUT]) }
+
+    suspend fun saveHomeLayout(layout: HomeLayout) {
+        context.dataStore.edit { it[KEY_HOME_LAYOUT] = layout.encode() }
     }
 
     suspend fun saveUseDeviceColors(enabled: Boolean) {

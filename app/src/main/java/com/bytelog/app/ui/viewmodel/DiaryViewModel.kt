@@ -360,6 +360,14 @@ class DiaryViewModel(
         review.takeIf { it.end.toString() != dismissed && it.daysLogged > 0 }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    /** The order of the home screen sections. */
+    val homeLayout: StateFlow<com.bytelog.app.data.repository.HomeLayout> = settingsRepository.homeLayout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, com.bytelog.app.data.repository.HomeLayout.DEFAULT)
+
+    fun saveHomeLayout(layout: com.bytelog.app.data.repository.HomeLayout) {
+        viewModelScope.launch { settingsRepository.saveHomeLayout(layout) }
+    }
+
     fun dismissWeeklyReview(review: WeeklyReview) {
         viewModelScope.launch { settingsRepository.dismissWeeklyReview(review.end.toString()) }
     }
