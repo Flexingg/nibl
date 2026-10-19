@@ -31,7 +31,7 @@ class WidgetRendererTest {
             val bmp = WidgetRenderer.render(kind, WidgetData.Sample, colors(dark), w, h)
             assertEquals(w, bmp.width); assertEquals(h, bmp.height)
             assertEquals("$kind corner is cut away", 0, Color.alpha(bmp.getPixel(1, 1)))
-            assertEquals("$kind body is solid", 255, Color.alpha(bmp.getPixel(w / 2, h - 3 * 20)))
+            assertTrue("$kind body is nearly opaque frosted glass", Color.alpha(bmp.getPixel(w / 2, h - 3 * 20)) >= 230)
             // not a flat colour: it has ring, text and shapes
             val distinct = (0 until 400).map { bmp.getPixel((it * 7919) % w, (it * 104729) % h) }.toSet().size
             assertTrue("$kind has detail", distinct > 5)
@@ -45,8 +45,8 @@ class WidgetRendererTest {
             return bmp.getPixel(w / 4, h - 12)     // low on the tile, away from the text and badge
         }
         val c = colors(false)
-        assertEquals("empty: just glass", c.glass, bottomMiddle(0f))
-        assertEquals("full: water to the top", c.water, bottomMiddle(64f))
+        assertNear("empty: just glass", c.glass, bottomMiddle(0f))
+        assertNear("full: water to the top", c.water, bottomMiddle(64f))
         assertNotEquals(bottomMiddle(0f), bottomMiddle(40f))
     }
 
@@ -54,7 +54,7 @@ class WidgetRendererTest {
         val c = colors(false)
         val (w, h) = px(WidgetKind.TODAY)
         val bmp = WidgetRenderer.render(WidgetKind.TODAY, WidgetData.Sample, c, w, h)
-        assertEquals(c.primary, bmp.getPixel((340 * 3), (140 * 3)))   // inside the Add food pill, right of its label
+        assertNear("Add food", c.primary, bmp.getPixel((340 * 3), (140 * 3)))   // inside the Add food pill, right of its label
     }
 
     @Test fun theSuggestedMealIsHighlightedInQuickLog() {
@@ -66,17 +66,22 @@ class WidgetRendererTest {
             val x = 10f + gap / 2f + index * (62f + gap) + 31f
             return bmp.getPixel((x * 3).toInt(), (16 * 3))
         }
-        assertEquals(c.primary, circleTop("Lunch", 1))
-        assertEquals(c.hi, circleTop("Lunch", 2))
-        assertEquals(c.primary, circleTop("Dinner", 2))
+        assertNear("Lunch suggested", c.primary, circleTop("Lunch", 1))
+        assertTrue("Dinner not suggested", distance(c.primary, circleTop("Lunch", 2)) > 120)
+        assertNear("Dinner suggested", c.primary, circleTop("Dinner", 2))
     }
 
     @Test fun sizesOtherThanTheArtworkAreStretchedWithoutBreaking() {
         val bmp = WidgetRenderer.render(WidgetKind.TODAY, WidgetData.Sample, colors(true), 900, 420)
         assertEquals(900, bmp.width)
         assertEquals(0, Color.alpha(bmp.getPixel(1, 1)))
-        assertEquals(255, Color.alpha(bmp.getPixel(450, 210)))
+        assertTrue(Color.alpha(bmp.getPixel(450, 210)) >= 230)
     }
+
+    /** Colours drawn with gradients and a see-through tile land close to, not exactly on, the token. */
+    private fun distance(a: Int, b: Int) = Math.abs(Color.red(a) - Color.red(b)) + Math.abs(Color.green(a) - Color.green(b)) + Math.abs(Color.blue(a) - Color.blue(b))
+    private fun assertNear(what: String, expected: Int, actual: Int) =
+        assertTrue("$what: expected ~#${Integer.toHexString(expected)} got #${Integer.toHexString(actual)}", distance(expected, actual) < 90)
 
     /** -Pbytelog.screenshots=<dir> keeps previews of every widget, light and dark. */
     @Test fun savePreviews() {

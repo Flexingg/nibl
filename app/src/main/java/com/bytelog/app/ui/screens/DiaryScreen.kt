@@ -22,7 +22,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.bytelog.app.ui.diary.daySwipe
 import androidx.compose.ui.graphics.graphicsLayer
-import com.bytelog.app.ui.components.hideWhenScrolledAway
+import com.bytelog.app.ui.components.homeItem
 import com.bytelog.app.ui.components.popIn
 import com.bytelog.app.ui.components.pressBounce
 import androidx.compose.foundation.lazy.LazyRow
@@ -109,6 +109,8 @@ import com.bytelog.app.ui.components.WeightLogDialog
 import com.bytelog.app.ui.components.WeightVsCaloriesCard
 import com.bytelog.app.ui.theme.ByteCream
 import com.bytelog.app.ui.theme.blurSource
+import com.bytelog.app.ui.theme.glass
+import androidx.compose.material.icons.filled.Tune
 import com.bytelog.app.ui.theme.ByteCreamMuted
 import com.bytelog.app.ui.theme.ByteInkDark
 import com.bytelog.app.ui.theme.ByteSurfaceDark
@@ -204,6 +206,7 @@ fun DiaryScreen(
     val mealShortcuts by viewModel.mealShortcuts.collectAsState()
     val whatFits by viewModel.whatFits.collectAsState()
     val weeklyReview by viewModel.weeklyReview.collectAsState()
+    val homeLayout by viewModel.homeLayout.collectAsState()
 
     // Fasting timer: time since food was last eaten, shown on today's diary once it's over an hour
     val lastMealAt by viewModel.lastMealAt.collectAsState()
@@ -253,6 +256,7 @@ fun DiaryScreen(
     var mealToClear by remember { mutableStateOf<DisplayMealGroup?>(null) }
     var showHydrationSheet by remember { mutableStateOf(false) }
     var showWeightDialog by remember { mutableStateOf(false) }
+    var showHomeLayout by remember { mutableStateOf(false) }
     var showGoalAdjustDialog by remember { mutableStateOf(false) }
     var copyingMealName by remember { mutableStateOf<String?>(null) }
     var savingTemplateMealName by remember { mutableStateOf<String?>(null) }
@@ -443,405 +447,442 @@ fun DiaryScreen(
                     .nestedScroll(headerState.connection),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                weeklyReview?.let { review ->
-                    item(key = "weekly_review") {
-                      Box(Modifier.hideWhenScrolledAway(listState, "weekly_review")) {
-                        com.bytelog.app.ui.diary.WeeklyReviewCard(review, weightUnit, onDismiss = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            viewModel.dismissWeeklyReview(review)
-                        })
-                      }
-                    }
-                }
-                if (activeBatches.isNotEmpty()) {
-                    item(key = "fridge") {
-                      Box(Modifier.hideWhenScrolledAway(listState, "fridge")) {
-                        com.bytelog.app.ui.recipes.FridgeStrip(
-                            batches = activeBatches,
-                            targetMealName = quickLogMeal?.name ?: "your diary",
-                            onQuickLog = { status ->
-                                quickLogMeal?.let { meal ->
-                                    recipesViewModel.logFromBatch(status, selectedDate, meal, portions = 1f)
-                                }
-                            },
-                            onOpen = { openBatch = it }
-                        )
-                      }
-                    }
-                }
-                if (family.members.isNotEmpty()) {
-                    item(key = "family") {
-                      Box(Modifier.hideWhenScrolledAway(listState, "family")) {
-                        com.bytelog.app.ui.family.FamilyStrip(family.members, family.today, onOpenFamilyMember, onOpenFamily)
-                      }
-                    }
-                }
-                if (loggedMealGroups.isEmpty()) {
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(ByteSurfaceDark.copy(alpha = 0.5f))
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = "No foods logged for this date",
-                                color = ByteCream,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Choose a meal below to start logging, or tap the sync icon above to fetch entries from Sparky Fitness.",
-                                color = ByteCreamMuted,
-                                fontSize = 13.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MacroProtein.copy(alpha = 0.15f))
-                                        .clickable {
-                                            templateTargetMeal = null
-                                            showTemplatesSheet = true
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = "Templates & Recipes",
-                                        color = MacroProtein,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(ByteTomato.copy(alpha = 0.15f))
-                                        .clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            onOpenRecentMeals()
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = "Copy Recent Meals",
-                                        color = ByteTomato,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                homeLayout.visible.forEach { section ->
+                    when (section) {
+                        com.bytelog.app.data.repository.HomeSection.WEEKLY_REVIEW -> {
+                        weeklyReview?.let { review ->
+                            item(key = "weekly_review") {
+                              Box(Modifier.homeItem(this, listState, "weekly_review")) {
+                                com.bytelog.app.ui.diary.WeeklyReviewCard(review, weightUnit, onDismiss = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    viewModel.dismissWeeklyReview(review)
+                                })
+                              }
                             }
                         }
-                    }
-                } else {
-                    items(loggedMealGroups, key = { it.mealName }) { group ->
-                      Box(Modifier.hideWhenScrolledAway(listState, group.mealName).popIn(group.mealName, poppedKeys)) {
-                        MealCard(
-                            mealName = group.mealName,
-                            mealCalories = group.calories,
-                            entries = group.entries,
-                            onAddFood = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onNavigateToSearch(group.mealTypeId, group.mealName, selectedDate)
-                            },
-                            onAddFoodLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onNavigateToBarcode(group.mealTypeId, group.mealName, selectedDate)
-                            },
-                            onHeaderDoubleClick = {
-                                viewModel.copyMealFromYesterday(group.mealName)
-                            },
-                            onCopyMeal = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                activeMoveCopy = MoveCopyTarget(
-                                    mode = MoveCopyMode.COPY,
-                                    title = "Meal: ${group.mealName}",
-                                    subtitle = "${group.entries.size} items • ${group.calories.roundToInt()} kcal",
-                                    defaultMealName = group.mealName,
-                                    entries = group.entries,
-                                    isEntireMeal = true,
-                                    sourceMealName = group.mealName
+                        }
+                        com.bytelog.app.data.repository.HomeSection.LEFTOVERS -> {
+                        if (activeBatches.isNotEmpty()) {
+                            item(key = "fridge") {
+                              Box(Modifier.homeItem(this, listState, "fridge")) {
+                                com.bytelog.app.ui.recipes.FridgeStrip(
+                                    batches = activeBatches,
+                                    targetMealName = quickLogMeal?.name ?: "your diary",
+                                    onQuickLog = { status ->
+                                        quickLogMeal?.let { meal ->
+                                            recipesViewModel.logFromBatch(status, selectedDate, meal, portions = 1f)
+                                        }
+                                    },
+                                    onOpen = { openBatch = it }
                                 )
-                            },
-                            onMoveMeal = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                activeMoveCopy = MoveCopyTarget(
-                                    mode = MoveCopyMode.MOVE,
-                                    title = "Meal: ${group.mealName}",
-                                    subtitle = "${group.entries.size} items • ${group.calories.roundToInt()} kcal",
-                                    defaultMealName = group.mealName,
-                                    entries = group.entries,
-                                    isEntireMeal = true,
-                                    sourceMealName = group.mealName
-                                )
-                            },
-                            onClearMeal = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                mealToClear = group
-                            },
-                            onSaveTemplate = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                savingTemplateMealName = group.mealName
-                            },
-                            onShare = if (family.members.any { it.canWriteDiary }) ({
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                shareTarget = group
-                            }) else null,
-                            onOpenTemplates = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                templateTargetMeal = group
-                                showTemplatesSheet = true
-                            },
-                            onEditEntry = { entry ->
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                editingEntry = entry
-                            },
-                            inlineEditor = { entry, onClose, onDelete ->
-                                InlineEntryEditor(
-                                    entry = entry,
-                                    viewModel = viewModel,
-                                    onDelete = onDelete,
-                                    onMore = { onClose(); editingEntry = entry },
-                                    onDone = onClose
-                                )
-                            },
-                            onMoveEntry = { entry ->
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                activeMoveCopy = MoveCopyTarget(
-                                    mode = MoveCopyMode.MOVE,
-                                    title = entry.foodName,
-                                    subtitle = "${entry.quantity.roundToInt()}${entry.unit} • ${entry.calories.roundToInt()} kcal",
-                                    defaultMealName = entry.mealName,
-                                    entries = listOf(entry),
-                                    isEntireMeal = false,
-                                    sourceMealName = entry.mealName
-                                )
-                            },
-                            onCopyEntry = { entry ->
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                activeMoveCopy = MoveCopyTarget(
-                                    mode = MoveCopyMode.COPY,
-                                    title = entry.foodName,
-                                    subtitle = "${entry.quantity.roundToInt()}${entry.unit} • ${entry.calories.roundToInt()} kcal",
-                                    defaultMealName = entry.mealName,
-                                    entries = listOf(entry),
-                                    isEntireMeal = false,
-                                    sourceMealName = entry.mealName
-                                )
-                            },
-                            onDuplicateEntry = { entry ->
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                viewModel.duplicateEntryToNow(entry)
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("Duplicated ${entry.foodName}")
-                                }
-                            },
-                            onQuickIncrementEntry = { entry ->
-                                viewModel.quickIncrementServing(entry)
-                            },
-                            onDeleteEntry = { entry ->
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.deleteEntry(entry)
-                                scope.launch {
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = "Deleted ${entry.foodName}",
-                                        actionLabel = "Undo"
+                              }
+                            }
+                        }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.FAMILY -> {
+                        if (family.members.isNotEmpty()) {
+                            item(key = "family") {
+                              Box(Modifier.homeItem(this, listState, "family")) {
+                                com.bytelog.app.ui.family.FamilyStrip(family.members, family.today, onOpenFamilyMember, onOpenFamily)
+                              }
+                            }
+                        }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.MEALS -> {
+                        if (loggedMealGroups.isEmpty()) {
+                            item(key = "meals_empty") {
+                                Column(
+                                    modifier = Modifier
+                                        .homeItem(this, listState, "meals_empty")
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .background(ByteSurfaceDark.copy(alpha = 0.5f))
+                                        .padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "No foods logged for this date",
+                                        color = ByteCream,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        viewModel.duplicateEntryToNow(entry)
-                                    }
-                                }
-                            },
-                            onBatchMove = { selectedEntries ->
-                                activeMoveCopy = MoveCopyTarget(
-                                    mode = MoveCopyMode.MOVE,
-                                    title = "${selectedEntries.size} Items",
-                                    subtitle = "${selectedEntries.sumOf { it.calories.toDouble() }.roundToInt()} kcal from ${group.mealName}",
-                                    defaultMealName = group.mealName,
-                                    entries = selectedEntries,
-                                    isEntireMeal = false,
-                                    sourceMealName = group.mealName
-                                )
-                            },
-                            onBatchCopy = { selectedEntries ->
-                                activeMoveCopy = MoveCopyTarget(
-                                    mode = MoveCopyMode.COPY,
-                                    title = "${selectedEntries.size} Items",
-                                    subtitle = "${selectedEntries.sumOf { it.calories.toDouble() }.roundToInt()} kcal from ${group.mealName}",
-                                    defaultMealName = group.mealName,
-                                    entries = selectedEntries,
-                                    isEntireMeal = false,
-                                    sourceMealName = group.mealName
-                                )
-                            },
-                            onBatchDelete = { selectedEntries ->
-                                viewModel.deleteEntries(selectedEntries) { deleted ->
-                                    scope.launch {
-                                        val result = snackbarHostState.showSnackbar(
-                                            message = "Deleted ${deleted.size} items from ${group.mealName}",
-                                            actionLabel = "Undo"
-                                        )
-                                        if (result == SnackbarResult.ActionPerformed) {
-                                            viewModel.restoreEntries(deleted)
+                                    Text(
+                                        text = "Choose a meal below to start logging, or tap the sync icon above to fetch entries from Sparky Fitness.",
+                                        color = ByteCreamMuted,
+                                        fontSize = 13.sp,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(MacroProtein.copy(alpha = 0.15f))
+                                                .clickable {
+                                                    templateTargetMeal = null
+                                                    showTemplatesSheet = true
+                                                }
+                                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = "Templates & Recipes",
+                                                color = MacroProtein,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(ByteTomato.copy(alpha = 0.15f))
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    onOpenRecentMeals()
+                                                }
+                                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = "Copy Recent Meals",
+                                                color = ByteTomato,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
                                 }
                             }
-                        )
-                      }
-                    }
-                }
-
-                if (whatFits.isNotEmpty()) {
-                    item(key = "what_fits") {
-                        val fitMeal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
-                        val fitMealName = fitMeal.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                        com.bytelog.app.ui.diary.WhatFitsCard(
-                            caloriesLeft = (dailySummary.targetCalories - dailySummary.totalCalories).roundToInt(),
-                            proteinLeft = (dailySummary.targetProtein - dailySummary.totalProtein).roundToInt(),
-                            options = whatFits,
-                            mealName = fitMealName,
-                            onLog = { option ->
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.logFit(option, fitMeal.id, fitMealName, showLogged)
-                            },
-                            modifier = Modifier.hideWhenScrolledAway(listState, "what_fits")
-                        )
-                    }
-                }
-
-                // Quick Meal Selection Action Bar
-                item(key = "quick_meals") {
-                    val candidateMeals = remember(mealTypes) {
-                        (if (mealTypes.isNotEmpty()) mealTypes else com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES)
-                            .distinctBy { it.name.trim().lowercase() }
-                    }
-                    Column(
-                        modifier = Modifier
-                            .hideWhenScrolledAway(listState, "quick_meals")
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = if (loggedMealGroups.isEmpty()) "START LOGGING" else "LOG TO ANOTHER MEAL",
-                            color = ByteCreamMuted,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-
-                        // One tap logs a whole meal: what you had yesterday, or your usual
-                        val loggedKeys = loggedMealGroups.map { com.bytelog.app.data.repository.MealPatterns.mealKey(it.mealName) }.toSet()
-                        candidateMeals.forEach { mt ->
-                            val key = com.bytelog.app.data.repository.MealPatterns.mealKey(mt.name)
-                            val sc = mealShortcuts[key]
-                            if (sc != null && key !in loggedKeys) {
-                                val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                                MealShortcutRow(
-                                    mealName = cleanName,
-                                    shortcuts = sc,
-                                    onLog = { source ->
+                        } else {
+                            items(loggedMealGroups, key = { it.mealName }) { group ->
+                              Box(Modifier.homeItem(this, listState, group.mealName).popIn(group.mealName, poppedKeys)) {
+                                MealCard(
+                                    mealName = group.mealName,
+                                    mealCalories = group.calories,
+                                    entries = group.entries,
+                                    onAddFood = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onNavigateToSearch(group.mealTypeId, group.mealName, selectedDate)
+                                    },
+                                    onAddFoodLongClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        viewModel.logShortcut(source, mt.id, cleanName, showLogged)
+                                        onNavigateToBarcode(group.mealTypeId, group.mealName, selectedDate)
+                                    },
+                                    onHeaderDoubleClick = {
+                                        viewModel.copyMealFromYesterday(group.mealName)
+                                    },
+                                    onCopyMeal = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        activeMoveCopy = MoveCopyTarget(
+                                            mode = MoveCopyMode.COPY,
+                                            title = "Meal: ${group.mealName}",
+                                            subtitle = "${group.entries.size} items • ${group.calories.roundToInt()} kcal",
+                                            defaultMealName = group.mealName,
+                                            entries = group.entries,
+                                            isEntireMeal = true,
+                                            sourceMealName = group.mealName
+                                        )
+                                    },
+                                    onMoveMeal = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        activeMoveCopy = MoveCopyTarget(
+                                            mode = MoveCopyMode.MOVE,
+                                            title = "Meal: ${group.mealName}",
+                                            subtitle = "${group.entries.size} items • ${group.calories.roundToInt()} kcal",
+                                            defaultMealName = group.mealName,
+                                            entries = group.entries,
+                                            isEntireMeal = true,
+                                            sourceMealName = group.mealName
+                                        )
+                                    },
+                                    onClearMeal = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        mealToClear = group
+                                    },
+                                    onSaveTemplate = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        savingTemplateMealName = group.mealName
+                                    },
+                                    onShare = if (family.members.any { it.canWriteDiary }) ({
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        shareTarget = group
+                                    }) else null,
+                                    onOpenTemplates = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        templateTargetMeal = group
+                                        showTemplatesSheet = true
+                                    },
+                                    onEditEntry = { entry ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        editingEntry = entry
+                                    },
+                                    inlineEditor = { entry, onClose, onDelete ->
+                                        InlineEntryEditor(
+                                            entry = entry,
+                                            viewModel = viewModel,
+                                            onDelete = onDelete,
+                                            onMore = { onClose(); editingEntry = entry },
+                                            onDone = onClose
+                                        )
+                                    },
+                                    onMoveEntry = { entry ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        activeMoveCopy = MoveCopyTarget(
+                                            mode = MoveCopyMode.MOVE,
+                                            title = entry.foodName,
+                                            subtitle = "${entry.quantity.roundToInt()}${entry.unit} • ${entry.calories.roundToInt()} kcal",
+                                            defaultMealName = entry.mealName,
+                                            entries = listOf(entry),
+                                            isEntireMeal = false,
+                                            sourceMealName = entry.mealName
+                                        )
+                                    },
+                                    onCopyEntry = { entry ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        activeMoveCopy = MoveCopyTarget(
+                                            mode = MoveCopyMode.COPY,
+                                            title = entry.foodName,
+                                            subtitle = "${entry.quantity.roundToInt()}${entry.unit} • ${entry.calories.roundToInt()} kcal",
+                                            defaultMealName = entry.mealName,
+                                            entries = listOf(entry),
+                                            isEntireMeal = false,
+                                            sourceMealName = entry.mealName
+                                        )
+                                    },
+                                    onDuplicateEntry = { entry ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        viewModel.duplicateEntryToNow(entry)
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Duplicated ${entry.foodName}")
+                                        }
+                                    },
+                                    onQuickIncrementEntry = { entry ->
+                                        viewModel.quickIncrementServing(entry)
+                                    },
+                                    onDeleteEntry = { entry ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.deleteEntry(entry)
+                                        scope.launch {
+                                            val result = snackbarHostState.showSnackbar(
+                                                message = "Deleted ${entry.foodName}",
+                                                actionLabel = "Undo"
+                                            )
+                                            if (result == SnackbarResult.ActionPerformed) {
+                                                viewModel.duplicateEntryToNow(entry)
+                                            }
+                                        }
+                                    },
+                                    onBatchMove = { selectedEntries ->
+                                        activeMoveCopy = MoveCopyTarget(
+                                            mode = MoveCopyMode.MOVE,
+                                            title = "${selectedEntries.size} Items",
+                                            subtitle = "${selectedEntries.sumOf { it.calories.toDouble() }.roundToInt()} kcal from ${group.mealName}",
+                                            defaultMealName = group.mealName,
+                                            entries = selectedEntries,
+                                            isEntireMeal = false,
+                                            sourceMealName = group.mealName
+                                        )
+                                    },
+                                    onBatchCopy = { selectedEntries ->
+                                        activeMoveCopy = MoveCopyTarget(
+                                            mode = MoveCopyMode.COPY,
+                                            title = "${selectedEntries.size} Items",
+                                            subtitle = "${selectedEntries.sumOf { it.calories.toDouble() }.roundToInt()} kcal from ${group.mealName}",
+                                            defaultMealName = group.mealName,
+                                            entries = selectedEntries,
+                                            isEntireMeal = false,
+                                            sourceMealName = group.mealName
+                                        )
+                                    },
+                                    onBatchDelete = { selectedEntries ->
+                                        viewModel.deleteEntries(selectedEntries) { deleted ->
+                                            scope.launch {
+                                                val result = snackbarHostState.showSnackbar(
+                                                    message = "Deleted ${deleted.size} items from ${group.mealName}",
+                                                    actionLabel = "Undo"
+                                                )
+                                                if (result == SnackbarResult.ActionPerformed) {
+                                                    viewModel.restoreEntries(deleted)
+                                                }
+                                            }
+                                        }
                                     }
+                                )
+                              }
+                            }
+                        }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.WHAT_FITS -> {
+                        if (whatFits.isNotEmpty()) {
+                            item(key = "what_fits") {
+                                val fitMeal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
+                                val fitMealName = fitMeal.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                com.bytelog.app.ui.diary.WhatFitsCard(
+                                    caloriesLeft = (dailySummary.targetCalories - dailySummary.totalCalories).roundToInt(),
+                                    proteinLeft = (dailySummary.targetProtein - dailySummary.totalProtein).roundToInt(),
+                                    options = whatFits,
+                                    mealName = fitMealName,
+                                    onLog = { option ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.logFit(option, fitMeal.id, fitMealName, showLogged)
+                                    },
+                                    modifier = Modifier.homeItem(this, listState, "what_fits")
                                 )
                             }
                         }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.QUICK_LOG -> {
+                        // Quick Meal Selection Action Bar
+                        item(key = "quick_meals") {
+                            val candidateMeals = remember(mealTypes) {
+                                (if (mealTypes.isNotEmpty()) mealTypes else com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES)
+                                    .distinctBy { it.name.trim().lowercase() }
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .homeItem(this, listState, "quick_meals")
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = if (loggedMealGroups.isEmpty()) "START LOGGING" else "LOG TO ANOTHER MEAL",
+                                    color = ByteCreamMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
 
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MacroProtein.copy(alpha = 0.15f))
-                                        .clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            templateTargetMeal = null
-                                            showTemplatesSheet = true
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.RestaurantMenu,
-                                            contentDescription = null,
-                                            tint = MacroProtein,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "Templates",
-                                            color = MacroProtein,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
+                                // One tap logs a whole meal: what you had yesterday, or your usual
+                                val loggedKeys = loggedMealGroups.map { com.bytelog.app.data.repository.MealPatterns.mealKey(it.mealName) }.toSet()
+                                candidateMeals.forEach { mt ->
+                                    val key = com.bytelog.app.data.repository.MealPatterns.mealKey(mt.name)
+                                    val sc = mealShortcuts[key]
+                                    if (sc != null && key !in loggedKeys) {
+                                        val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                        MealShortcutRow(
+                                            mealName = cleanName,
+                                            shortcuts = sc,
+                                            onLog = { source ->
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.logShortcut(source, mt.id, cleanName, showLogged)
+                                            }
                                         )
                                     }
                                 }
-                            }
-                            items(candidateMeals, key = { it.id }) { mt ->
-                                val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(ByteSurfaceDark)
-                                        .clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            onNavigateToSearch(mt.id, cleanName, selectedDate)
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Add,
-                                            contentDescription = null,
-                                            tint = ByteTomato,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = cleanName,
-                                            color = ByteCream,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(MacroProtein.copy(alpha = 0.15f))
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    templateTargetMeal = null
+                                                    showTemplatesSheet = true
+                                                }
+                                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                         ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.RestaurantMenu,
+                                                    contentDescription = null,
+                                                    tint = MacroProtein,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "Templates",
+                                                    color = MacroProtein,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                    items(candidateMeals, key = { it.id }) { mt ->
+                                        val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(ByteSurfaceDark)
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    onNavigateToSearch(mt.id, cleanName, selectedDate)
+                                                }
+                                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = null,
+                                                    tint = ByteTomato,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = cleanName,
+                                                    color = ByteCream,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
+                        }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.TRENDS -> {
+                        // Interactive Weight vs Calories Over Time Chart & Adaptive TDEE
+                        item(key = "weight_chart") {
+                            WeightVsCaloriesCard(
+                                modifier = Modifier.homeItem(this, listState, "weight_chart"),
+                                chartPoints = chartPoints,
+                                calculation = adaptiveCalc,
+                                selectedDaysRange = selectedChartDays,
+                                weightUnit = weightUnit,
+                                onSelectDaysRange = { days ->
+                                    viewModel.setChartRange(days)
+                                },
+                                onOpenGoalAdjuster = {
+                                    showGoalAdjustDialog = true
+                                }
+                            )
+                        }
                         }
                     }
                 }
 
-                // Interactive Weight vs Calories Over Time Chart & Adaptive TDEE
-                item(key = "weight_chart") {
-                    WeightVsCaloriesCard(
-                        modifier = Modifier.hideWhenScrolledAway(listState, "weight_chart"),
-                        chartPoints = chartPoints,
-                        calculation = adaptiveCalc,
-                        selectedDaysRange = selectedChartDays,
-                        weightUnit = weightUnit,
-                        onSelectDaysRange = { days ->
-                            viewModel.setChartRange(days)
-                        },
-                        onOpenGoalAdjuster = {
-                            showGoalAdjustDialog = true
+                // Rearrange the sections above
+                item(key = "customize_home") {
+                    Box(Modifier.fillMaxWidth().animateItem(fadeInSpec = null, fadeOutSpec = null), contentAlignment = Alignment.Center) {
+                        Row(
+                            Modifier
+                                .pressBounce()
+                                .glass(com.bytelog.app.ui.theme.GlassLevel.Thin, RoundedCornerShape(50))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    showHomeLayout = true
+                                }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = null, tint = ByteCreamMuted, modifier = Modifier.size(16.dp))
+                            Text("Customize home", color = ByteCreamMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
-                    )
+                    }
                 }
 
                 item {
@@ -1007,6 +1048,17 @@ fun DiaryScreen(
                 mealToClear = null
             }
         )
+    }
+
+    // Customize home: reorder and hide the sections
+    if (showHomeLayout) {
+        ModalBottomSheet(
+            onDismissRequest = { showHomeLayout = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = ByteSurfaceDark
+        ) {
+            com.bytelog.app.ui.diary.HomeLayoutEditor(homeLayout, onChange = { viewModel.saveHomeLayout(it) })
+        }
     }
 
     // Hydration Modal Bottom Sheet

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onRoot
 import androidx.room.Room
@@ -327,9 +328,11 @@ class RecipeScreensRenderTest {
 
         // Swiping a food row left still deletes that food, and the day stays put
         // (scrolled into view first, so the row isn't under the floating toolbar or add button)
-        // (the drag starts on the meal list itself; the cards above it are the folding header)
-        root.performTouchInput { swipe(Offset(width * 0.5f, height * 0.8f), Offset(width * 0.5f, height * 0.4f), 400) }
+        // (a short drag on the meal list folds the header; then the meal is brought to the top of the list)
+        root.performTouchInput { swipe(Offset(width * 0.5f, height * 0.8f), Offset(width * 0.5f, height * 0.6f), 400) }
         compose.waitForIdle()
+        val lists = compose.onAllNodes(androidx.compose.ui.test.hasScrollToKeyAction())
+        (0 until lists.fetchSemanticsNodes().size).firstOrNull { i -> runCatching { lists[i].performScrollToKey("Breakfast") }.isSuccess }
         compose.waitUntil(5_000) { compose.onAllNodesWithText("Test Oats").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Test Oats").performTouchInput { swipeLeft(startX = width * 0.9f, endX = -width * 0.2f, durationMillis = 250) }
         compose.waitUntil(5_000) { kotlinx.coroutines.runBlocking { db.foodEntryDao().getEntriesForDateOnce(today) }.none { it.id == "e-oats" && it.syncStatus != com.bytelog.app.data.local.model.FoodEntry.SYNC_STATUS_PENDING_DELETE } }
