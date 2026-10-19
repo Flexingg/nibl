@@ -27,7 +27,7 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="122"
-            android:contentDescription="Open today in ByteLog" />
+            android:contentDescription="Open today in Nibl" />
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"

@@ -197,7 +197,7 @@ class ResearchAgent(
     }
 
     private fun systemPrompt(hasSparkyTools: Boolean, canAskSparky: Boolean): String = buildString {
-        append("You are Sparky's research assistant inside the ByteLog nutrition app. Today is ${today()}.\n")
+        append("You are Sparky's research assistant inside the Nibl nutrition app. Today is ${today()}.\n")
         if (hasSparkyTools) {
             append("You can use the user's own Sparky data with your tools: their food library, diary history, goals and more. ")
             append("You can also search the web and read web pages for things that aren't in their data: restaurant and packaged-food nutrition, recipes, product facts.\n")

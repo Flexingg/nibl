@@ -109,7 +109,7 @@ fun RecipeImportScreen(
                     Text(s.reason, color = ByteTomato, fontSize = 14.sp)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Open the page in ByteLog's built-in browser instead. It loads the site like a normal browser, so " +
+                        "Open the page in Nibl's built-in browser instead. It loads the site like a normal browser, so " +
                             "\"are you human\" checks and cookie walls work, and the recipe is read once it appears.",
                         color = ByteTextSecondary, fontSize = 13.sp
                     )
@@ -146,7 +146,7 @@ private fun ImportInput(onSubmit: (String) -> Unit, onBrowse: (String) -> Unit =
     var text by remember { mutableStateOf("") }
     Column {
         Text(
-            "Paste a link to a recipe page, or paste the recipe text itself. You can also share a page to ByteLog from your browser.",
+            "Paste a link to a recipe page, or paste the recipe text itself. You can also share a page to Nibl from your browser.",
             color = ByteTextSecondary, fontSize = 13.sp
         )
         Spacer(Modifier.height(12.dp))

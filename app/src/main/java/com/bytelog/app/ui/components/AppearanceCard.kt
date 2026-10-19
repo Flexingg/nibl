@@ -79,8 +79,8 @@ fun AppearanceCard(
             Column(Modifier.weight(1f)) {
                 Text("Use device colors", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (supportsDeviceColors) "Match your wallpaper (Material You). Off uses ByteLog's tomato palette."
-                    else "Needs Android 12 or later. Using ByteLog's tomato palette.",
+                    if (supportsDeviceColors) "Match your wallpaper (Material You). Off uses Nibl's tomato palette."
+                    else "Needs Android 12 or later. Using Nibl's tomato palette.",
                     color = cs.onSurfaceVariant, fontSize = 12.sp
                 )
             }

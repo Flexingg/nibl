@@ -28,7 +28,7 @@ object DailyReminderScheduler {
                 CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Daily reminders to log your food, water, and weight in ByteLog"
+                description = "Daily reminders to log your food, water, and weight in Nibl"
                 enableVibration(true)
                 setShowBadge(true)
             }
@@ -146,7 +146,7 @@ object DailyReminderScheduler {
     fun sendTestNotification(context: Context) {
         showNotification(
             context = context,
-            title = "ByteLog • Daily Reminder ⚡",
+            title = "Nibl • Daily Reminder ⚡",
             message = "Reminders are working! You'll be notified daily to keep your nutrition and hydration logs up to date."
         )
     }

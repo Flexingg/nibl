@@ -88,14 +88,14 @@ class ReminderActionReceiver : BroadcastReceiver() {
                 val logged = ReminderShortcuts.log(app.foodRepository, kind, mealId, mealName)
                 val kcal = logged.sumOf { it.calories.toDouble() }.roundToInt()
                 val text = when {
-                    logged.isEmpty() -> "Nothing to repeat for $mealName. Open ByteLog to log it."
+                    logged.isEmpty() -> "Nothing to repeat for $mealName. Open Nibl to log it."
                     logged.size == 1 -> "Logged ${logged[0].foodName} to $mealName · $kcal kcal"
                     else -> "Logged ${logged.size} foods to $mealName · $kcal kcal"
                 }
                 DailyReminderScheduler.createNotificationChannel(context)
                 val done = NotificationCompat.Builder(context, DailyReminderScheduler.CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_notification)
-                    .setContentTitle(if (logged.isEmpty()) "ByteLog" else "Logged ✓")
+                    .setContentTitle(if (logged.isEmpty()) "Nibl" else "Logged ✓")
                     .setContentText(text)
                     .setPriority(NotificationCompat.PRIORITY_LOW)
                     .setOnlyAlertOnce(true)
