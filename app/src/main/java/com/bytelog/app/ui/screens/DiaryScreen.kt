@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -302,6 +303,12 @@ fun DiaryScreen(
     val headerState = com.bytelog.app.ui.components.rememberHeaderCollapseState()
     val headerFraction = com.bytelog.app.ui.components.rememberHeaderFraction(headerState)
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // The title and the header cards sit above the list; a drag that starts on them scrolls the list too (folding
+    // the header first, like a drag on the list), so the home screen scrolls wherever you touch it.
+    val scrollsList = Modifier
+        .nestedScroll(toolbarScroll.connection)
+        .nestedScroll(headerState.connection)
+        .scrollable(listState, androidx.compose.foundation.gestures.Orientation.Vertical, reverseDirection = true)
     val poppedKeys = remember { mutableSetOf<Any>() }
 
     val templatesSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -347,21 +354,23 @@ fun DiaryScreen(
                 .padding(horizontal = 16.dp)
         ) {
             // Large title that shrinks as the header folds
-            com.bytelog.app.ui.diary.ExpressiveTopBar(
-                fraction = headerFraction,
-                date = selectedDate,
-                title = describeDay(selectedDate),
-                subtitle = dayDate.format(DateTimeFormatter.ofPattern(if (fastText != null) "EEE, MMM d" else "EEEE, MMMM d")),
-                syncing = isSyncing,
-                onSync = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    viewModel.manualSync()
-                },
-                onChat = onNavigateToChat,
-                onSettings = onNavigateToSettings,
-                onFamily = if (familyViewModel != null) onOpenFamily else null,
-                badge = fastText?.let { t -> { com.bytelog.app.ui.diary.FastingPill(t) } }
-            )
+            Box(scrollsList) {
+                com.bytelog.app.ui.diary.ExpressiveTopBar(
+                    fraction = headerFraction,
+                    date = selectedDate,
+                    title = describeDay(selectedDate),
+                    subtitle = dayDate.format(DateTimeFormatter.ofPattern(if (fastText != null) "EEE, MMM d" else "EEEE, MMMM d")),
+                    syncing = isSyncing,
+                    onSync = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.manualSync()
+                    },
+                    onChat = onNavigateToChat,
+                    onSettings = onNavigateToSettings,
+                    onFamily = if (familyViewModel != null) onOpenFamily else null,
+                    badge = fastText?.let { t -> { com.bytelog.app.ui.diary.FastingPill(t) } }
+                )
+            }
 
           // Header and list: swipe sideways here to change day
           Column(
@@ -374,7 +383,7 @@ fun DiaryScreen(
           ) {
             // Calories, water and weight: full cards at the top, two narrow strips once the list scrolls
             com.bytelog.app.ui.diary.ExpressiveDiaryHeader(
-                modifier = dayMotion,
+                modifier = dayMotion.then(scrollsList),
                 fraction = headerFraction,
                 hero = {
                     com.bytelog.app.ui.diary.CalorieHero(
