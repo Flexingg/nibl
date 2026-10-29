@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -29,7 +30,9 @@ import java.util.UUID
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class FastSearchViewModel(
-    private val foodRepository: FoodRepository
+    private val foodRepository: FoodRepository,
+    /** Your saved meals and recipes (from Sparky), searched alongside foods. */
+    private val mealTemplates: kotlinx.coroutines.flow.Flow<List<com.bytelog.app.data.local.model.MealTemplate>> = flowOf(emptyList())
 ) : ViewModel() {
 
     var targetMealTypeId: String = "breakfast"
@@ -58,6 +61,19 @@ class FastSearchViewModel(
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.bytelog.app.data.repository.FoodSearchResults())
+
+    /** Saved meals and recipes matching the search (typos allowed), best match first. */
+    val mealResults: StateFlow<List<com.bytelog.app.data.local.model.MealTemplate>> =
+        kotlinx.coroutines.flow.combine(_searchQuery, mealTemplates) { q, templates ->
+            val tokens = com.bytelog.app.data.repository.FoodSearch.tokens(q)
+            if (tokens.isEmpty()) emptyList()
+            else templates.mapNotNull { t -> com.bytelog.app.data.repository.FoodSearch.match(t.name, null, tokens)?.let { t to it } }
+                .sortedWith(compareBy<Pair<com.bytelog.app.data.local.model.MealTemplate, Int>> { it.second }.thenBy { it.first.name.length })
+                .take(8)
+                .map { it.first }
+        }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selectedMealName = MutableStateFlow("Breakfast")
     val selectedMealName: StateFlow<String> = _selectedMealName.asStateFlow()
@@ -226,6 +242,28 @@ class FastSearchViewModel(
         val more = Portions.convert(food, portionFor(food), existing.unit).quantity
         updateStagedPortion(existing.id, Portion(Portions.tidy(existing.quantity + more, existing.unit), existing.unit))
         _activeStagedId.value = existing.id
+    }
+
+    /**
+     * Puts one serving of a saved meal or recipe in the tray as its foods, each still adjustable (a recipe for
+     * six adds a sixth of each ingredient). Returns how many foods were added; rows without nutrition, or that
+     * are themselves meals, are left out.
+     */
+    fun stageTemplate(template: com.bytelog.app.data.local.model.MealTemplate): Int {
+        val scale = if (template.totalServings > 0f) 1f / template.totalServings else 1f
+        var added = 0
+        com.bytelog.app.recipes.TemplateNutrition.parseRows(template.foodsJson).forEach { row ->
+            val per = row.per ?: return@forEach
+            val foodId = row.foodId ?: return@forEach
+            val food = FoodItem(
+                id = foodId, name = row.name,
+                servingSize = row.servingSize ?: 1f, servingUnit = row.servingUnit ?: row.unit,
+                calories = per.calories, protein = per.protein, carbs = per.carbs, fat = per.fat
+            )
+            stageFood(food, Portion(Portions.tidy(row.quantity * scale, row.unit), row.unit))
+            added++
+        }
+        return added
     }
 
     /** Entries made elsewhere (quick add, voice): their own amount becomes "1 serving" for later changes. */

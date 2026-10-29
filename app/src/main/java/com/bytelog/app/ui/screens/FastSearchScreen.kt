@@ -100,6 +100,7 @@ import com.bytelog.app.ui.theme.ByteTomato
 import com.bytelog.app.ui.theme.MacroProtein
 import com.bytelog.app.ui.viewmodel.FastSearchViewModel
 import kotlin.math.roundToInt
+import androidx.compose.material.icons.filled.RestaurantMenu
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,6 +116,7 @@ fun FastSearchScreen(
     val selectedMealName by viewModel.selectedMealName.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
+    val mealResults by viewModel.mealResults.collectAsState()
     val recentFoods by viewModel.recentFoods.collectAsState()
     val favoriteFoods by viewModel.favoriteFoods.collectAsState()
     val suggestedFoods by viewModel.suggestedFoods.collectAsState()
@@ -398,13 +400,69 @@ fun FastSearchScreen(
             val inTray = remember(stagedEntries) { stagedEntries.mapNotNull { it.foodId }.toSet() }
 
             val poppedResults = remember { mutableSetOf<Any>() }
+            // One food result (shared by the groups below)
+            val foodResult: @Composable (Int, FoodItem) -> Unit = { index, food ->
+                // Results read as segmented groups (yours, then the rest): round outer corners, tight inner ones.
+                val outer = 24.dp; val inner = 6.dp
+                val groupStart = index == 0 || index == loggedCount
+                val groupEnd = index == displayFoods.lastIndex || index == loggedCount - 1
+                val rowShape = RoundedCornerShape(
+                    topStart = if (groupStart) outer else inner, topEnd = if (groupStart) outer else inner,
+                    bottomStart = if (groupEnd) outer else inner, bottomEnd = if (groupEnd) outer else inner
+                )
+                val header = when {
+                    loggedCount == 0 -> null
+                    index == 0 -> "YOU'VE LOGGED"
+                    index == loggedCount -> "MORE FOODS"
+                    else -> null
+                }
+                if (header != null) {
+                    Text(
+                        header, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.6.sp, modifier = Modifier.padding(start = 6.dp, top = if (index == 0) 0.dp else 12.dp, bottom = 6.dp)
+                    )
+                }
+                FoodSearchRow(
+                    shape = rowShape,
+                    modifier = Modifier.popIn(food.id, poppedResults, (index.coerceAtMost(8) * 25).toLong()),
+                    timesLogged = if (searching) timesLogged[food.id] ?: 0 else 0,
+                    food = food,
+                    portion = remember(food, lastPortions) { viewModel.portionFor(food) },
+                    inTray = food.id in inTray,
+                    onQuickAdd = {
+                        // One tap: in the tray at the usual amount, editor open, search cleared for the next food
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.tapFood(food)
+                        if (searchQuery.isNotBlank()) viewModel.setSearchQuery("")
+                        focusManager.clearFocus()
+                    },
+                    onEdit = { onEditFood(food.id) },
+                    onToggleFavorite = {
+                        viewModel.toggleFavorite(food)
+                    },
+                    onSwipeLog = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.logNow(food) { logged ->
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                val r = snackbarHostState.showSnackbar(
+                                    "Logged ${food.name} to $selectedMealName", actionLabel = "Undo",
+                                    duration = androidx.compose.material3.SnackbarDuration.Short
+                                )
+                                if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.undoLogged(logged)
+                            }
+                        }
+                    }
+                )
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                if (searchQuery.isNotBlank() && displayFoods.isEmpty()) {
+                if (searchQuery.isNotBlank() && displayFoods.isEmpty() && mealResults.isEmpty()) {
                     item {
                         if (isSearchingRemote) {
                             Box(
@@ -532,60 +590,35 @@ fun FastSearchScreen(
                         }
                     }
                 } else {
-                    itemsIndexed(displayFoods, key = { _, f -> f.id }) { index, food ->
-                        // Results read as segmented groups (yours, then the rest): round outer corners, tight inner ones.
-                        val outer = 24.dp; val inner = 6.dp
-                        val groupStart = index == 0 || index == loggedCount
-                        val groupEnd = index == displayFoods.lastIndex || index == loggedCount - 1
-                        val rowShape = RoundedCornerShape(
-                            topStart = if (groupStart) outer else inner, topEnd = if (groupStart) outer else inner,
-                            bottomStart = if (groupEnd) outer else inner, bottomEnd = if (groupEnd) outer else inner
-                        )
-                        val header = when {
-                            loggedCount == 0 -> null
-                            index == 0 -> "YOU'VE LOGGED"
-                            index == loggedCount -> "MORE FOODS"
-                            else -> null
-                        }
-                        if (header != null) {
+                    // Foods you've logged, then your meals and recipes, then everything else
+                    itemsIndexed(displayFoods.take(loggedCount), key = { _, f -> f.id }) { index, food -> foodResult(index, food) }
+                    if (searching && mealResults.isNotEmpty()) {
+                        item(key = "meals_header") {
                             Text(
-                                header, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                                letterSpacing = 0.6.sp, modifier = Modifier.padding(start = 6.dp, top = if (index == 0) 0.dp else 12.dp, bottom = 6.dp)
+                                "YOUR MEALS & RECIPES", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.6.sp, modifier = Modifier.padding(start = 6.dp, top = if (loggedCount > 0) 12.dp else 0.dp, bottom = 6.dp)
                             )
                         }
-                        FoodSearchRow(
-                            shape = rowShape,
-                            modifier = Modifier.popIn(food.id, poppedResults, (index.coerceAtMost(8) * 25).toLong()),
-                            timesLogged = if (searching) timesLogged[food.id] ?: 0 else 0,
-                            food = food,
-                            portion = remember(food, lastPortions) { viewModel.portionFor(food) },
-                            inTray = food.id in inTray,
-                            onQuickAdd = {
-                                // One tap: in the tray at the usual amount, editor open, search cleared for the next food
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                viewModel.tapFood(food)
-                                if (searchQuery.isNotBlank()) viewModel.setSearchQuery("")
-                                focusManager.clearFocus()
-                            },
-                            onEdit = { onEditFood(food.id) },
-                            onToggleFavorite = {
-                                viewModel.toggleFavorite(food)
-                            },
-                            onSwipeLog = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.logNow(food) { logged ->
-                                    scope.launch {
-                                        snackbarHostState.currentSnackbarData?.dismiss()
-                                        val r = snackbarHostState.showSnackbar(
-                                            "Logged ${food.name} to $selectedMealName", actionLabel = "Undo",
-                                            duration = androidx.compose.material3.SnackbarDuration.Short
-                                        )
-                                        if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.undoLogged(logged)
-                                    }
+                        itemsIndexed(mealResults, key = { _, t -> "meal:" + t.id }) { index, template ->
+                            val outer = 24.dp; val inner = 6.dp
+                            MealSearchRow(
+                                template = template,
+                                shape = RoundedCornerShape(
+                                    topStart = if (index == 0) outer else inner, topEnd = if (index == 0) outer else inner,
+                                    bottomStart = if (index == mealResults.lastIndex) outer else inner, bottomEnd = if (index == mealResults.lastIndex) outer else inner
+                                ),
+                                onAdd = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    val added = viewModel.stageTemplate(template)
+                                    if (added > 0) {
+                                        viewModel.setSearchQuery("")
+                                        focusManager.clearFocus()
+                                    } else scope.launch { snackbarHostState.showSnackbar("${template.name} has no foods with nutrition to add") }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
+                    itemsIndexed(displayFoods.drop(loggedCount), key = { _, f -> f.id }) { index, food -> foodResult(index + loggedCount, food) }
                 }
 
                 item {
@@ -715,6 +748,48 @@ fun FoodSearchRow(
         }
     ) {
         FoodSearchRowContent(food, shape, Modifier, portion, inTray, onQuickAdd, onToggleFavorite, onEdit, timesLogged)
+    }
+}
+
+/** A saved meal or recipe in search results: one tap puts a serving's foods in the tray. */
+@Composable
+private fun MealSearchRow(template: com.bytelog.app.data.local.model.MealTemplate, shape: androidx.compose.ui.graphics.Shape, onAdd: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val rows = remember(template.foodsJson) { com.bytelog.app.recipes.TemplateNutrition.parseRows(template.foodsJson) }
+    val servings = template.totalServings.takeIf { it > 0f } ?: 1f
+    val kcal = remember(template.foodsJson, servings) {
+        ((com.bytelog.app.recipes.TemplateNutrition.totals(template.foodsJson)?.calories ?: template.calories) / servings).roundToInt()
+    }
+    val recipe = servings > 1f
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .pressBounce(0.98f)
+            .clip(shape)
+            .background(cs.surfaceContainer)
+            .clickable(onClickLabel = "Add to tray", onClick = onAdd)
+            .padding(start = 14.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(cs.tertiaryContainer), contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.RestaurantMenu, contentDescription = null, tint = cs.onTertiaryContainer, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(template.name, color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(
+                (if (recipe) "Recipe · 1 of ${servings.roundToInt()} servings" else "Meal") + " · ${rows.size} ${if (rows.size == 1) "food" else "foods"}",
+                color = cs.onSurfaceVariant, fontSize = 12.sp, maxLines = 1
+            )
+        }
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).background(cs.primaryContainer).padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("$kcal kcal", color = cs.onPrimaryContainer, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(4.dp))
+            Icon(Icons.Default.Add, contentDescription = null, tint = cs.onPrimaryContainer, modifier = Modifier.size(16.dp))
+        }
     }
 }
 

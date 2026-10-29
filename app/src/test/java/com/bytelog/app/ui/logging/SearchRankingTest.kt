@@ -53,6 +53,16 @@ class SearchRankingTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var sparkyDelayMs = 0L
 
+    /** A recipe for two: a serving is half of each ingredient. */
+    private val parfait = com.bytelog.app.data.local.model.MealTemplate(
+        id = "m-parfait", name = "Yogurt parfait", totalServings = 2f,
+        foodsJson = """[
+            {"food_id":"f-yogurt","food_name":"Greek Yogurt","quantity":340,"unit":"g","serving_size":170,"serving_unit":"g","calories":150,"protein":20,"carbs":6,"fat":4},
+            {"food_id":"f-granola","food_name":"Granola","quantity":100,"unit":"g","serving_size":50,"serving_unit":"g","calories":220,"protein":5,"carbs":30,"fat":9},
+            {"child_meal_name":"Berry topping","quantity":1}
+        ]"""
+    )
+
     private val yogurt = FoodItem("f-yogurt", "Greek Yogurt", brand = "Fage", servingSize = 170f, calories = 150f, protein = 20f, useCount = 5)
 
     @Before
@@ -72,7 +82,8 @@ class SearchRankingTest {
                     path.startsWith("/api/foods/openfoodfacts/search") -> MockResponse().setBody(
                         """{"products":[
                             {"code":"111","product_name":"Yogurt","brands":"Generic","nutriments":{"energy-kcal_100g":61,"proteins_100g":3.5,"carbohydrates_100g":4.7,"fat_100g":3.3}},
-                            {"code":"222","product_name":"Strawberry Yogurt Drink","brands":"Brand","nutriments":{"energy-kcal_100g":80}}
+                            {"code":"222","product_name":"Strawberry Yogurt Drink","brands":"Brand","nutriments":{"energy-kcal_100g":80}},
+                            {"product_name":"Yogurt cup","brands":"Store","nutriments":{"energy-kcal_100g":90}}
                         ]}"""
                     )
                     else -> MockResponse().setResponseCode(404)
@@ -94,7 +105,7 @@ class SearchRankingTest {
         )
         // Yogurt logged twice; a frozen yogurt once, logged on the web (no food saved on the phone)
         db.foodEntryDao().insertEntries(listOf(e("Greek Yogurt", "f-yogurt", "Fage"), e("Greek Yogurt", "f-yogurt", "Fage"), e("Frozen yogurt", "web-froyo")))
-        vm = FastSearchViewModel(repo)
+        vm = FastSearchViewModel(repo, kotlinx.coroutines.flow.MutableStateFlow(listOf(parfait)))
         vm.initContext("breakfast", "Breakfast", "2026-10-29")
     }
 
@@ -179,7 +190,47 @@ class SearchRankingTest {
         val more = compose.onAllNodesWithText("MORE FOODS").fetchSemanticsNodes().first().boundsInRoot.top
         val greek = compose.onAllNodesWithText("Greek Yogurt").fetchSemanticsNodes().first().boundsInRoot.top
         assertTrue(logged < greek && greek < more)
+        // Your meals and recipes sit between what you've logged and everything else
+        waitFor { compose.onAllNodesWithText("YOUR MEALS & RECIPES").fetchSemanticsNodes().isNotEmpty() }
+        val meals = compose.onAllNodesWithText("YOUR MEALS & RECIPES").fetchSemanticsNodes().first().boundsInRoot.top
+        assertTrue(greek < meals && meals < more)
+        assertTrue(compose.onAllNodesWithText("Recipe · 1 of 2 servings", substring = true).fetchSemanticsNodes().isNotEmpty())
         shot("search_logged_first")
+    }
+
+    @Test
+    fun typosFindWhatYouveLoggedAndProductsKeepTheirIdBetweenSearches() {
+        val job = collectResults()
+        vm.setSearchQuery("yogrut")
+        waitFor { vm.searchResults.value.logged.isNotEmpty() }
+        assertEquals("f-yogurt", vm.searchResults.value.logged.first().food.id)
+
+        // An Open Food Facts product without a barcode has the same id every time it's found
+        vm.setSearchQuery("yog")
+        waitFor { vm.searchResults.value.all.any { it.food.name == "Yogurt cup" } }
+        val first = vm.searchResults.value.all.first { it.food.name == "Yogurt cup" }.food.id
+        vm.setSearchQuery("yogu")
+        waitFor { vm.searchResults.value.all.any { it.food.name == "Yogurt cup" } && vm.searchQuery.value == "yogu" }
+        waitFor { !vm.isSearchingRemote.value }
+        assertEquals(first, vm.searchResults.value.all.first { it.food.name == "Yogurt cup" }.food.id)
+        job.cancel()
+    }
+
+    @Test
+    fun yourMealsAndRecipesAreFoundAndAddAServingToTheTray() {
+        val job = scope.launch { vm.mealResults.collect {} }
+        vm.setSearchQuery("parfiat")     // a typo
+        waitFor { vm.mealResults.value.isNotEmpty() }
+        assertEquals("m-parfait", vm.mealResults.value.single().id)
+
+        assertEquals(2, vm.stageTemplate(parfait))   // the topping is a meal of its own, so it's left out
+        val staged = vm.stagedEntries.value
+        assertEquals(listOf("Greek Yogurt", "Granola"), staged.map { it.foodName })
+        assertEquals(170f, staged[0].quantity, 0.01f)
+        assertEquals(150f, staged[0].calories, 0.5f)
+        assertEquals(50f, staged[1].quantity, 0.01f)
+        assertEquals(220f, staged[1].calories, 0.5f)
+        job.cancel()
     }
 
     /** searchResults only updates while something collects it (as the screen does). */

@@ -1,5 +1,6 @@
 package com.bytelog.app
 
+import com.bytelog.app.ui.navigation.page
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -195,7 +196,7 @@ fun ByteLogNavHost(
         popExitTransition = { NavMotion.popExit(this, reduceMotion) }
     ) {
         // 1. Daily Diary / Timeline
-        composable("diary") {
+        page("diary") {
             val diaryViewModel: DiaryViewModel = viewModel {
                 DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient)
             }
@@ -234,7 +235,7 @@ fun ByteLogNavHost(
         }
 
         // 1b. Copy recent meals into the day open in the Diary (shares the Diary's view model)
-        composable(NavMotion.RECENT_MEALS) { entry ->
+        page(NavMotion.RECENT_MEALS) { entry ->
             val diaryEntry = remember(entry) { navController.getBackStackEntry("diary") }
             val diaryViewModel: DiaryViewModel = viewModel(diaryEntry) {
                 DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient)
@@ -253,7 +254,7 @@ fun ByteLogNavHost(
         }
 
         // 2. Fast-Search & Multi-Add Staging
-        composable(
+        page(
             route = "search/{mealTypeId}/{mealName}/{date}?photo={photo}",
             arguments = listOf(
                 navArgument("mealTypeId") { type = NavType.StringType },
@@ -268,7 +269,7 @@ fun ByteLogNavHost(
             val date = backStackEntry.arguments?.getString("date") ?: ""
 
             val fastSearchViewModel: FastSearchViewModel = viewModel {
-                FastSearchViewModel(foodRepo).apply {
+                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates).apply {
                     initContext(mealTypeId, mealName, date)
                 }
             }
@@ -293,7 +294,7 @@ fun ByteLogNavHost(
         }
 
         // 3. Continuous Burst Barcode Scanner
-        composable(
+        page(
             route = "barcode/{mealTypeId}/{mealName}/{date}",
             arguments = listOf(
                 navArgument("mealTypeId") { type = NavType.StringType },
@@ -306,7 +307,7 @@ fun ByteLogNavHost(
             val date = backStackEntry.arguments?.getString("date") ?: ""
 
             val fastSearchViewModel: FastSearchViewModel = viewModel {
-                FastSearchViewModel(foodRepo).apply {
+                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates).apply {
                     initContext(mealTypeId, mealName, date)
                 }
             }
@@ -318,7 +319,7 @@ fun ByteLogNavHost(
         }
 
         // 4. Settings Screen
-        composable("settings") {
+        page("settings") {
             SettingsScreen(
                 settingsRepository = settingsRepo,
                 foodRepository = foodRepo,
@@ -332,14 +333,14 @@ fun ByteLogNavHost(
         }
 
         // 4d. Family: everyone sharing their diary, and one person's diary
-        composable("family") {
+        page("family") {
             com.bytelog.app.ui.family.FamilyScreen(
                 viewModel = familyViewModel,
                 onBack = { navController.popBackStack() },
                 onOpenMember = { id -> navController.navigate("family/${android.net.Uri.encode(id)}") { launchSingleTop = true } }
             )
         }
-        composable(
+        page(
             route = "family/{userId}",
             arguments = listOf(navArgument("userId") { type = NavType.StringType })
         ) { entry ->
@@ -349,7 +350,7 @@ fun ByteLogNavHost(
         }
 
         // 4b. The user's own foods on Sparky
-        composable("my_foods") { entry ->
+        page("my_foods") { entry ->
             val vm: MyFoodsViewModel = viewModel { MyFoodsViewModel(foodRepo) }
             val foodEdit by entry.savedStateHandle.getStateFlow<String?>(FOOD_EDIT_RESULT, null).collectAsState()
             LaunchedEffect(foodEdit) {
@@ -363,7 +364,7 @@ fun ByteLogNavHost(
         }
 
         // 4c. Edit one food (saved to Sparky)
-        composable(
+        page(
             route = "food/{foodId}",
             arguments = listOf(navArgument("foodId") { type = NavType.StringType })
         ) { entry ->
@@ -381,7 +382,7 @@ fun ByteLogNavHost(
         }
 
         // 5. Recipe import (URL, shared link or pasted text)
-        composable("import") {
+        page("import") {
             val initial = remember { recipesViewModel.consumeSharedText() }
             RecipeImportScreen(
                 viewModel = recipesViewModel,
@@ -396,7 +397,7 @@ fun ByteLogNavHost(
         }
 
         // 6. Recipe page: ingredients, directions, batch & log actions
-        composable(
+        page(
             route = "recipe/{templateId}",
             arguments = listOf(navArgument("templateId") { type = NavType.StringType })
         ) { backStackEntry ->
@@ -410,7 +411,7 @@ fun ByteLogNavHost(
         }
 
         // 7. Cook mode
-        composable(
+        page(
             route = "cook/{templateId}",
             arguments = listOf(navArgument("templateId") { type = NavType.StringType })
         ) { backStackEntry ->
@@ -422,7 +423,7 @@ fun ByteLogNavHost(
         }
 
         // 8. Sparky AI Chatbot Screen
-        composable(NavMotion.CHAT) {
+        page(NavMotion.CHAT) {
             val chatViewModel: SparkyChatViewModel = viewModel {
                 SparkyChatViewModel(app.chatRepository)
             }
