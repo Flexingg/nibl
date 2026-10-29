@@ -7,6 +7,7 @@ import com.bytelog.app.data.local.model.MealType
 import com.bytelog.app.data.local.model.TemplateIngredient
 import com.bytelog.app.data.local.model.WeightEntry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -383,14 +384,26 @@ class SparkyApiClient(
      * Search foods remotely from Sparky Fitness database.
      * Queries both user's custom foods and Sparky's OpenFoodFacts proxy to ensure comprehensive search results.
      */
+    /**
+     * Food search across Sparky's foods and Open Food Facts, asked at the same time; Sparky's come first and a
+     * food found in both is listed once.
+     */
     suspend fun searchFoods(query: String): Result<List<FoodItem>> = withContext(Dispatchers.IO) {
         val trimmed = query.trim()
         if (trimmed.isBlank()) return@withContext Result.success(emptyList())
+        kotlinx.coroutines.coroutineScope {
+            val sparky = async { searchSparkyFoods(trimmed).getOrNull().orEmpty() }
+            val off = async { searchOpenFoodFacts(trimmed, page = 1).getOrNull().orEmpty() }
+            Result.success(mergeFoodResults(sparky.await(), off.await()))
+        }
+    }
 
+    /** Foods on Sparky (yours, shared and saved) matching [query]. */
+    suspend fun searchSparkyFoods(query: String): Result<List<FoodItem>> = withContext(Dispatchers.IO) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return@withContext Result.success(emptyList())
         val combinedResults = mutableListOf<FoodItem>()
         val seenKeys = mutableSetOf<String>()
-
-        // 1. Query Sparky Custom / Saved Foods
         try {
             val encodedQuery = java.net.URLEncoder.encode(trimmed, "UTF-8")
             val request = Request.Builder()
@@ -456,24 +469,9 @@ class SparkyApiClient(
                     }
                 }
             }
-        } catch (_: Exception) {
-            // Non-fatal, continue to OpenFoodFacts search
-        }
-
-        // 2. Query OpenFoodFacts database proxy on Sparky server
-        try {
-            val offResult = searchOpenFoodFacts(trimmed, page = 1)
-            if (offResult.isSuccess) {
-                val offFoods = offResult.getOrNull().orEmpty()
-                for (food in offFoods) {
-                    val key = (food.barcode ?: "${food.name.lowercase()}_${food.brand?.lowercase()}").trim()
-                    if (seenKeys.add(key)) {
-                        combinedResults.add(food)
-                    }
-                }
-            }
-        } catch (_: Exception) {
-            // Non-fatal
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            return@withContext Result.failure(e)
         }
 
         Result.success(combinedResults)
@@ -2145,6 +2143,13 @@ class SparkyApiClient(
 
     companion object {
         /** Reads Sparky's food photo estimate: the meal, and each food in it. Null if it isn't one. */
+        /** [first] then the foods of [second] not already in it (same barcode, or same name and brand). */
+        fun mergeFoodResults(first: List<FoodItem>, second: List<FoodItem>): List<FoodItem> {
+            val seen = HashSet<String>()
+            fun key(f: FoodItem) = (f.barcode?.takeIf { it.isNotBlank() } ?: "${f.name.lowercase()}_${f.brand?.lowercase()}").trim()
+            return (first + second).filter { seen.add(key(it)) }
+        }
+
         fun parsePhotoEstimate(content: String): PhotoMealEstimate? = runCatching {
             val root = Json { ignoreUnknownKeys = true }.parseToJsonElement(content).jsonObject
             fun kotlinx.serialization.json.JsonObject.f(k: String) = this[k]?.jsonPrimitive?.floatOrNull ?: 0f

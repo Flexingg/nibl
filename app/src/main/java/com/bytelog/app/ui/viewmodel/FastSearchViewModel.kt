@@ -16,7 +16,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -40,16 +43,21 @@ class FastSearchViewModel(
     private val _stagedEntries = MutableStateFlow<List<FoodEntry>>(emptyList())
     val stagedEntries: StateFlow<List<FoodEntry>> = _stagedEntries.asStateFlow()
 
-    // Sub-16ms Instant Local Search
-    val searchResults: StateFlow<List<FoodItem>> = _searchQuery
+    /** Server results and the query they answer; kept while the next query loads, filtered to what still matches. */
+    private val _remote = MutableStateFlow<Pair<String, List<FoodItem>>>("" to emptyList())
+
+    /**
+     * Search results as you type: foods you've logged first (instantly, from the phone), then saved foods, then new
+     * ones from Sparky and Open Food Facts as they arrive.
+     */
+    val searchResults: StateFlow<com.bytelog.app.data.repository.FoodSearchResults> = _searchQuery
         .flatMapLatest { query ->
-            if (query.isBlank()) {
-                flowOf(emptyList())
-            } else {
-                foodRepository.searchLocalFoods(query)
+            if (query.isBlank()) flowOf(com.bytelog.app.data.repository.FoodSearchResults())
+            else kotlinx.coroutines.flow.combine(foodRepository.searchOnDevice(query), _remote) { (logged, saved), (_, remote) ->
+                com.bytelog.app.data.repository.FoodSearch.combine(logged, saved, remote, com.bytelog.app.data.repository.FoodSearch.tokens(query))
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.bytelog.app.data.repository.FoodSearchResults())
 
     private val _selectedMealName = MutableStateFlow("Breakfast")
     val selectedMealName: StateFlow<String> = _selectedMealName.asStateFlow()
@@ -76,28 +84,23 @@ class FastSearchViewModel(
     private val _isSearchingRemote = MutableStateFlow(false)
     val isSearchingRemote: StateFlow<Boolean> = _isSearchingRemote.asStateFlow()
 
-    // Remote search job for Sparky Fitness API
-    private var remoteSearchJob: Job? = null
-
     init {
         viewModelScope.launch {
             _searchQuery
-                .debounce(250)
+                .map { it.trim() }
                 .distinctUntilChanged()
-                .collect { query ->
-                    val trimmed = query.trim()
-                    if (trimmed.length >= 2) {
-                        remoteSearchJob?.cancel()
-                        remoteSearchJob = launch(Dispatchers.IO) {
-                            _isSearchingRemote.value = true
-                            try {
-                                foodRepository.searchRemoteFoods(trimmed)
-                            } finally {
-                                _isSearchingRemote.value = false
-                            }
-                        }
-                    } else {
-                        remoteSearchJob?.cancel()
+                .onEach { q ->
+                    // A query seen recently shows its results at once; the request below refreshes them
+                    if (q.length < 2) _remote.value = "" to emptyList()
+                    else foodRepository.cachedRemoteResults(q)?.let { _remote.value = q to it }
+                }
+                .debounce(180)
+                .collectLatest { q ->
+                    if (q.length < 2) { _isSearchingRemote.value = false; return@collectLatest }
+                    _isSearchingRemote.value = true
+                    try {
+                        foodRepository.searchRemote(q).collect { _remote.value = q to it }
+                    } finally {
                         _isSearchingRemote.value = false
                     }
                 }
@@ -184,6 +187,8 @@ class FastSearchViewModel(
     fun foodFor(entryId: String): FoodItem? = stagedFoods[entryId]
 
     fun stageFood(food: FoodItem, portion: Portion? = null): FoodEntry {
+        // A server result becomes part of your foods once you use it
+        viewModelScope.launch { foodRepository.rememberFood(food) }
         val p = portion ?: portionFor(food)
         val m = Portions.macros(food, p)
         val entry = FoodEntry(
@@ -297,6 +302,7 @@ class FastSearchViewModel(
             syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT
         )
         viewModelScope.launch {
+            foodRepository.rememberFood(food)
             foodRepository.commitMultiAdd(listOf(entry))
             _lastPortions.value = _lastPortions.value + (food.id to p)
             onLogged(listOf(entry))
@@ -391,6 +397,7 @@ class FastSearchViewModel(
 
     fun toggleFavorite(food: FoodItem) {
         viewModelScope.launch {
+            foodRepository.rememberFood(food)
             foodRepository.toggleFavorite(food.id, food.isFavorite)
         }
     }
