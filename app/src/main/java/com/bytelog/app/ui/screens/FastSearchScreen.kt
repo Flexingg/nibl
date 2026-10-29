@@ -382,8 +382,13 @@ fun FastSearchScreen(
             }
 
             // Food List
+            val searching = searchQuery.isNotBlank()
+            val searchFoods = remember(searchResults) { searchResults.all.map { it.food } }
+            val timesLogged = remember(searchResults) { searchResults.logged.associate { it.food.id to it.timesLogged } }
+            // While searching, foods you've logged form their own group above everything else
+            val loggedCount = if (searching) searchResults.logged.size else 0
             val displayFoods = when {
-                searchQuery.isNotBlank() -> searchResults
+                searching -> searchFoods
                 selectedTabIndex == 0 -> suggestedFoods
                 selectedTabIndex == 1 -> recentFoods
                 else -> favoriteFoods
@@ -528,15 +533,30 @@ fun FastSearchScreen(
                     }
                 } else {
                     itemsIndexed(displayFoods, key = { _, f -> f.id }) { index, food ->
-                        // Results read as one segmented group: round outer corners, tight inner ones.
+                        // Results read as segmented groups (yours, then the rest): round outer corners, tight inner ones.
                         val outer = 24.dp; val inner = 6.dp
+                        val groupStart = index == 0 || index == loggedCount
+                        val groupEnd = index == displayFoods.lastIndex || index == loggedCount - 1
                         val rowShape = RoundedCornerShape(
-                            topStart = if (index == 0) outer else inner, topEnd = if (index == 0) outer else inner,
-                            bottomStart = if (index == displayFoods.lastIndex) outer else inner, bottomEnd = if (index == displayFoods.lastIndex) outer else inner
+                            topStart = if (groupStart) outer else inner, topEnd = if (groupStart) outer else inner,
+                            bottomStart = if (groupEnd) outer else inner, bottomEnd = if (groupEnd) outer else inner
                         )
+                        val header = when {
+                            loggedCount == 0 -> null
+                            index == 0 -> "YOU'VE LOGGED"
+                            index == loggedCount -> "MORE FOODS"
+                            else -> null
+                        }
+                        if (header != null) {
+                            Text(
+                                header, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.6.sp, modifier = Modifier.padding(start = 6.dp, top = if (index == 0) 0.dp else 12.dp, bottom = 6.dp)
+                            )
+                        }
                         FoodSearchRow(
                             shape = rowShape,
                             modifier = Modifier.popIn(food.id, poppedResults, (index.coerceAtMost(8) * 25).toLong()),
+                            timesLogged = if (searching) timesLogged[food.id] ?: 0 else 0,
                             food = food,
                             portion = remember(food, lastPortions) { viewModel.portionFor(food) },
                             inTray = food.id in inTray,
@@ -661,10 +681,12 @@ fun FoodSearchRow(
     onToggleFavorite: () -> Unit,
     onEdit: () -> Unit = {},
     /** Swipe right: log it now at this amount, without the tray. */
-    onSwipeLog: (() -> Unit)? = null
+    onSwipeLog: (() -> Unit)? = null,
+    /** How many times you've logged it, shown while searching. */
+    timesLogged: Int = 0
 ) {
     if (onSwipeLog == null) {
-        FoodSearchRowContent(food, shape, modifier, portion, inTray, onQuickAdd, onToggleFavorite, onEdit)
+        FoodSearchRowContent(food, shape, modifier, portion, inTray, onQuickAdd, onToggleFavorite, onEdit, timesLogged)
         return
     }
     val cs = MaterialTheme.colorScheme
@@ -692,7 +714,7 @@ fun FoodSearchRow(
             }
         }
     ) {
-        FoodSearchRowContent(food, shape, Modifier, portion, inTray, onQuickAdd, onToggleFavorite, onEdit)
+        FoodSearchRowContent(food, shape, Modifier, portion, inTray, onQuickAdd, onToggleFavorite, onEdit, timesLogged)
     }
 }
 
@@ -706,7 +728,8 @@ private fun FoodSearchRowContent(
     inTray: Boolean,
     onQuickAdd: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    timesLogged: Int = 0
 ) {
     val haptic = LocalHapticFeedback.current
     val cs = MaterialTheme.colorScheme
@@ -756,7 +779,7 @@ private fun FoodSearchRowContent(
                 }
             }
             Text(
-                text = "${food.brand ?: "Generic"} • ${portion.label}",
+                text = (if (timesLogged > 0) "Logged ${timesLogged}× • " else "") + "${food.brand ?: "Generic"} • ${portion.label}",
                 color = cs.onSurfaceVariant,
                 fontSize = 12.sp,
                 maxLines = 1,

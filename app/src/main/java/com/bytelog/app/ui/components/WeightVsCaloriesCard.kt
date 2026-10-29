@@ -4,7 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -234,15 +234,17 @@ fun WeightVsCaloriesCard(
                                 }
                             )
                         }
+                        // Scrub sideways only, so an up or down drag over the chart still scrolls the page
                         .pointerInput(validPoints) {
-                            detectDragGestures(
+                            detectHorizontalDragGestures(
                                 onDragEnd = {
                                     activeScrubIndex = -1
                                 },
                                 onDragCancel = {
                                     activeScrubIndex = -1
                                 },
-                                onDrag = { change, _ ->
+                                onHorizontalDrag = { change, _ ->
+                                    change.consume()
                                     val count = validPoints.size
                                     if (count > 0) {
                                         val idx = ((change.position.x / size.width) * count).toInt().coerceIn(0, count - 1)

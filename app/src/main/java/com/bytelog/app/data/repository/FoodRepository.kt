@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
@@ -180,22 +181,72 @@ class FoodRepository(
 
     // --- Food Queries ---
 
-    fun searchLocalFoods(query: String): Flow<List<FoodItem>> {
-        return foodDao.searchFoods(query.trim())
+    /**
+     * On-device search, updated as you log: matching foods you've logged (best match, then most logged) and saved
+     * foods you haven't. Instant; no network.
+     */
+    fun searchOnDevice(query: String): Flow<Pair<List<SearchHit>, List<SearchHit>>> {
+        val tokens = FoodSearch.tokens(query)
+        if (tokens.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList<SearchHit>() to emptyList())
+        val token = FoodSearch.prefilterToken(query)
+        return kotlinx.coroutines.flow.combine(foodEntryDao.searchEntries(token), foodDao.searchFoodsByToken(token)) { entries, saved ->
+            entries to saved
+        }.mapLatest { (entries, saved) ->
+            val byId = saved.associateBy { it.id }
+            val missing = entries.mapNotNull { it.foodId }.distinct().filter { it !in byId }
+            val foods = if (missing.isEmpty()) byId else byId + missing.chunked(500).flatMap { foodDao.getFoodsByIds(it) }.associateBy { it.id }
+            val logged = FoodSearch.rankLogged(entries, foods, tokens)
+            val exclude = HashSet<String>()
+            logged.forEach { exclude += it.food.id; exclude += FoodSearch.identity(it.food.name, it.food.brand) }
+            entries.forEach { e -> e.foodId?.let { exclude += it } }
+            logged to FoodSearch.rankSaved(saved, tokens, exclude)
+        }.flowOn(Dispatchers.Default)
     }
 
-    suspend fun searchRemoteFoods(query: String): List<FoodItem> {
-        val result = sparkyApiClient.searchFoods(query)
-        if (result.isSuccess) {
-            val remoteFoods = result.getOrNull().orEmpty()
-            if (remoteFoods.isNotEmpty()) {
-                withContext(Dispatchers.IO) {
-                    foodDao.insertFoods(remoteFoods)
-                }
-            }
-            return remoteFoods
+    /** Recent server searches, so going back to a query (or deleting a letter) shows its results at once. */
+    private val remoteCache = object : LinkedHashMap<String, List<FoodItem>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<FoodItem>>?) = size > 40
+    }
+
+    fun cachedRemoteResults(query: String): List<FoodItem>? = synchronized(remoteCache) { remoteCache[FoodSearch.normalize(query)] }
+
+    /**
+     * Searches Sparky and Open Food Facts at the same time, sending results as each answers (Sparky's first in the
+     * list). Results aren't saved to the phone until you use one.
+     */
+    fun searchRemote(query: String): Flow<List<FoodItem>> = kotlinx.coroutines.flow.channelFlow {
+        val key = FoodSearch.normalize(query)
+        var sparky: List<FoodItem>? = null
+        var off: List<FoodItem>? = null
+        val lock = kotlinx.coroutines.sync.Mutex()
+        suspend fun publish() {
+            val merged = SparkyApiClient.mergeFoodResults(sparky.orEmpty(), off.orEmpty())
+            if (sparky != null && off != null) synchronized(remoteCache) { remoteCache[key] = merged }
+            send(merged)
         }
-        return emptyList()
+        launch(Dispatchers.IO) {
+            val r = sparkyApiClient.searchSparkyFoods(query).getOrNull().orEmpty()
+            lock.withLock { sparky = r; publish() }
+        }
+        launch(Dispatchers.IO) {
+            val r = sparkyApiClient.searchOpenFoodFacts(query, page = 1).getOrNull().orEmpty()
+            lock.withLock { off = r; publish() }
+        }
+    }
+
+    /**
+     * Keeps a food on the phone once you use it (add, log or favourite it), without resetting how often you've
+     * used it or whether it's a favourite.
+     */
+    suspend fun rememberFood(food: FoodItem) = withContext(Dispatchers.IO) { cacheFoods(listOf(food)) }
+
+    private suspend fun cacheFoods(incoming: List<FoodItem>) {
+        if (incoming.isEmpty()) return
+        val existing = incoming.map { it.id }.distinct().chunked(500).flatMap { foodDao.getFoodsByIds(it) }.associateBy { it.id }
+        foodDao.insertFoods(incoming.map { f ->
+            val e = existing[f.id] ?: return@map f
+            f.copy(isFavorite = e.isFavorite || f.isFavorite, useCount = e.useCount, lastUsedAt = e.lastUsedAt, mealTypeAffinity = e.mealTypeAffinity ?: f.mealTypeAffinity)
+        })
     }
 
     // --- Editing foods (Sparky is the source of truth; the phone's copy follows a successful save) ---
@@ -424,7 +475,7 @@ class FoodRepository(
         val remoteResult = sparkyApiClient.getFoodByBarcode(barcode)
         val remoteFood = remoteResult.getOrNull()
         if (remoteFood != null) {
-            foodDao.insertFood(remoteFood)
+            cacheFoods(listOf(remoteFood))
             return remoteFood
         }
         return null

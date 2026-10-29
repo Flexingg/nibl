@@ -14,10 +14,12 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.bytelog.app.data.local.db.ByteLogDatabase
@@ -174,5 +176,29 @@ class HomeLayoutUiTest {
         compose.onNodeWithText("Customize home").performClick()
         waitFor { compose.onAllNodesWithText("Drag to reorder", substring = true).fetchSemanticsNodes().isNotEmpty() }
         shot("home_layout_4_sheet")
+    }
+
+    @Test
+    fun theHomeScreenScrollsWhereverYouTouchIt() {
+        compose.setContent {
+            ByteLogTheme(darkTheme = true) {
+                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
+            }
+        }
+        waitFor { compose.onAllNodesWithText("HYDRATION").fetchSemanticsNodes().isNotEmpty() }
+
+        // A drag up that starts on the water card folds the header and scrolls the list
+        compose.onNodeWithText("HYDRATION").performTouchInput { swipeUp(startY = centerY, endY = centerY - 900f, durationMillis = 500) }
+        compose.waitForIdle()
+        shot("home_scroll_from_header")
+        waitFor { compose.onAllNodesWithText("Weight vs Calories").fetchSemanticsNodes().isNotEmpty() }
+        val screen = compose.onRoot().fetchSemanticsNode().size.height
+        assertTrue("the list came up under the folded header", top("Weight vs Calories") < screen * 0.6f)
+
+        // A drag up or down that starts on the chart moves the page instead of being taken by the chart
+        val before = top("Weight vs Calories")
+        compose.onNodeWithText("Weight vs Calories").performTouchInput { swipeDown(startY = centerY + 300f, endY = centerY + 700f, durationMillis = 500) }
+        compose.waitForIdle()
+        assertTrue("the chart let the page scroll", top("Weight vs Calories") > before + 50f)
     }
 }

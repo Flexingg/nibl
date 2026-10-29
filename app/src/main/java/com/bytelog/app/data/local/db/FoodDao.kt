@@ -21,6 +21,10 @@ interface FoodDao {
     """)
     fun searchFoods(query: String): Flow<List<FoodItem>>
 
+    /** Saved foods whose name or brand contains [token] (search narrows and ranks them further). */
+    @Query("SELECT * FROM foods WHERE name LIKE '%' || :token || '%' OR brand LIKE '%' || :token || '%' LIMIT :limit")
+    fun searchFoodsByToken(token: String, limit: Int = 400): Flow<List<FoodItem>>
+
     @Query("SELECT * FROM foods ORDER BY lastUsedAt DESC LIMIT :limit")
     fun getRecentFoods(limit: Int = 25): Flow<List<FoodItem>>
 
