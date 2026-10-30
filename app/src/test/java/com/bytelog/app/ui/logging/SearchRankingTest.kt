@@ -230,6 +230,8 @@ class SearchRankingTest {
         assertEquals(150f, staged[0].calories, 0.5f)
         assertEquals(50f, staged[1].quantity, 0.01f)
         assertEquals(220f, staged[1].calories, 0.5f)
+        // Foods put in the tray are kept on the phone (in the background); let that finish before the database closes
+        waitFor { runBlocking { db.foodDao().getFoodById("f-granola") != null } }
         job.cancel()
     }
 

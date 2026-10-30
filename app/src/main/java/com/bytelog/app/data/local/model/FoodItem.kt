@@ -32,14 +32,21 @@ data class FoodItem(
     val isFavorite: Boolean = false,
     val useCount: Int = 0,
     val lastUsedAt: Long = System.currentTimeMillis(),
-    val mealTypeAffinity: String? = null // e.g. "breakfast", "dinner"
+    val mealTypeAffinity: String? = null, // e.g. "breakfast", "dinner"
+    /** Household measures of the food ("cookie|0.5|2"), see [com.bytelog.app.recipes.HouseholdServings]. */
+    val householdServings: String? = null
 ) {
     /**
      * Ratio of [quantity] [unit] to this food's reference serving, converting units
      * (oz → g, cup → ml, …) where possible. "1 serving" means one reference serving.
      */
-    fun servingRatio(quantity: Float, unit: String): Float =
-        UnitConverter.servingRatio(quantity, unit, servingSize, servingUnit, name)
+    fun servingRatio(quantity: Float, unit: String): Float {
+        // "2 cookies", "1 medium": a household measure of this food
+        if (!unit.equals(servingUnit, ignoreCase = true)) {
+            com.bytelog.app.recipes.HouseholdServings.find(this, unit)?.let { return quantity * it.perUnit }
+        }
+        return UnitConverter.servingRatio(quantity, unit, servingSize, servingUnit, name)
+    }
 
     fun caloriesFor(quantity: Float, unit: String): Float = calories * servingRatio(quantity, unit)
 

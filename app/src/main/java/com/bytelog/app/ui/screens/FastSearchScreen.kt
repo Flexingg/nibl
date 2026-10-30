@@ -743,7 +743,7 @@ fun FoodSearchRow(
             ) {
                 Icon(Icons.Default.Check, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Log now · ${portion.label}", color = cs.onPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Log now · ${Portions.describe(food, portion)}", color = cs.onPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     ) {
@@ -854,7 +854,7 @@ private fun FoodSearchRowContent(
                 }
             }
             Text(
-                text = (if (timesLogged > 0) "Logged ${timesLogged}× • " else "") + "${food.brand ?: "Generic"} • ${portion.label}",
+                text = (if (timesLogged > 0) "Logged ${timesLogged}× • " else "") + "${food.brand ?: "Generic"} • ${Portions.describe(food, portion)}",
                 color = cs.onSurfaceVariant,
                 fontSize = 12.sp,
                 maxLines = 1,

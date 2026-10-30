@@ -102,6 +102,16 @@ class FoodRepository(
         }
         val variantId = created.variantId ?: sparkyApiClient.getFoodDetails(created.id).getOrThrow().variantId
             ?: error("Sparky has no serving for ${entry.foodName}")
+        // Its household servings ("2 cookies") go to Sparky too, so Sparky's own apps offer them (best effort)
+        local?.let { food ->
+            com.bytelog.app.recipes.HouseholdServings.decode(food.householdServings).forEach { h ->
+                val r = h.perUnit * h.quantity
+                sparkyApiClient.createFoodVariant(
+                    created.id, h.quantity, com.bytelog.app.recipes.HouseholdServings.plural(h.unit, h.quantity),
+                    food.calories * r, food.protein * r, food.carbs * r, food.fat * r
+                )
+            }
+        }
         val link = created.id to variantId
 
         // The phone's food takes Sparky's id, so later logs of it (and other entries waiting to sync) reuse it
@@ -238,14 +248,41 @@ class FoodRepository(
      * Keeps a food on the phone once you use it (add, log or favourite it), without resetting how often you've
      * used it or whether it's a favourite.
      */
-    suspend fun rememberFood(food: FoodItem) = withContext(Dispatchers.IO) { cacheFoods(listOf(food)) }
+    suspend fun rememberFood(food: FoodItem) = withContext(Dispatchers.IO) {
+        cacheFoods(listOf(food))
+        fetchHouseholdServings(food)
+    }
+
+    /** Foods whose servings were asked of Sparky this session (each is asked once). */
+    private val servingsAsked = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /**
+     * A Sparky library food's other servings ("1 slice", "1 cup") aren't in search results, so they're fetched
+     * once when the food is first used and kept on the phone.
+     */
+    private fun fetchHouseholdServings(food: FoodItem) {
+        if (food.id.startsWith("off_") || !servingsAsked.add(food.id)) return
+        appScope.launch(Dispatchers.IO) {
+            // Best effort: without them the food still logs by its own serving
+            runCatching {
+                if (foodDao.getFoodById(food.id)?.householdServings != null) return@launch
+                val variants = sparkyApiClient.fetchFoodVariants(food.id).getOrNull() ?: return@launch
+                val default = variants.firstOrNull { (it["is_default"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "true" } ?: return@launch
+                val households = SparkyFood.householdsFrom(default, variants, food.name)
+                com.bytelog.app.recipes.HouseholdServings.encode(households)?.let { foodDao.setHouseholdServings(food.id, it) }
+            }
+        }
+    }
 
     private suspend fun cacheFoods(incoming: List<FoodItem>) {
         if (incoming.isEmpty()) return
         val existing = incoming.map { it.id }.distinct().chunked(500).flatMap { foodDao.getFoodsByIds(it) }.associateBy { it.id }
         foodDao.insertFoods(incoming.map { f ->
             val e = existing[f.id] ?: return@map f
-            f.copy(isFavorite = e.isFavorite || f.isFavorite, useCount = e.useCount, lastUsedAt = e.lastUsedAt, mealTypeAffinity = e.mealTypeAffinity ?: f.mealTypeAffinity)
+            f.copy(
+                isFavorite = e.isFavorite || f.isFavorite, useCount = e.useCount, lastUsedAt = e.lastUsedAt,
+                mealTypeAffinity = e.mealTypeAffinity ?: f.mealTypeAffinity, householdServings = f.householdServings ?: e.householdServings
+            )
         })
     }
 

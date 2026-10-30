@@ -13,7 +13,8 @@ class PortionsTest {
 
     @Test fun massFoodsOfferServingGramsAndOunces() {
         val units = Portions.unitOptions(chicken)
-        assertEquals(listOf("serving", "g", "oz"), units.take(3))
+        // A whole food described by weight offers its household measure first ("1 breast")
+        assertEquals(listOf("breast", "serving", "g", "oz"), units.take(4))
         assertFalse("no volume without a density", "ml" in units)
     }
 
