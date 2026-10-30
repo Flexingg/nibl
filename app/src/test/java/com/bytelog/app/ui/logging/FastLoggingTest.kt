@@ -114,7 +114,7 @@ class FastLoggingTest {
     fun changingTheUnitRecalculatesFromTheFood() {
         vm.tapFood(chicken)
         val id = vm.stagedEntries.value.single().id
-        assertEquals(listOf("serving", "g", "oz"), vm.unitOptionsFor(id).take(3))
+        assertEquals(listOf("breast", "serving", "g", "oz"), vm.unitOptionsFor(id).take(4))
 
         val oz = Portions.convert(chicken, Portion(100f, "g"), "oz")
         vm.updateStagedPortion(id, oz)

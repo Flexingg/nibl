@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -477,66 +478,88 @@ class SparkyApiClient(
         Result.success(combinedResults)
     }
 
+    /** Adds another serving to a food on Sparky ("2 cookies" with its nutrition). */
+    suspend fun createFoodVariant(foodId: String, servingSize: Float, servingUnit: String, calories: Float, protein: Float, carbs: Float, fat: Float): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val body = kotlinx.serialization.json.buildJsonObject {
+                put("food_id", kotlinx.serialization.json.JsonPrimitive(foodId))
+                put("serving_size", kotlinx.serialization.json.JsonPrimitive(servingSize))
+                put("serving_unit", kotlinx.serialization.json.JsonPrimitive(servingUnit))
+                put("calories", kotlinx.serialization.json.JsonPrimitive(calories))
+                put("protein", kotlinx.serialization.json.JsonPrimitive(protein))
+                put("carbs", kotlinx.serialization.json.JsonPrimitive(carbs))
+                put("fat", kotlinx.serialization.json.JsonPrimitive(fat))
+                put("is_default", kotlinx.serialization.json.JsonPrimitive(false))
+            }
+            val request = Request.Builder().url("$baseUrl/api/foods/food-variants").post(jsonBody(body)).build()
+            client.newCall(request).await().use { response ->
+                if (response.isSuccessful) Result.success(Unit) else Result.failure(IOException("Add serving error: HTTP ${response.code}"))
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        }
+    }
+
+    /** All servings Sparky has for a food (GET /api/foods/food-variants?food_id=), default included. */
+    suspend fun fetchFoodVariants(foodId: String): Result<List<kotlinx.serialization.json.JsonObject>> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$baseUrl/api/foods/food-variants?food_id=${java.net.URLEncoder.encode(foodId, "UTF-8")}")
+                .get().build()
+            client.newCall(request).await().use { response ->
+                if (!response.isSuccessful) return@use Result.failure(IOException("Food servings error: HTTP ${response.code}"))
+                val root = json.parseToJsonElement(response.body?.string().orEmpty())
+                Result.success((root as? kotlinx.serialization.json.JsonArray)?.mapNotNull { it as? kotlinx.serialization.json.JsonObject }.orEmpty())
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        }
+    }
+
+    /** Set once Sparky turns out not to have the v2 food search (older servers); then the original search is used. */
+    @Volatile private var v2SearchMissing = false
+
     /**
-     * Search global OpenFoodFacts database proxy via Sparky Fitness backend.
+     * Open Food Facts, through Sparky. Sparky's v2 search describes each product by its label serving ("30 g")
+     * with its household serving ("2 cookies") as a second variant; older Sparky servers only have the raw
+     * search, read by [parseOffProducts].
      */
     suspend fun searchOpenFoodFacts(query: String, page: Int = 1): Result<List<FoodItem>> = withContext(Dispatchers.IO) {
+        if (!v2SearchMissing) {
+            val v2 = searchOpenFoodFactsV2(query, page)
+            if (v2 != null) return@withContext v2
+        }
         try {
             val encodedQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
             val request = Request.Builder()
                 .url("$baseUrl/api/foods/openfoodfacts/search?query=$encodedQuery&page=$page")
                 .get()
                 .build()
-
             client.newCall(request).await().use { response ->
-                if (response.isSuccessful) {
-                    val content = response.body?.string().orEmpty()
-                    val root = json.parseToJsonElement(content).jsonObject
-                    val productsArray = root["products"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+                if (response.isSuccessful) Result.success(parseOffProducts(response.body?.string().orEmpty()))
+                else Result.failure(IOException("OpenFoodFacts search error: HTTP ${response.code}"))
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        }
+    }
 
-                    val items = productsArray.mapNotNull { el ->
-                        val obj = el.jsonObject
-                        val name = obj["product_name"]?.jsonPrimitive?.content
-                            ?: obj["product_name_en"]?.jsonPrimitive?.content
-                        if (name.isNullOrBlank()) return@mapNotNull null
-
-                        val brand = obj["brands"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
-                        val code = obj["code"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
-                        val servingQty = obj["serving_quantity"]?.jsonPrimitive?.floatOrNull ?: 100f
-                        val servingUnit = obj["serving_quantity_unit"]?.jsonPrimitive?.content
-                            ?: obj["product_quantity_unit"]?.jsonPrimitive?.content ?: "g"
-
-                        val nutriments = obj["nutriments"]?.jsonObject
-                        val calories = nutriments?.get("energy-kcal_100g")?.jsonPrimitive?.floatOrNull
-                            ?: nutriments?.get("energy-kcal")?.jsonPrimitive?.floatOrNull
-                            ?: nutriments?.get("energy-kcal_serving")?.jsonPrimitive?.floatOrNull ?: 0f
-                        val protein = nutriments?.get("proteins_100g")?.jsonPrimitive?.floatOrNull
-                            ?: nutriments?.get("proteins")?.jsonPrimitive?.floatOrNull ?: 0f
-                        val carbs = nutriments?.get("carbohydrates_100g")?.jsonPrimitive?.floatOrNull
-                            ?: nutriments?.get("carbohydrates")?.jsonPrimitive?.floatOrNull ?: 0f
-                        val fat = nutriments?.get("fat_100g")?.jsonPrimitive?.floatOrNull
-                            ?: nutriments?.get("fat")?.jsonPrimitive?.floatOrNull ?: 0f
-                        val fiber = nutriments?.get("fiber_100g")?.jsonPrimitive?.floatOrNull
-                            ?: nutriments?.get("fiber")?.jsonPrimitive?.floatOrNull ?: 0f
-
-                        FoodItem(
-                            // No barcode: an id from what the product is, so it's the same on every search
-                            id = code?.let { "off_$it" } ?: stableOffId(name, brand, calories),
-                            name = name,
-                            brand = brand,
-                            barcode = code,
-                            servingSize = servingQty,
-                            servingUnit = servingUnit,
-                            calories = calories,
-                            protein = protein,
-                            carbs = carbs,
-                            fat = fat,
-                            fiber = fiber
-                        )
-                    }
-                    Result.success(items)
-                } else {
-                    Result.failure(IOException("OpenFoodFacts search error: HTTP ${response.code}"))
+    /** Sparky's v2 search; null when this Sparky doesn't have it. */
+    private suspend fun searchOpenFoodFactsV2(query: String, page: Int): Result<List<FoodItem>>? {
+        val encodedQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
+        val request = Request.Builder()
+            .url("$baseUrl/api/v2/foods/search/openfoodfacts?query=$encodedQuery&page=$page&pageSize=20&autoScale=true")
+            .get()
+            .build()
+        return try {
+            client.newCall(request).await().use { response ->
+                when {
+                    response.isSuccessful -> Result.success(parseNormalizedFoods(response.body?.string().orEmpty()))
+                    response.code == 404 -> { v2SearchMissing = true; null }
+                    else -> Result.failure(IOException("OpenFoodFacts search error: HTTP ${response.code}"))
                 }
             }
         } catch (e: Exception) {
@@ -2145,6 +2168,72 @@ class SparkyApiClient(
 
     companion object {
         /** Reads Sparky's food photo estimate: the meal, and each food in it. Null if it isn't one. */
+        private val parseJson = Json { ignoreUnknownKeys = true; isLenient = true }
+
+        /** Sparky's v2 search results (`{"foods": [...]}`): each product's serving plus its household serving. */
+        fun parseNormalizedFoods(content: String): List<FoodItem> {
+            val root = runCatching { parseJson.parseToJsonElement(content).jsonObject }.getOrNull() ?: return emptyList()
+            val foods = (root["foods"] as? kotlinx.serialization.json.JsonArray) ?: return emptyList()
+            return foods.mapNotNull { el ->
+                val obj = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                val f = SparkyFood.parse(obj)
+                if (f.name == SparkyFood.UNNAMED || f.name.isBlank()) return@mapNotNull null
+                val code = f.barcode ?: (obj["provider_external_id"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+                f.copy(id = code?.let { "off_$it" } ?: stableOffId(f.name, f.brand, f.nutrients.calories), barcode = code).toFoodItem()
+            }
+        }
+
+        /**
+         * The original Open Food Facts search (raw products). Nutrition is per 100 g, so a product with a label
+         * serving ("30 g") is described by that serving with its nutrition scaled to match, and a household
+         * serving written on the label ("2 cookies (30 g)") is kept.
+         */
+        fun parseOffProducts(content: String): List<FoodItem> {
+            val root = runCatching { parseJson.parseToJsonElement(content).jsonObject }.getOrNull() ?: return emptyList()
+            val products = (root["products"] as? kotlinx.serialization.json.JsonArray) ?: return emptyList()
+            fun kotlinx.serialization.json.JsonObject.num(k: String) =
+                (this[k] as? kotlinx.serialization.json.JsonPrimitive)?.let { it.floatOrNull ?: it.contentOrNull?.toFloatOrNull() }
+            fun kotlinx.serialization.json.JsonObject.str(k: String) =
+                (this[k] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+            return products.mapNotNull { el ->
+                val obj = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                val name = obj.str("product_name") ?: obj.str("product_name_en") ?: return@mapNotNull null
+                val brand = obj.str("brands")?.split(',')?.firstOrNull()?.trim()
+                val code = obj.str("code")
+                val n = obj["nutriments"] as? kotlinx.serialization.json.JsonObject
+                val per100 = listOf(
+                    n?.num("energy-kcal_100g") ?: n?.num("energy-kcal") ?: 0f,
+                    n?.num("proteins_100g") ?: n?.num("proteins") ?: 0f,
+                    n?.num("carbohydrates_100g") ?: n?.num("carbohydrates") ?: 0f,
+                    n?.num("fat_100g") ?: n?.num("fat") ?: 0f,
+                    n?.num("fiber_100g") ?: n?.num("fiber") ?: 0f
+                )
+                val label = obj.num("serving_quantity")?.takeIf { it > 0f }
+                val unit = (obj.str("serving_quantity_unit") ?: "g").lowercase().let { if (it == "ml" || it == "l") "ml" else "g" }
+                val size = label ?: 100f
+                val scale = size / 100f
+                val household = label?.let { parseLabelHousehold(obj.str("serving_size"), it, size) }
+                FoodItem(
+                    id = code?.let { "off_$it" } ?: stableOffId(name, brand, per100[0]),
+                    name = name, brand = brand, barcode = code,
+                    servingSize = size, servingUnit = unit,
+                    calories = per100[0] * scale, protein = per100[1] * scale, carbs = per100[2] * scale,
+                    fat = per100[3] * scale, fiber = per100[4] * scale,
+                    householdServings = household?.let { com.bytelog.app.recipes.HouseholdServings.encode(listOf(it)) }
+                )
+            }
+        }
+
+        /** "2 cookies (28 g)" -> 2 cookies, each half of the 28 g serving; null for "28 g" or no label. */
+        fun parseLabelHousehold(servingText: String?, labelAmount: Float, referenceSize: Float): com.bytelog.app.recipes.HouseholdServing? {
+            val m = Regex("""^\s*([\d.,]+)\s+([^\d(][^(]*?)\s*\([^)]*\)\s*$""").find(servingText ?: return null) ?: return null
+            val count = m.groupValues[1].replace(',', '.').toFloatOrNull()?.takeIf { it > 0f } ?: return null
+            val unit = com.bytelog.app.recipes.HouseholdServings.singular(m.groupValues[2])
+            if (unit.isBlank() || com.bytelog.app.recipes.UnitConverter.canonical(unit) != null) return null
+            // The label amount is the whole household serving; the food's reference serving is that same amount
+            return com.bytelog.app.recipes.HouseholdServing(unit, (labelAmount / referenceSize) / count, count)
+        }
+
         /** An Open Food Facts product without a barcode, identified by its name, brand and calories. */
         fun stableOffId(name: String, brand: String?, calories: Float): String {
             val key = "${name.trim().lowercase()}|${brand?.trim()?.lowercase().orEmpty()}|${Math.round(calories)}"

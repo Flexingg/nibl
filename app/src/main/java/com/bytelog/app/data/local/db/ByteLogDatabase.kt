@@ -34,7 +34,7 @@ import java.util.UUID
         BatchConsumption::class,
         IngredientAlias::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class ByteLogDatabase : RoomDatabase() {
@@ -105,6 +105,13 @@ abstract class ByteLogDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        /** Household servings on foods ("2 cookies", "1 medium"). */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `foods` ADD COLUMN `householdServings` TEXT")
             }
         }
 
@@ -199,7 +206,7 @@ abstract class ByteLogDatabase : RoomDatabase() {
                     ByteLogDatabase::class.java,
                     "bytelog_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     // Recipes and batches are user-authored local data: never wipe them on upgrade.
                     // Only downgrades (e.g. sideloading an older APK) fall back to a rebuild.
                     .fallbackToDestructiveMigrationOnDowngrade()

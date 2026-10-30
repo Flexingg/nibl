@@ -62,7 +62,7 @@ class DatabaseMigrationTest {
         }
 
         val room = Room.databaseBuilder(context, ByteLogDatabase::class.java, name)
-            .addMigrations(ByteLogDatabase.MIGRATION_1_2, ByteLogDatabase.MIGRATION_2_3, ByteLogDatabase.MIGRATION_3_4)
+            .addMigrations(ByteLogDatabase.MIGRATION_1_2, ByteLogDatabase.MIGRATION_2_3, ByteLogDatabase.MIGRATION_3_4, ByteLogDatabase.MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
         try {
@@ -78,6 +78,44 @@ class DatabaseMigrationTest {
             assertEquals(1, room.prepBatchDao().observeActive().first().size)
             room.prepBatchDao().onEntriesDeleted(listOf("e1"))
             assertEquals(0, room.prepBatchDao().consumptionsFor("b1").size)
+        } finally {
+            room.close()
+        }
+    }
+
+    @Test
+    fun migrate4To5KeepsFoodsAndAddsHouseholdServings() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "migration-test-5.db"
+        context.deleteDatabase(name)
+        val schema = JSONObject(File(System.getProperty("user.dir"), "schemas/com.bytelog.app.data.local.db.ByteLogDatabase/4.json").readText()).getJSONObject("database")
+        val entities = schema.getJSONArray("entities")
+        val file = context.getDatabasePath(name).apply { parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            for (i in 0 until entities.length()) {
+                val e = entities.getJSONObject(i)
+                val table = e.getString("tableName")
+                db.execSQL(e.getString("createSql").replace("\${TABLE_NAME}", table))
+                e.optJSONArray("indices")?.let { idx ->
+                    for (j in 0 until idx.length()) db.execSQL(idx.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}", table))
+                }
+            }
+            db.execSQL(
+                "INSERT INTO foods (id, name, servingSize, servingUnit, calories, protein, carbs, fat, fiber, isFavorite, useCount, lastUsedAt) " +
+                    "VALUES ('f1', 'Oreo', 100, 'g', 480, 5, 70, 20, 2, 1, 7, 0)"
+            )
+            db.version = 4
+        }
+        val room = Room.databaseBuilder(context, ByteLogDatabase::class.java, name)
+            .addMigrations(ByteLogDatabase.MIGRATION_4_5)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val food = room.foodDao().getFoodById("f1")!!
+            assertEquals(7, food.useCount)
+            assertEquals(null, food.householdServings)
+            room.foodDao().setHouseholdServings("f1", "cookie|0.14|2")
+            assertEquals("cookie|0.14|2", room.foodDao().getFoodById("f1")!!.householdServings)
         } finally {
             room.close()
         }

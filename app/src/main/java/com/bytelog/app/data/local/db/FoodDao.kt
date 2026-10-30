@@ -67,6 +67,9 @@ interface FoodDao {
     @Query("UPDATE foods SET useCount = useCount + 1, lastUsedAt = :timestamp WHERE id = :foodId")
     suspend fun recordFoodUsage(foodId: String, timestamp: Long = System.currentTimeMillis())
 
+    @Query("UPDATE foods SET householdServings = :households WHERE id = :foodId")
+    suspend fun setHouseholdServings(foodId: String, households: String?)
+
     @Query("UPDATE foods SET isFavorite = :isFavorite WHERE id = :foodId")
     suspend fun setFavorite(foodId: String, isFavorite: Boolean)
 

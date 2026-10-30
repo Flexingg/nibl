@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.logging
 
 import com.bytelog.app.data.local.model.FoodItem
+import com.bytelog.app.recipes.HouseholdServings
 import com.bytelog.app.recipes.IngredientDensities
 import com.bytelog.app.recipes.UnitConverter
 import java.util.Locale
@@ -22,8 +23,23 @@ data class PortionMacros(val calories: Float, val protein: Float, val carbs: Flo
 object Portions {
     const val SERVING = "serving"
 
-    /** One reference serving of the food (what its nutrition is given for). */
-    fun defaultFor(food: FoodItem): Portion = Portion(food.servingSize, food.servingUnit.ifBlank { "g" })
+    /**
+     * What one tap adds of a food you haven't logged before: a household serving ("1 medium", "2 cookies",
+     * "1 cup", "4 oz") where there is one, else the food's own serving.
+     */
+    fun defaultFor(food: FoodItem): Portion =
+        HouseholdServings.usualPortion(food)?.let { (q, u) -> Portion(q, u) }
+            ?: Portion(food.servingSize, food.servingUnit.ifBlank { "g" })
+
+    /** The portion with its weight when that helps: "2 cookies (28 g)", "1 medium (118 g)"; plain otherwise. */
+    fun describe(food: FoodItem, p: Portion): String {
+        if (UnitConverter.canonical(p.unit) != null || p.unit.equals(SERVING, ignoreCase = true)) return p.label
+        val refUnit = UnitConverter.canonical(food.servingUnit) ?: return p.label
+        if (refUnit !in setOf("g", "ml", "oz")) return p.label
+        val amount = food.servingRatio(p.quantity, p.unit) * food.servingSize
+        if (amount <= 0f) return p.label
+        return "${p.label} (${formatQuantity(tidy(amount, refUnit))} $refUnit)"
+    }
 
     /**
      * Units offered for a food: "serving" first, then the food's own unit, then the ones it converts to.
@@ -36,6 +52,9 @@ object Portions {
         val dense = IngredientDensities.lookup(food.name) != null
         val out = mutableListOf<String>()
         fun add(u: String) { if (out.none { (UnitConverter.canonical(it) ?: it.lowercase()) == (UnitConverter.canonical(u) ?: u.lowercase()) }) out += u }
+        // Household measures first ("cookie", "medium", "slice"), then the usual portion's unit (cup, oz)
+        HouseholdServings.forFood(food).forEach { add(it.unit) }
+        HouseholdServings.usualPortion(food)?.let { add(it.second) }
         if (ownCanon != SERVING) add(SERVING)
         add(ownCanon)
         when (dim) {
@@ -113,6 +132,6 @@ fun formatQuantity(q: Float): String {
     }
 }
 
-/** "serving" → "servings" for amounts above one; other units stay as written. */
+/** "serving" → "servings", "cookie" → "cookies" for amounts above one; measures and sizes stay as written. */
 fun unitLabel(unit: String, quantity: Float): String =
-    if (unit.equals(Portions.SERVING, ignoreCase = true) && quantity > 1.001f) "servings" else unit
+    if (unit.equals(Portions.SERVING, ignoreCase = true) && quantity > 1.001f) "servings" else HouseholdServings.plural(unit, quantity)
