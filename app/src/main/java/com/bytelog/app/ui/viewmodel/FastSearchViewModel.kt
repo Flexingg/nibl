@@ -32,8 +32,13 @@ import java.util.UUID
 class FastSearchViewModel(
     private val foodRepository: FoodRepository,
     /** Your saved meals and recipes (from Sparky), searched alongside foods. */
-    private val mealTemplates: kotlinx.coroutines.flow.Flow<List<com.bytelog.app.data.local.model.MealTemplate>> = flowOf(emptyList())
+    private val mealTemplates: kotlinx.coroutines.flow.Flow<List<com.bytelog.app.data.local.model.MealTemplate>> = flowOf(emptyList()),
+    /** Where food added to a future day goes: planned, not logged. */
+    private val plans: com.bytelog.app.data.repository.PlanRepository? = null
 ) : ViewModel() {
+
+    /** True when the day being added to is after today: the tray plans instead of logging. */
+    val isPlanning: Boolean get() = plans != null && com.bytelog.app.data.repository.PlanRepository.isFuture(targetDate)
 
     var targetMealTypeId: String = "breakfast"
     var targetMealName: String = "Breakfast"
@@ -317,9 +322,13 @@ class FastSearchViewModel(
         if (entriesToCommit.isEmpty()) return
 
         viewModelScope.launch {
-            foodRepository.commitMultiAdd(entriesToCommit)
-            // The diary offers to undo this once it is back on screen
-            foodRepository.pendingUndo.value = com.bytelog.app.data.repository.LoggedBatch(entriesToCommit, targetMealName)
+            val planner = plans
+            if (planner != null && isPlanning) planner.plan(entriesToCommit)
+            else {
+                foodRepository.commitMultiAdd(entriesToCommit)
+                // The diary offers to undo this once it is back on screen
+                foodRepository.pendingUndo.value = com.bytelog.app.data.repository.LoggedBatch(entriesToCommit, targetMealName)
+            }
             _stagedEntries.value = emptyList()
             stagedFoods.clear()
             libraryBacked.clear()
@@ -344,14 +353,20 @@ class FastSearchViewModel(
         )
         viewModelScope.launch {
             foodRepository.rememberFood(food)
-            foodRepository.commitMultiAdd(listOf(entry))
+            val planner = plans
+            if (planner != null && isPlanning) planner.plan(listOf(entry)) else foodRepository.commitMultiAdd(listOf(entry))
             _lastPortions.value = _lastPortions.value + (food.id to p)
             onLogged(listOf(entry))
         }
     }
 
     fun undoLogged(entries: List<FoodEntry>) {
-        viewModelScope.launch { foodRepository.undoLogged(entries) }
+        viewModelScope.launch {
+            val planner = plans
+            if (planner != null && entries.all { com.bytelog.app.data.repository.PlanRepository.isFuture(it.entryDate) }) {
+                planner.remove(entries.map { com.bytelog.app.data.local.model.PlannedEntry.from(it) })
+            } else foodRepository.undoLogged(entries)
+        }
     }
 
     // ----- Photo logging: snap the plate, Sparky's AI lists each food, the chosen ones go in the tray -----
@@ -453,7 +468,8 @@ class FastSearchViewModel(
         carbs: Float,
         fat: Float,
         fiber: Float?,
-        autoStage: Boolean = true
+        autoStage: Boolean = true,
+        household: com.bytelog.app.recipes.HouseholdServing? = null
     ) {
         viewModelScope.launch {
             val result = foodRepository.createCustomFood(
@@ -465,15 +481,50 @@ class FastSearchViewModel(
                 protein = protein,
                 carbs = carbs,
                 fat = fat,
-                fiber = fiber
+                fiber = fiber,
+                household = household
             )
             if (result.isSuccess && autoStage) {
                 val item = result.getOrNull()
                 if (item != null) {
-                    stageFood(item, Portion(servingSize, servingUnit))
+                    stageFood(item, household?.let { Portion(it.quantity, it.unit) } ?: Portion(servingSize, servingUnit))
                 }
             }
+            _labelScan.value = LabelScanState.Idle
         }
+    }
+
+    // ----- Reading a nutrition label from a photo -----
+
+    sealed interface LabelScanState {
+        data object Idle : LabelScanState
+        data object Reading : LabelScanState
+        data class Read(val scan: com.bytelog.app.data.remote.LabelScan) : LabelScanState
+        data class Failed(val message: String) : LabelScanState
+    }
+
+    private val _labelScan = MutableStateFlow<LabelScanState>(LabelScanState.Idle)
+    val labelScan: StateFlow<LabelScanState> = _labelScan.asStateFlow()
+    private var labelJob: Job? = null
+
+    /** Sends the label photo to Sparky's AI; the custom food form fills in from what it reads. */
+    fun scanLabel(photo: android.graphics.Bitmap) {
+        labelJob?.cancel()
+        _labelScan.value = LabelScanState.Reading
+        labelJob = viewModelScope.launch {
+            val b64 = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                // Small print needs more pixels than a meal photo
+                com.bytelog.app.util.ImageUtils.convertBitmapToBase64(photo, maxDim = 1600, quality = 90)
+            }
+            foodRepository.scanNutritionLabel(b64)
+                .onSuccess { _labelScan.value = LabelScanState.Read(it) }
+                .onFailure { _labelScan.value = LabelScanState.Failed(it.message ?: "Couldn't read that label") }
+        }
+    }
+
+    fun clearLabelScan() {
+        labelJob?.cancel()
+        _labelScan.value = LabelScanState.Idle
     }
 
     private val _isGeneratingAi = MutableStateFlow(false)

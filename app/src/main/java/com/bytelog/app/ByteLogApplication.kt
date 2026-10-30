@@ -33,6 +33,8 @@ class ByteLogApplication : Application() {
         )
     }
 
+    val planRepository by lazy { com.bytelog.app.data.repository.PlanRepository(database.plannedEntryDao(), foodRepository) }
+
     val waterRepository by lazy {
         com.bytelog.app.data.repository.WaterRepository(
             waterLogDao = database.waterLogDao(),

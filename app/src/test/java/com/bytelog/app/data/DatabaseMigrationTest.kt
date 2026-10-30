@@ -62,7 +62,7 @@ class DatabaseMigrationTest {
         }
 
         val room = Room.databaseBuilder(context, ByteLogDatabase::class.java, name)
-            .addMigrations(ByteLogDatabase.MIGRATION_1_2, ByteLogDatabase.MIGRATION_2_3, ByteLogDatabase.MIGRATION_3_4, ByteLogDatabase.MIGRATION_4_5)
+            .addMigrations(ByteLogDatabase.MIGRATION_1_2, ByteLogDatabase.MIGRATION_2_3, ByteLogDatabase.MIGRATION_3_4, ByteLogDatabase.MIGRATION_4_5, ByteLogDatabase.MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
         try {
@@ -107,7 +107,7 @@ class DatabaseMigrationTest {
             db.version = 4
         }
         val room = Room.databaseBuilder(context, ByteLogDatabase::class.java, name)
-            .addMigrations(ByteLogDatabase.MIGRATION_4_5)
+            .addMigrations(ByteLogDatabase.MIGRATION_4_5, ByteLogDatabase.MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
         try {
@@ -116,6 +116,12 @@ class DatabaseMigrationTest {
             assertEquals(null, food.householdServings)
             room.foodDao().setHouseholdServings("f1", "cookie|0.14|2")
             assertEquals("cookie|0.14|2", room.foodDao().getFoodById("f1")!!.householdServings)
+            // 5 -> 6: the plan table is there and empty
+            assertEquals(0, room.plannedEntryDao().forDate("2026-10-31").first().size)
+            room.plannedEntryDao().insert(listOf(com.bytelog.app.data.local.model.PlannedEntry(
+                id = "p1", foodName = "Oats", mealTypeId = "breakfast", mealName = "Breakfast", quantity = 1f, unit = "cup",
+                calories = 300f, protein = 10f, carbs = 54f, fat = 5f, entryDate = "2026-10-31")))
+            assertEquals("Oats", room.plannedEntryDao().forDate("2026-10-31").first().single().foodName)
         } finally {
             room.close()
         }

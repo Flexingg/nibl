@@ -207,6 +207,7 @@ fun DiaryScreen(
     val mealShortcuts by viewModel.mealShortcuts.collectAsState()
     val whatFits by viewModel.whatFits.collectAsState()
     val weeklyReview by viewModel.weeklyReview.collectAsState()
+    val plannedEntries by viewModel.plannedEntries.collectAsState()
     val homeLayout by viewModel.homeLayout.collectAsState()
 
     // Fasting timer: time since food was last eaten, shown on today's diary once it's over an hour
@@ -496,6 +497,31 @@ fun DiaryScreen(
                               }
                             }
                         }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.PLANNED -> {
+                            if (plannedEntries.isNotEmpty()) {
+                                item(key = "planned") {
+                                    com.bytelog.app.ui.diary.PlannedCard(
+                                        planned = plannedEntries,
+                                        loggedCalories = dailySummary.totalCalories,
+                                        calorieGoal = dailySummary.targetCalories,
+                                        ahead = com.bytelog.app.data.repository.PlanRepository.isFuture(selectedDate),
+                                        onEat = { items ->
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            viewModel.eatPlanned(items)
+                                        },
+                                        onRemove = { p ->
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            viewModel.removePlanned(listOf(p))
+                                            scope.launch {
+                                                val r = snackbarHostState.showSnackbar("Removed ${p.foodName} from the plan", actionLabel = "Undo")
+                                                if (r == SnackbarResult.ActionPerformed) viewModel.restorePlanned(listOf(p))
+                                            }
+                                        },
+                                        modifier = Modifier.homeItem(this, listState, "planned")
+                                    )
+                                }
+                            }
                         }
                         com.bytelog.app.data.repository.HomeSection.MEALS -> {
                         if (loggedMealGroups.isEmpty()) {

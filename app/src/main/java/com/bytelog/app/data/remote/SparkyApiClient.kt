@@ -2128,6 +2128,40 @@ class SparkyApiClient(
     }
 
     /**
+     * Reads a nutrition label from a photo with Sparky's AI (POST /api/foods/scan-label). Fails with Sparky's
+     * own message, e.g. when no AI service is set up.
+     */
+    suspend fun scanNutritionLabel(imageBase64: String, mimeType: String = "image/jpeg"): Result<LabelScan> = withContext(Dispatchers.IO) {
+        try {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("image", kotlinx.serialization.json.JsonPrimitive(if (imageBase64.contains(",")) imageBase64.substringAfter(",") else imageBase64))
+                put("mime_type", kotlinx.serialization.json.JsonPrimitive(mimeType))
+            }
+            val request = Request.Builder()
+                .url("$baseUrl/api/foods/scan-label")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            aiClient.newCall(request).await().use { response ->
+                val content = response.body?.string().orEmpty()
+                if (response.isSuccessful) {
+                    LabelScan.parse(content)?.let { Result.success(it) }
+                        ?: Result.failure(IOException("Couldn't read the nutrition facts on that label. Try a sharper, closer photo."))
+                } else {
+                    val msg = runCatching { json.parseToJsonElement(content).jsonObject["error"]?.jsonPrimitive?.content }.getOrNull()
+                    Result.failure(IOException(when {
+                        response.code == 422 && msg?.contains("AI", ignoreCase = true) == true -> "Label scanning needs an AI service set up in Sparky ($msg)"
+                        msg != null -> msg
+                        else -> "Label scan failed: HTTP ${response.code}"
+                    }))
+                }
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Estimates a photographed meal food by food: each item Sparky's AI sees, with its weight, calories and macros.
      * [note] is anything the photo can't show ("cooked in butter", "the bowl is 400 g").
      */
