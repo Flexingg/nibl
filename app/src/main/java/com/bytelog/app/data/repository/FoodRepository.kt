@@ -188,8 +188,8 @@ class FoodRepository(
     fun searchOnDevice(query: String): Flow<Pair<List<SearchHit>, List<SearchHit>>> {
         val tokens = FoodSearch.tokens(query)
         if (tokens.isEmpty()) return kotlinx.coroutines.flow.flowOf(emptyList<SearchHit>() to emptyList())
-        val token = FoodSearch.prefilterToken(query)
-        return kotlinx.coroutines.flow.combine(foodEntryDao.searchEntries(token), foodDao.searchFoodsByToken(token)) { entries, saved ->
+        val (a, b, c) = FoodSearch.prefilterTokens(query)
+        return kotlinx.coroutines.flow.combine(foodEntryDao.searchEntries(a, b, c), foodDao.searchFoodsByToken(a, b, c)) { entries, saved ->
             entries to saved
         }.mapLatest { (entries, saved) ->
             val byId = saved.associateBy { it.id }

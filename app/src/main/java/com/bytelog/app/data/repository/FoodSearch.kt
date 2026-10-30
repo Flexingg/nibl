@@ -15,13 +15,17 @@ data class FoodSearchResults(val logged: List<SearchHit> = emptyList(), val othe
 
 /**
  * Matching and ranking for food search. Every word typed has to appear in the name or brand, in any order
- * ("breast chicken" finds "Chicken Breast"), ignoring case and accents. Foods you've logged always come first.
+ * ("breast chicken" finds "Chicken Breast"), ignoring case and accents. Plurals, common spelling variants
+ * ("yoghurt", "chilli") and small typos ("bannana") still match, ranked below exact matches. Foods you've
+ * logged always come first.
  */
 object FoodSearch {
     /** How well a food matches: lower is better. */
     const val NAME_STARTS = 0
     const val WORD_STARTS = 1
     const val CONTAINS = 2
+    /** Only after allowing for a typo. */
+    const val FUZZY = 3
 
     fun normalize(s: String?): String {
         if (s.isNullOrBlank()) return ""
@@ -31,20 +35,106 @@ object FoodSearch {
 
     fun tokens(query: String): List<String> = normalize(query).split(' ').filter { it.isNotEmpty() }.distinct()
 
-    /** The word to pre-filter with in the database: the longest, which narrows things most. */
-    fun prefilterToken(query: String): String = tokens(query).maxByOrNull { it.length } ?: query.trim()
+    /**
+     * What to pre-filter with in the database: the start of the longest word, as typed, as its singular and as its
+     * other spellings (so "aubergine" also finds "eggplant"), always three of them. Plurals and typos later in the
+     * word still reach the matching below.
+     */
+    fun prefilterTokens(query: String): List<String> {
+        val longest = tokens(query).maxByOrNull { it.length } ?: return List(3) { query.trim() }
+        val canon = canonical(longest)
+        val forms = listOf(longest, canon) + variants.filterValues { it == canon }.keys
+        val starts = forms.map { if (it.length > 3) it.take(3) else it }.distinct().take(3)
+        return starts + List(3 - starts.size) { starts.first() }
+    }
+
+    /** British and American spellings, and other names for the same food, written one way. */
+    private val variants = mapOf(
+        "yoghurt" to "yogurt", "yoghourt" to "yogurt", "chilli" to "chili", "chile" to "chili",
+        "doughnut" to "donut", "aubergine" to "eggplant", "courgette" to "zucchini", "coriander" to "cilantro",
+        "prawn" to "shrimp", "rocket" to "arugula", "mince" to "ground", "minced" to "ground",
+        "porridge" to "oatmeal", "flavour" to "flavor", "flavoured" to "flavored", "savoury" to "savory",
+        "fibre" to "fiber", "omelette" to "omelet", "ketchup" to "catsup", "colour" to "color"
+    )
+
+    /** A word as its singular, in one spelling: "berries" -> "berry", "tomatoes" -> "tomato", "yoghurts" -> "yogurt". */
+    fun canonical(word: String): String {
+        variants[word]?.let { return it }
+        val single = when {
+            word.length > 4 && word.endsWith("ies") -> word.dropLast(3) + "y"
+            word.length > 4 && word.endsWith("oes") -> word.dropLast(2)
+            word.length > 4 && (word.endsWith("ches") || word.endsWith("shes") || word.endsWith("xes") || word.endsWith("sses")) -> word.dropLast(2)
+            word.length > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us") -> word.dropLast(1)
+            else -> word
+        }
+        return variants[single] ?: single
+    }
+
+    /** Typos allowed in a word of this length: none up to 4 letters (beef is not beer), one from 5, two from 8. */
+    private fun allowedTypos(length: Int) = when { length >= 8 -> 2; length >= 5 -> 1; else -> 0 }
+
+    /** Whether [typed] is [word] (or its start, while still typing) give or take a typo or two. */
+    private fun closeTo(typed: String, word: String): Boolean {
+        val k = allowedTypos(typed.length)
+        if (k == 0 || word.length < 3) return false
+        if (kotlin.math.abs(word.length - typed.length) <= k && distance(typed, word, k) <= k) return true
+        // A partly typed word: compare with the start of the word
+        if (word.length > typed.length) {
+            for (len in (typed.length - k).coerceAtLeast(3)..(typed.length + k).coerceAtMost(word.length)) {
+                if (distance(typed, word.take(len), k) <= k) return true
+            }
+        }
+        return false
+    }
+
+    /** Edit distance (insertions, deletions, substitutions, swapped neighbours), giving up past [max]. */
+    private fun distance(a: String, b: String, max: Int): Int {
+        if (kotlin.math.abs(a.length - b.length) > max) return max + 1
+        var prev2 = IntArray(b.length + 1)
+        var prev = IntArray(b.length + 1) { it }
+        var cur = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            cur[0] = i
+            var rowMin = cur[0]
+            for (j in 1..b.length) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                var v = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+                if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) v = minOf(v, prev2[j - 2] + 1)
+                cur[j] = v
+                if (v < rowMin) rowMin = v
+            }
+            if (rowMin > max) return max + 1
+            val t = prev2; prev2 = prev; prev = cur; cur = t
+        }
+        return prev[b.length]
+    }
 
     /** How well [name] and [brand] match the query's [tokens], or null when a word is missing. */
     fun match(name: String, brand: String?, tokens: List<String>): Int? {
         if (tokens.isEmpty()) return null
         val n = normalize(name)
         val haystack = if (brand.isNullOrBlank()) n else "$n ${normalize(brand)}"
-        if (tokens.any { it !in haystack }) return null
         val words = haystack.split(' ')
-        return when {
-            n.startsWith(tokens.joinToString(" ")) || n.startsWith(tokens.first()) -> NAME_STARTS
-            tokens.all { t -> words.any { it.startsWith(t) } } -> WORD_STARTS
-            else -> CONTAINS
+        if (tokens.all { it in haystack }) {
+            return when {
+                n.startsWith(tokens.joinToString(" ")) || n.startsWith(tokens.first()) -> NAME_STARTS
+                tokens.all { t -> words.any { it.startsWith(t) } } -> WORD_STARTS
+                else -> CONTAINS
+            }
+        }
+        // Allowing for plurals, spelling variants and typos, word by word
+        val canonWords = words.map { canonical(it) }
+        val canonHay = canonWords.joinToString(" ")
+        val ok = tokens.all { t ->
+            val c = canonical(t)
+            t in haystack || c in canonHay || canonWords.any { it.startsWith(c) || closeTo(c, it) }
+        }
+        if (!ok) return null
+        // Variants and plurals rank like the spelling you typed; only typos rank lower
+        val exactish = tokens.all { t -> val c = canonical(t); t in haystack || c in canonHay || canonWords.any { it.startsWith(c) } }
+        return if (!exactish) FUZZY else when {
+            canonWords.firstOrNull()?.startsWith(canonical(tokens.first())) == true -> NAME_STARTS
+            else -> WORD_STARTS
         }
     }
 

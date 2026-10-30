@@ -411,7 +411,7 @@ class SparkyApiClient(
                 .get()
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            client.newCall(request).await().use { response ->
                 if (response.isSuccessful) {
                     val content = response.body?.string().orEmpty()
                     val root = json.parseToJsonElement(content)
@@ -488,7 +488,7 @@ class SparkyApiClient(
                 .get()
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            client.newCall(request).await().use { response ->
                 if (response.isSuccessful) {
                     val content = response.body?.string().orEmpty()
                     val root = json.parseToJsonElement(content).jsonObject
@@ -520,7 +520,8 @@ class SparkyApiClient(
                             ?: nutriments?.get("fiber")?.jsonPrimitive?.floatOrNull ?: 0f
 
                         FoodItem(
-                            id = code?.let { "off_$it" } ?: UUID.randomUUID().toString(),
+                            // No barcode: an id from what the product is, so it's the same on every search
+                            id = code?.let { "off_$it" } ?: stableOffId(name, brand, calories),
                             name = name,
                             brand = brand,
                             barcode = code,
@@ -539,6 +540,7 @@ class SparkyApiClient(
                 }
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Result.failure(e)
         }
     }
@@ -2143,6 +2145,13 @@ class SparkyApiClient(
 
     companion object {
         /** Reads Sparky's food photo estimate: the meal, and each food in it. Null if it isn't one. */
+        /** An Open Food Facts product without a barcode, identified by its name, brand and calories. */
+        fun stableOffId(name: String, brand: String?, calories: Float): String {
+            val key = "${name.trim().lowercase()}|${brand?.trim()?.lowercase().orEmpty()}|${Math.round(calories)}"
+            val digest = java.security.MessageDigest.getInstance("SHA-1").digest(key.toByteArray())
+            return "off_n" + digest.take(8).joinToString("") { "%02x".format(it) }
+        }
+
         /** [first] then the foods of [second] not already in it (same barcode, or same name and brand). */
         fun mergeFoodResults(first: List<FoodItem>, second: List<FoodItem>): List<FoodItem> {
             val seen = HashSet<String>()
@@ -2379,3 +2388,17 @@ data class WaterLogDto(
     val containerName: String? = null,
     val createdAt: String? = null
 )
+
+/**
+ * Runs a request so that cancelling the coroutine also cancels the request: a search for letters already typed
+ * past stops using the network instead of finishing in the background.
+ */
+private suspend fun okhttp3.Call.await(): okhttp3.Response = kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+    cont.invokeOnCancellation { cancel() }
+    enqueue(object : okhttp3.Callback {
+        override fun onFailure(call: okhttp3.Call, e: IOException) { cont.resumeWith(Result.failure(e)) }
+        override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+            cont.resume(response) { _, r, _ -> r.close() }
+        }
+    })
+}

@@ -6,6 +6,7 @@ import com.bytelog.app.data.repository.FoodSearch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FoodSearchTest {
@@ -57,5 +58,30 @@ class FoodSearchTest {
         val stew = logged.first { it.food.name == "Mystery stew" }.food
         assertEquals(420f, stew.calories, 0f)                    // from the entry itself
         assertEquals("serving", stew.servingUnit)
+    }
+
+    @Test fun pluralsSpellingsAndTyposStillMatchButRankBelowExactMatches() {
+        fun m(name: String, q: String) = FoodSearch.match(name, null, FoodSearch.tokens(q))
+        assertNotNull("plural", m("Egg, whole", "eggs"))
+        assertNotNull("plural -ies", m("Mixed berry blend", "berries"))
+        assertNotNull("plural -oes", m("Cherry tomato", "tomatoes"))
+        assertNotNull("spelling", m("Greek Yogurt", "yoghurt"))
+        assertNotNull("spelling, other way", m("Greek Yoghurt", "yogurt"))
+        assertNotNull("other name", m("Grilled eggplant", "aubergine"))
+        assertEquals("typo", FoodSearch.FUZZY, m("Banana", "bannana"))
+        assertEquals("swapped letters", FoodSearch.FUZZY, m("Chicken breast", "chikcen"))
+        assertEquals("typo while still typing", FoodSearch.FUZZY, m("Avocado toast", "avacad"))
+        assertNull("short words must be exact", m("Beef", "beer"))
+        assertNull("too many typos", m("Banana", "bnanaa xx"))
+        assertNull(m("Apple", "banana"))
+        // A typo never outranks an exact match
+        assertTrue(m("Banana bread", "banana")!! < m("Banana", "bannana")!!)
+    }
+
+    @Test fun thePrefilterCoversOtherSpellings() {
+        assertEquals(3, FoodSearch.prefilterTokens("aubergine").size)
+        assertTrue("egg" in FoodSearch.prefilterTokens("aubergine"))
+        assertTrue("aub" in FoodSearch.prefilterTokens("eggplant"))
+        assertTrue("ban" in FoodSearch.prefilterTokens("bannana"))
     }
 }

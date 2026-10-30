@@ -89,15 +89,17 @@ interface FoodEntryDao {
     """)
     fun getRecentlyLoggedEntries(limit: Int = 30): Flow<List<FoodEntry>>
 
-    /** Entries whose food or brand contains [token], newest first (search narrows them further). */
+    /** Entries whose food or brand contains any of [a], [b], [c], newest first (search narrows them further). */
     @Query("""
         SELECT * FROM food_entries
         WHERE syncStatus != 'pending_delete'
-          AND (foodName LIKE '%' || :token || '%' OR brandName LIKE '%' || :token || '%')
+          AND (foodName LIKE '%' || :a || '%' OR brandName LIKE '%' || :a || '%'
+            OR foodName LIKE '%' || :b || '%' OR brandName LIKE '%' || :b || '%'
+            OR foodName LIKE '%' || :c || '%' OR brandName LIKE '%' || :c || '%')
         ORDER BY createdAt DESC
         LIMIT :limit
     """)
-    fun searchEntries(token: String, limit: Int = 3000): Flow<List<FoodEntry>>
+    fun searchEntries(a: String, b: String, c: String, limit: Int = 3000): Flow<List<FoodEntry>>
 
     @Query("SELECT * FROM food_entries WHERE entryDate >= :startDate AND entryDate <= :endDate AND syncStatus != 'pending_delete' ORDER BY entryDate ASC, createdAt ASC")
     fun getEntriesInRange(startDate: String, endDate: String): Flow<List<FoodEntry>>
