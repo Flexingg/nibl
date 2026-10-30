@@ -32,9 +32,10 @@ import java.util.UUID
         RecipeDetails::class,
         PrepBatch::class,
         BatchConsumption::class,
-        IngredientAlias::class
+        IngredientAlias::class,
+        com.bytelog.app.data.local.model.PlannedEntry::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class ByteLogDatabase : RoomDatabase() {
@@ -48,6 +49,7 @@ abstract class ByteLogDatabase : RoomDatabase() {
     abstract fun recipeDetailsDao(): RecipeDetailsDao
     abstract fun prepBatchDao(): PrepBatchDao
     abstract fun ingredientAliasDao(): IngredientAliasDao
+    abstract fun plannedEntryDao(): PlannedEntryDao
 
     companion object {
         @Volatile
@@ -112,6 +114,33 @@ abstract class ByteLogDatabase : RoomDatabase() {
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `foods` ADD COLUMN `householdServings` TEXT")
+            }
+        }
+
+        /** Food planned for days ahead. Additive only. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `planned_entries` (
+                        `id` TEXT NOT NULL PRIMARY KEY,
+                        `foodId` TEXT,
+                        `foodName` TEXT NOT NULL,
+                        `brandName` TEXT,
+                        `mealTypeId` TEXT NOT NULL,
+                        `mealName` TEXT NOT NULL,
+                        `quantity` REAL NOT NULL,
+                        `unit` TEXT NOT NULL,
+                        `calories` REAL NOT NULL,
+                        `protein` REAL NOT NULL,
+                        `carbs` REAL NOT NULL,
+                        `fat` REAL NOT NULL,
+                        `entryDate` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_planned_entries_entryDate` ON `planned_entries` (`entryDate`)")
             }
         }
 
@@ -206,7 +235,7 @@ abstract class ByteLogDatabase : RoomDatabase() {
                     ByteLogDatabase::class.java,
                     "bytelog_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     // Recipes and batches are user-authored local data: never wipe them on upgrade.
                     // Only downgrades (e.g. sideloading an older APK) fall back to a rebuild.
                     .fallbackToDestructiveMigrationOnDowngrade()

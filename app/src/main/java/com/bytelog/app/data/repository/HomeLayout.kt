@@ -5,6 +5,7 @@ enum class HomeSection(val key: String, val title: String, val description: Stri
     WEEKLY_REVIEW("weekly_review", "Your week", "Monday's look back at the last seven days"),
     LEFTOVERS("fridge", "Leftovers", "Batches in the fridge, one tap logs a portion"),
     FAMILY("family", "Family", "What everyone has eaten today"),
+    PLANNED("planned", "Planned", "Food planned for the day, ticked off as you eat it"),
     MEALS("meals", "Meals", "The day's logged meals", hideable = false),
     WHAT_FITS("what_fits", "What fits?", "Foods you eat that fit what's left today"),
     QUICK_LOG("quick_meals", "Log a meal", "Yesterday's and usual meals, templates"),

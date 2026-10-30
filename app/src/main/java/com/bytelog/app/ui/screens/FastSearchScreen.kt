@@ -101,6 +101,7 @@ import com.bytelog.app.ui.theme.MacroProtein
 import com.bytelog.app.ui.viewmodel.FastSearchViewModel
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.RestaurantMenu
+import androidx.compose.material.icons.filled.DocumentScanner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -160,6 +161,12 @@ fun FastSearchScreen(
         onPhoto = { focusManager.clearFocus(); viewModel.estimatePhoto(it) },
         onError = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
     )
+    // Nutrition label: the photo is read by Sparky's AI and fills the custom food form
+    val labelScan by viewModel.labelScan.collectAsState()
+    val labelCapture = com.bytelog.app.ui.logging.rememberMealPhotoCapture(
+        onPhoto = { viewModel.scanLabel(it) },
+        onError = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+    )
     var photoStarted by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(startWithPhoto) {
         if (startWithPhoto && !photoStarted) { photoStarted = true; photoCapture.takePhoto() }
@@ -206,6 +213,7 @@ fun FastSearchScreen(
                     mt.id to mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                 },
                 onPickMeal = { id, name -> viewModel.setTargetMeal(id, name) },
+                verb = if (viewModel.isPlanning) "Plan" else "Log",
                 // Search sits at the bottom, by the tray and the keyboard, so typing, picking and logging stay in thumb reach
                 header = {
                 TextField(
@@ -258,7 +266,10 @@ fun FastSearchScreen(
             // Expressive header: title, a big pill search field and the other ways to add food
             com.bytelog.app.ui.components.ScreenHeader(
                 title = "Log food",
-                subtitle = "Search, scan, speak or add your own",
+                subtitle = if (viewModel.isPlanning) {
+                    val day = runCatching { java.time.LocalDate.parse(viewModel.targetDate.take(10)) }.getOrNull()
+                    "Planning for " + (day?.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMM d")) ?: "later") + ". Tick it off when you eat it"
+                } else "Search, scan, speak or add your own",
                 onBack = onNavigateBack,
                 statusBarPadding = false
             )
@@ -446,7 +457,7 @@ fun FastSearchScreen(
                             scope.launch {
                                 snackbarHostState.currentSnackbarData?.dismiss()
                                 val r = snackbarHostState.showSnackbar(
-                                    "Logged ${food.name} to $selectedMealName", actionLabel = "Undo",
+                                    "${if (viewModel.isPlanning) "Planned" else "Logged"} ${food.name} to $selectedMealName", actionLabel = "Undo",
                                     duration = androidx.compose.material3.SnackbarDuration.Short
                                 )
                                 if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.undoLogged(logged)
@@ -565,14 +576,15 @@ fun FastSearchScreen(
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
                                         OutlinedButton(
-                                            onClick = { showCustomFoodDialog = true },
+                                            // Not in any database: read it off the packet
+                                            onClick = { showCustomFoodDialog = true; labelCapture.takePhoto() },
                                             shape = RoundedCornerShape(50),
                                             modifier = Modifier.weight(1f),
                                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ByteCream)
                                         ) {
-                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.DocumentScanner, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Custom Food", fontSize = 12.sp)
+                                            Text("Scan Label", fontSize = 12.sp)
                                         }
                                         OutlinedButton(
                                             onClick = onNavigateToBarcode,
@@ -659,8 +671,11 @@ fun FastSearchScreen(
     // Custom Food Dialog
     if (showCustomFoodDialog) {
         CustomFoodDialog(
-            onDismiss = { showCustomFoodDialog = false },
-            onCreateCustomFood = { name, brand, servingSize, servingUnit, calories, protein, carbs, fat, fiber ->
+            onDismiss = { showCustomFoodDialog = false; viewModel.clearLabelScan() },
+            labelScan = labelScan,
+            onScanLabel = { labelCapture.takePhoto() },
+            onPickLabel = { labelCapture.pickFromGallery() },
+            onCreateCustomFood = { name, brand, servingSize, servingUnit, calories, protein, carbs, fat, fiber, household ->
                 viewModel.createCustomFood(
                     name = name,
                     brand = brand,
@@ -671,7 +686,8 @@ fun FastSearchScreen(
                     carbs = carbs,
                     fat = fat,
                     fiber = fiber,
-                    autoStage = true
+                    autoStage = true,
+                    household = household
                 )
                 showCustomFoodDialog = false
             }

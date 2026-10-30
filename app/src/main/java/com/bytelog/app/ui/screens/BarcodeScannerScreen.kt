@@ -128,6 +128,7 @@ fun BarcodeScannerScreen(
                 activeEntryId = activeStagedId,
                 foodFor = viewModel::foodFor,
                 unitsFor = viewModel::unitOptionsFor,
+                verb = if (viewModel.isPlanning) "Plan" else "Log",
                 onPortionChange = viewModel::updateStagedPortion
             )
         }

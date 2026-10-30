@@ -198,7 +198,7 @@ fun ByteLogNavHost(
         // 1. Daily Diary / Timeline
         page("diary") {
             val diaryViewModel: DiaryViewModel = viewModel {
-                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient)
+                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient, app.planRepository)
             }
             DiaryScreen(
                 viewModel = diaryViewModel,
@@ -238,7 +238,7 @@ fun ByteLogNavHost(
         page(NavMotion.RECENT_MEALS) { entry ->
             val diaryEntry = remember(entry) { navController.getBackStackEntry("diary") }
             val diaryViewModel: DiaryViewModel = viewModel(diaryEntry) {
-                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient)
+                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient, app.planRepository)
             }
             val targetDate by diaryViewModel.selectedDate.collectAsState()
             val recentMeals by diaryViewModel.recentMealsHistory.collectAsState()
@@ -269,7 +269,7 @@ fun ByteLogNavHost(
             val date = backStackEntry.arguments?.getString("date") ?: ""
 
             val fastSearchViewModel: FastSearchViewModel = viewModel {
-                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates).apply {
+                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository).apply {
                     initContext(mealTypeId, mealName, date)
                 }
             }
@@ -307,7 +307,7 @@ fun ByteLogNavHost(
             val date = backStackEntry.arguments?.getString("date") ?: ""
 
             val fastSearchViewModel: FastSearchViewModel = viewModel {
-                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates).apply {
+                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository).apply {
                     initContext(mealTypeId, mealName, date)
                 }
             }

@@ -892,7 +892,9 @@ class FoodRepository(
         protein: Float,
         carbs: Float,
         fat: Float,
-        fiber: Float? = 0f
+        fiber: Float? = 0f,
+        /** "2 cookies" when the serving is a count of pieces; kept on the phone and added to Sparky as a serving. */
+        household: com.bytelog.app.recipes.HouseholdServing? = null
     ): Result<FoodItem> = withContext(Dispatchers.IO) {
         val result = sparkyApiClient.createCustomFood(
             name = name,
@@ -905,14 +907,23 @@ class FoodRepository(
             fat = fat,
             fiber = fiber
         )
-        if (result.isSuccess) {
-            val food = result.getOrNull()
-            if (food != null) {
-                foodDao.insertFood(food)
+        val created = result.getOrNull()?.let { food ->
+            if (household == null) food
+            else {
+                val r = household.perUnit * household.quantity
+                sparkyApiClient.createFoodVariant(
+                    food.id, household.quantity, com.bytelog.app.recipes.HouseholdServings.plural(household.unit, household.quantity),
+                    food.calories * r, food.protein * r, food.carbs * r, food.fat * r
+                )
+                food.copy(householdServings = com.bytelog.app.recipes.HouseholdServings.encode(listOf(household)))
             }
         }
-        result
+        if (created != null) foodDao.insertFood(created)
+        if (created != null) Result.success(created) else result
     }
+
+    /** Reads a nutrition label photo (base64 JPEG) with Sparky's AI. */
+    suspend fun scanNutritionLabel(imageBase64: String) = sparkyApiClient.scanNutritionLabel(imageBase64)
 
     /**
      * Generate and estimate food nutrition with Sparky AI on the backend.

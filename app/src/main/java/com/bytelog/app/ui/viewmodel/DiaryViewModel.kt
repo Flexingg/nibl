@@ -65,7 +65,8 @@ class DiaryViewModel(
     private val settingsRepository: SettingsRepository,
     private val weightRepository: WeightRepository,
     private val mealTemplateRepository: MealTemplateRepository,
-    private val sparkyApiClient: SparkyApiClient? = null
+    private val sparkyApiClient: SparkyApiClient? = null,
+    private val plans: com.bytelog.app.data.repository.PlanRepository? = null
 ) : ViewModel() {
 
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
@@ -359,6 +360,24 @@ class DiaryViewModel(
             weights.asDayWeights { com.bytelog.app.ui.components.displayWeight(it, unit) })
         review.takeIf { it.end.toString() != dismissed && it.daysLogged > 0 }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Food planned for the day shown, not yet eaten. */
+    val plannedEntries: StateFlow<List<com.bytelog.app.data.local.model.PlannedEntry>> = selectedDate
+        .flatMapLatest { d -> plans?.forDate(d) ?: kotlinx.coroutines.flow.flowOf(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Ticks planned food off: logged on its day. */
+    fun eatPlanned(planned: List<com.bytelog.app.data.local.model.PlannedEntry>) {
+        viewModelScope.launch { plans?.eat(planned) }
+    }
+
+    fun removePlanned(planned: List<com.bytelog.app.data.local.model.PlannedEntry>) {
+        viewModelScope.launch { plans?.remove(planned) }
+    }
+
+    fun restorePlanned(planned: List<com.bytelog.app.data.local.model.PlannedEntry>) {
+        viewModelScope.launch { plans?.restore(planned) }
+    }
 
     /** The order of the home screen sections. */
     val homeLayout: StateFlow<com.bytelog.app.data.repository.HomeLayout> = settingsRepository.homeLayout

@@ -84,7 +84,9 @@ fun MultiAddTray(
     meals: List<Pair<String, String>> = emptyList(),
     onPickMeal: (String, String) -> Unit = { _, _ -> },
     /** Shown above the tray, inside its bottom bar (the search field). */
-    header: (@Composable () -> Unit)? = null
+    header: (@Composable () -> Unit)? = null,
+    /** "Log", or "Plan" when adding to a day ahead. */
+    verb: String = "Log"
 ) {
     if (stagedEntries.isEmpty()) {
         header?.let { Box(modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 10.dp)) { it() } }
@@ -169,13 +171,13 @@ fun MultiAddTray(
             { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLogAll() },
             Modifier.weight(1f).height(56.dp),
             cs.primary,
-            description = "Log ${stagedEntries.size} to $targetMealName"
+            description = "$verb ${stagedEntries.size} to $targetMealName"
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Check, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    if (stagedEntries.size == 1) "Log to $targetMealName" else "Log ${stagedEntries.size} to $targetMealName",
+                    if (stagedEntries.size == 1) "$verb to $targetMealName" else "$verb ${stagedEntries.size} to $targetMealName",
                     color = cs.onPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
                 )
                 Box(
