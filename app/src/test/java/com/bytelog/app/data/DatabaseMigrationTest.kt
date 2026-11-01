@@ -62,7 +62,7 @@ class DatabaseMigrationTest {
         }
 
         val room = Room.databaseBuilder(context, ByteLogDatabase::class.java, name)
-            .addMigrations(ByteLogDatabase.MIGRATION_1_2, ByteLogDatabase.MIGRATION_2_3, ByteLogDatabase.MIGRATION_3_4, ByteLogDatabase.MIGRATION_4_5, ByteLogDatabase.MIGRATION_5_6)
+            .addMigrations(ByteLogDatabase.MIGRATION_1_2, ByteLogDatabase.MIGRATION_2_3, ByteLogDatabase.MIGRATION_3_4, ByteLogDatabase.MIGRATION_4_5, ByteLogDatabase.MIGRATION_5_6, ByteLogDatabase.MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
         try {
@@ -107,7 +107,7 @@ class DatabaseMigrationTest {
             db.version = 4
         }
         val room = Room.databaseBuilder(context, ByteLogDatabase::class.java, name)
-            .addMigrations(ByteLogDatabase.MIGRATION_4_5, ByteLogDatabase.MIGRATION_5_6)
+            .addMigrations(ByteLogDatabase.MIGRATION_4_5, ByteLogDatabase.MIGRATION_5_6, ByteLogDatabase.MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
         try {

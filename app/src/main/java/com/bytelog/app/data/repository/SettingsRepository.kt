@@ -48,6 +48,7 @@ class SettingsRepository(
         val KEY_DEVICE_COLORS = androidx.datastore.preferences.core.booleanPreferencesKey("device_colors")
         val KEY_REDUCE_TRANSPARENCY = androidx.datastore.preferences.core.booleanPreferencesKey("reduce_transparency")
         val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
+        val KEY_HEALTH_CONNECT_WRITE = androidx.datastore.preferences.core.booleanPreferencesKey("health_connect_write")
         val KEY_RESEARCH_PROVIDER = stringPreferencesKey("research_provider")
         val KEY_RESEARCH_TAVILY = stringPreferencesKey("research_tavily_key")
         val KEY_RESEARCH_ASK_WRITES = androidx.datastore.preferences.core.booleanPreferencesKey("research_ask_before_writing")
@@ -189,6 +190,13 @@ class SettingsRepository(
 
     suspend fun saveReduceTransparency(enabled: Boolean) {
         context.dataStore.edit { it[KEY_REDUCE_TRANSPARENCY] = enabled }
+    }
+
+    /** Write the diary's food and water to Health Connect. */
+    val healthConnectWrite: Flow<Boolean> = context.dataStore.data.map { it[KEY_HEALTH_CONNECT_WRITE] ?: false }
+
+    suspend fun saveHealthConnectWrite(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_HEALTH_CONNECT_WRITE] = enabled }
     }
 
     /** The home screen's section order and hidden sections ([HomeLayout] encoding). */

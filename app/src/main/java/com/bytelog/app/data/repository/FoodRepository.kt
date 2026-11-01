@@ -727,7 +727,9 @@ class FoodRepository(
         // 2. Download Sparky's diary for the date and merge it in
         val fetchResult = sparkyApiClient.fetchEntriesForDate(cleanDate)
         if (fetchResult.isSuccess) {
+            // Food Nibl wrote to Health Connect that Sparky's phone app imported back is already here: skip the copy
             val serverEntries = fetchResult.getOrNull().orEmpty()
+                .filterNot { com.bytelog.app.health.HealthConnectEcho.isEcho(it.source, it.sourceId) }
             mergeServerEntries(cleanDate, serverEntries)
 
             // 3. Update meal types

@@ -237,9 +237,13 @@ class WaterRepository(
                         containerId = dto.containerId,
                         containerName = name,
                         loggedAt = dto.createdAt,
-                        syncStatus = WaterLogEntry.SYNC_STATUS_SYNCED
+                        syncStatus = WaterLogEntry.SYNC_STATUS_SYNCED,
+                        source = dto.source,
+                        sourceId = dto.sourceId
                     )
                 }
+                    // A drink Nibl wrote to Health Connect, imported back into Sparky by its phone app: not a new drink
+                    .filterNot { com.bytelog.app.health.HealthConnectEcho.isEcho(it.source, it.sourceId) }
 
                 // Delete only synced entries for this date, preserve any pending ones, and don't bring back
                 // drinks removed on the phone whose removal Sparky hasn't confirmed yet

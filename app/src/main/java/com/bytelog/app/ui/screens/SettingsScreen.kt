@@ -242,6 +242,9 @@ fun SettingsScreen(
                 onReduceTransparency = { scope.launch { settingsRepository.saveReduceTransparency(it) } }
             )
 
+            // Health Connect: food and water out to the phone's health data
+            com.bytelog.app.ui.components.HealthConnectCard(settingsRepository)
+
             // Your food library on Sparky
             if (onOpenMyFoods != null) {
                 val cs = MaterialTheme.colorScheme

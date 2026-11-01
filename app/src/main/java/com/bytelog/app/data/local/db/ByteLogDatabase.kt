@@ -35,7 +35,7 @@ import java.util.UUID
         IngredientAlias::class,
         com.bytelog.app.data.local.model.PlannedEntry::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class ByteLogDatabase : RoomDatabase() {
@@ -114,6 +114,16 @@ abstract class ByteLogDatabase : RoomDatabase() {
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `foods` ADD COLUMN `householdServings` TEXT")
+            }
+        }
+
+        /** Where Sparky got an entry or drink (e.g. imported from Health Connect), so it isn't written back there. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `food_entries` ADD COLUMN `source` TEXT")
+                db.execSQL("ALTER TABLE `food_entries` ADD COLUMN `sourceId` TEXT")
+                db.execSQL("ALTER TABLE `water_log_entries` ADD COLUMN `source` TEXT")
+                db.execSQL("ALTER TABLE `water_log_entries` ADD COLUMN `sourceId` TEXT")
             }
         }
 
@@ -235,7 +245,7 @@ abstract class ByteLogDatabase : RoomDatabase() {
                     ByteLogDatabase::class.java,
                     "bytelog_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     // Recipes and batches are user-authored local data: never wipe them on upgrade.
                     // Only downgrades (e.g. sideloading an older APK) fall back to a rebuild.
                     .fallbackToDestructiveMigrationOnDowngrade()

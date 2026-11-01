@@ -31,7 +31,10 @@ data class FoodEntry(
     val entryDate: String, // YYYY-MM-DD
     val entryTime: String? = null, // HH:mm:ss
     val syncStatus: String = SYNC_STATUS_PENDING_INSERT,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** Where Sparky got the entry when it wasn't logged by hand (e.g. "Health Connect"), and its id there. */
+    val source: String? = null,
+    val sourceId: String? = null
 ) {
     companion object {
         const val SYNC_STATUS_SYNCED = "synced"
