@@ -643,7 +643,9 @@ class SparkyApiClient(
                             syncStatus = FoodEntry.SYNC_STATUS_SYNCED,
                             // When it was logged on Sparky, not when this phone downloaded it (the fasting timer reads it)
                             createdAt = com.bytelog.app.data.repository.parseServerTime((obj["created_at"] as? JsonPrimitive)?.content)
-                                ?: System.currentTimeMillis()
+                                ?: System.currentTimeMillis(),
+                            source = (obj["source"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() },
+                            sourceId = (obj["source_id"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
                         )
                     }
                     Result.success(entries)
@@ -907,7 +909,9 @@ class SparkyApiClient(
                                 entryDate = entryDate,
                                 containerId = containerId,
                                 containerName = containerName,
-                                createdAt = createdAt
+                                createdAt = createdAt,
+                                source = (o["source"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() },
+                                sourceId = (o["source_id"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
                             )
                         } catch (_: Exception) {
                             null
@@ -2509,7 +2513,9 @@ data class WaterLogDto(
     val entryDate: String,
     val containerId: Int? = null,
     val containerName: String? = null,
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    val source: String? = null,
+    val sourceId: String? = null
 )
 
 /**

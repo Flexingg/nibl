@@ -79,6 +79,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Health Connect is written while Nibl is open (on opening, and as the diary changes)
+        (application as ByteLogApplication).apply { inForeground = true; requestHealthSync(delayMs = 500) }
+    }
+
+    override fun onPause() {
+        (application as ByteLogApplication).inForeground = false
+        super.onPause()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Android 12+ System Splash Screen hook
         installSplashScreen()

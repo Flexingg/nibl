@@ -21,8 +21,8 @@ android {
         applicationId = "com.bytelog.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 43
-        versionName = "1.21.0"
+        versionCode = 44
+        versionName = "1.22.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -105,6 +105,7 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.haze)
+    implementation(libs.androidx.health.connect)
     debugImplementation(libs.androidx.ui.tooling)
 
     // Coroutines & Serialization
