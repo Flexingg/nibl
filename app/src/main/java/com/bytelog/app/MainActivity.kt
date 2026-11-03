@@ -266,7 +266,7 @@ fun ByteLogNavHost(
 
         // 2. Fast-Search & Multi-Add Staging
         page(
-            route = "search/{mealTypeId}/{mealName}/{date}?photo={photo}",
+            route = com.bytelog.app.ui.navigation.SEARCH_ROUTE,
             arguments = listOf(
                 navArgument("mealTypeId") { type = NavType.StringType },
                 navArgument("mealName") { type = NavType.StringType },
@@ -317,7 +317,9 @@ fun ByteLogNavHost(
             val mealName = backStackEntry.arguments?.getString("mealName") ?: "Breakfast"
             val date = backStackEntry.arguments?.getString("date") ?: ""
 
-            val fastSearchViewModel: FastSearchViewModel = viewModel {
+            // The scanner adds to the same tray as the search it was opened from, so scanning and searching mix freely
+            // (opened on its own, e.g. from a widget, it has a tray of its own)
+            val fastSearchViewModel: FastSearchViewModel = viewModel(viewModelStoreOwner = com.bytelog.app.ui.navigation.rememberTrayOwner(navController, backStackEntry)) {
                 FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository).apply {
                     initContext(mealTypeId, mealName, date)
                 }

@@ -253,6 +253,21 @@ class FoodRepository(
         fetchHouseholdServings(food)
     }
 
+    /**
+     * Foods you often eat in the same meal as [seeds] (what's in the tray), from your history, as foods ready to add,
+     * leaving out what's already in [alreadyIn] (the meal being added to).
+     */
+    suspend fun foodsOftenWith(seeds: List<FoodEntry>, alreadyIn: List<FoodEntry> = emptyList()): List<FoodItem> = withContext(Dispatchers.Default) {
+        if (seeds.isEmpty()) return@withContext emptyList()
+        val history = foodEntryDao.entriesOnDaysWith(
+            seeds.mapNotNull { it.foodId }.distinct(),
+            seeds.map { it.foodName.trim().lowercase() }.distinct()
+        )
+        val found = CoLogging.suggest(history, seeds, alreadyIn)
+        val saved = found.mapNotNull { it.entry.foodId }.distinct().chunked(500).flatMap { foodDao.getFoodsByIds(it) }.associateBy { it.id }
+        found.map { saved[it.entry.foodId] ?: FoodSearch.foodOf(it.entry) }
+    }
+
     /** Foods whose servings were asked of Sparky this session (each is asked once). */
     private val servingsAsked = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 

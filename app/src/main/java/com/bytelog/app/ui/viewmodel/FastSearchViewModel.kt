@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.flatMapLatest
@@ -79,6 +82,24 @@ class FastSearchViewModel(
         }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Foods often eaten with what's in the tray, suggested as soon as something is picked. */
+    data class Together(val label: String, val foods: List<FoodItem>)
+
+    val together: StateFlow<Together?> = _stagedEntries
+        .map { entries -> entries.distinctBy { com.bytelog.app.data.repository.CoLogging.identity(it) } }
+        // Changing an amount doesn't change what goes with it
+        .distinctUntilChangedBy { seeds -> seeds.map { com.bytelog.app.data.repository.CoLogging.identity(it) } }
+        .mapLatest { seeds ->
+            if (seeds.isEmpty()) return@mapLatest null
+            // What's already in this meal today isn't suggested again
+            val already = if (targetDate.isBlank()) emptyList()
+            else foodRepository.getEntriesForDate(targetDate).first().filter { com.bytelog.app.data.repository.MealPatterns.sameMeal(it.mealName, targetMealName) }
+            val foods = foodRepository.foodsOftenWith(seeds, already)
+            if (foods.isEmpty()) null
+            else Together(if (seeds.size == 1) "Often with ${seeds.first().foodName}" else "Often with what you've picked", foods)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _selectedMealName = MutableStateFlow("Breakfast")
     val selectedMealName: StateFlow<String> = _selectedMealName.asStateFlow()

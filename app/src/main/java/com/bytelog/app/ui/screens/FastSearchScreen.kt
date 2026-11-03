@@ -125,6 +125,7 @@ fun FastSearchScreen(
     val isSearchingRemote by viewModel.isSearchingRemote.collectAsState()
     val activeStagedId by viewModel.activeStagedId.collectAsState()
     val lastPortions by viewModel.lastPortions.collectAsState()
+    val together by viewModel.together.collectAsState()
 
     // The tab last used (Suggested, Recents or Favorites) is where the next search opens
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -184,6 +185,26 @@ fun FastSearchScreen(
         onDismiss = { viewModel.dismissPhoto() }
     )
 
+    // Right after something is added (nothing typed yet): what you usually have with it, one tap each
+    val trayFoodIds = remember(stagedEntries) { stagedEntries.mapNotNull { it.foodId }.toSet() }
+    val togetherPicks = remember(together, lastPortions, trayFoodIds) {
+        together?.foods.orEmpty().filter { it.id !in trayFoodIds }.take(6).map { com.bytelog.app.ui.components.TogetherPick(it, viewModel.portionFor(it)) }
+    }
+    LaunchedEffect(together) { together?.foods?.let { viewModel.prefetchPortions(it) } }
+
+    // Leaving with food in the tray asks first, rather than dropping it
+    var confirmLeave by remember { mutableStateOf(false) }
+    val leave: () -> Unit = { if (stagedEntries.isNotEmpty()) confirmLeave = true else onNavigateBack() }
+    androidx.activity.compose.BackHandler(enabled = stagedEntries.isNotEmpty()) { confirmLeave = true }
+    if (confirmLeave) {
+        com.bytelog.app.ui.components.LeaveTrayDialog(
+            count = stagedEntries.size, verb = if (viewModel.isPlanning) "Plan" else "Log", mealName = selectedMealName,
+            onLog = { confirmLeave = false; viewModel.commitStagedTray { onNavigateBack() } },
+            onDiscard = { confirmLeave = false; onNavigateBack() },
+            onKeepAdding = { confirmLeave = false }
+        )
+    }
+
     Scaffold(
         modifier = Modifier.fluidBackdrop(),
         containerColor = Color.Transparent,
@@ -214,6 +235,12 @@ fun FastSearchScreen(
                 },
                 onPickMeal = { id, name -> viewModel.setTargetMeal(id, name) },
                 verb = if (viewModel.isPlanning) "Plan" else "Log",
+                suggestions = if (searchQuery.isBlank() && togetherPicks.isNotEmpty()) ({
+                    com.bytelog.app.ui.components.TogetherStrip(
+                        label = together?.label.orEmpty(), picks = togetherPicks,
+                        onAdd = { viewModel.tapFood(it) }
+                    )
+                }) else null,
                 // Search sits at the bottom, by the tray and the keyboard, so typing, picking and logging stay in thumb reach
                 header = {
                 TextField(
@@ -270,7 +297,7 @@ fun FastSearchScreen(
                     val day = runCatching { java.time.LocalDate.parse(viewModel.targetDate.take(10)) }.getOrNull()
                     "Planning for " + (day?.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMM d")) ?: "later") + ". Tick it off when you eat it"
                 } else "Search, scan, speak or add your own",
-                onBack = onNavigateBack,
+                onBack = leave,
                 statusBarPadding = false
             )
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -441,11 +468,13 @@ fun FastSearchScreen(
                     portion = remember(food, lastPortions) { viewModel.portionFor(food) },
                     inTray = food.id in inTray,
                     onQuickAdd = {
-                        // One tap: in the tray at the usual amount, editor open, search cleared for the next food
+                        // One tap: in the tray at the usual amount and the search cleared. While typing, the keyboard
+                        // stays up so the next food is a search away (a chip in the tray adjusts the amount);
+                        // from the lists the amount editor opens as before.
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         viewModel.tapFood(food)
                         if (searchQuery.isNotBlank()) viewModel.setSearchQuery("")
-                        focusManager.clearFocus()
+                        if (!searchFocused) focusManager.clearFocus()
                     },
                     onEdit = { onEditFood(food.id) },
                     onToggleFavorite = {
@@ -624,7 +653,7 @@ fun FastSearchScreen(
                                     val added = viewModel.stageTemplate(template)
                                     if (added > 0) {
                                         viewModel.setSearchQuery("")
-                                        focusManager.clearFocus()
+                                        if (!searchFocused) focusManager.clearFocus()
                                     } else scope.launch { snackbarHostState.showSnackbar("${template.name} has no foods with nutrition to add") }
                                 }
                             )

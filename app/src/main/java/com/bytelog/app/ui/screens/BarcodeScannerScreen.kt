@@ -112,6 +112,28 @@ fun BarcodeScannerScreen(
         }
     }
 
+    // What often goes with the food just scanned, one tap each
+    val together by viewModel.together.collectAsState()
+    val lastPortions by viewModel.lastPortions.collectAsState()
+    val trayFoodIds = remember(stagedEntries) { stagedEntries.mapNotNull { it.foodId }.toSet() }
+    val togetherPicks = remember(together, lastPortions, trayFoodIds) {
+        together?.foods.orEmpty().filter { it.id !in trayFoodIds }.take(6).map { com.bytelog.app.ui.components.TogetherPick(it, viewModel.portionFor(it)) }
+    }
+    LaunchedEffect(together) { together?.foods?.let { viewModel.prefetchPortions(it) } }
+
+    // Leaving with food in the tray asks first, rather than dropping it
+    var confirmLeave by remember { mutableStateOf(false) }
+    val leave: () -> Unit = { if (stagedEntries.isNotEmpty()) confirmLeave = true else onNavigateBack() }
+    androidx.activity.compose.BackHandler(enabled = stagedEntries.isNotEmpty()) { confirmLeave = true }
+    if (confirmLeave) {
+        com.bytelog.app.ui.components.LeaveTrayDialog(
+            count = stagedEntries.size, verb = if (viewModel.isPlanning) "Plan" else "Log", mealName = viewModel.targetMealName,
+            onLog = { confirmLeave = false; viewModel.commitStagedTray { onNavigateBack() } },
+            onDiscard = { confirmLeave = false; onNavigateBack() },
+            onKeepAdding = { confirmLeave = false }
+        )
+    }
+
     Scaffold(
         containerColor = Color.Black,
         bottomBar = {
@@ -129,6 +151,12 @@ fun BarcodeScannerScreen(
                 foodFor = viewModel::foodFor,
                 unitsFor = viewModel::unitOptionsFor,
                 verb = if (viewModel.isPlanning) "Plan" else "Log",
+                suggestions = if (togetherPicks.isNotEmpty()) ({
+                    com.bytelog.app.ui.components.TogetherStrip(
+                        label = together?.label.orEmpty(), picks = togetherPicks,
+                        onAdd = { viewModel.tapFood(it) }
+                    )
+                }) else null,
                 onPortionChange = viewModel::updateStagedPortion
             )
         }
@@ -233,7 +261,7 @@ fun BarcodeScannerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = onNavigateBack,
+                    onClick = leave,
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)

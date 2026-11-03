@@ -86,7 +86,9 @@ fun MultiAddTray(
     /** Shown above the tray, inside its bottom bar (the search field). */
     header: (@Composable () -> Unit)? = null,
     /** "Log", or "Plan" when adding to a day ahead. */
-    verb: String = "Log"
+    verb: String = "Log",
+    /** Foods that often go with what's in the tray, between the search field and the tray's items. */
+    suggestions: (@Composable () -> Unit)? = null
 ) {
     if (stagedEntries.isEmpty()) {
         header?.let { Box(modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 10.dp)) { it() } }
@@ -109,6 +111,7 @@ fun MultiAddTray(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         header?.invoke()
+        suggestions?.invoke()
 
         // The item being adjusted
         if (activeFood != null) {
