@@ -101,6 +101,19 @@ interface FoodEntryDao {
     """)
     fun searchEntries(a: String, b: String, c: String, limit: Int = 3000): Flow<List<FoodEntry>>
 
+    /**
+     * Every entry on the days any of these foods (by id, or by lower-case name) was eaten: what else was eaten with
+     * them. A day's worth of entries is small, so this stays quick even for a food eaten for years.
+     */
+    @Query("""
+        SELECT * FROM food_entries
+        WHERE syncStatus != 'pending_delete' AND entryDate IN (
+            SELECT entryDate FROM food_entries
+            WHERE syncStatus != 'pending_delete' AND (foodId IN (:foodIds) OR LOWER(TRIM(foodName)) IN (:names))
+        )
+    """)
+    suspend fun entriesOnDaysWith(foodIds: List<String>, names: List<String>): List<FoodEntry>
+
     @Query("SELECT * FROM food_entries WHERE entryDate >= :startDate AND entryDate <= :endDate AND syncStatus != 'pending_delete' ORDER BY entryDate ASC, createdAt ASC")
     fun getEntriesInRange(startDate: String, endDate: String): Flow<List<FoodEntry>>
 

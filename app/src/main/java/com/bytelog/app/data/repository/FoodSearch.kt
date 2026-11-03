@@ -138,6 +138,13 @@ object FoodSearch {
         }
     }
 
+    /** A food described by what was logged of it: its own amount and nutrition as the serving. */
+    fun foodOf(e: FoodEntry): FoodItem = FoodItem(
+        id = e.foodId ?: e.id, name = e.foodName, brand = e.brandName,
+        servingSize = e.quantity, servingUnit = e.unit,
+        calories = e.calories, protein = e.protein, carbs = e.carbs, fat = e.fat, fiber = 0f
+    )
+
     /** The same food logged or saved twice (by id, or else by name and brand) counts once. */
     fun identity(name: String, brand: String?): String = normalize(name) + "|" + normalize(brand)
 
@@ -177,12 +184,7 @@ object FoodSearch {
             .take(limit)
             .map { g ->
                 val e = g.latest
-                val food = e.foodId?.let { foods[it] } ?: FoodItem(
-                    id = e.foodId ?: e.id, name = e.foodName, brand = e.brandName,
-                    servingSize = e.quantity, servingUnit = e.unit,
-                    calories = e.calories, protein = e.protein, carbs = e.carbs, fat = e.fat, fiber = 0f
-                )
-                SearchHit(food, g.count, e.createdAt)
+                SearchHit(e.foodId?.let { foods[it] } ?: foodOf(e), g.count, e.createdAt)
             }
     }
 
