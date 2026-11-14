@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Storefront
@@ -72,7 +73,7 @@ import java.util.Locale
  * store, with what it should cost where you've saved a price. Tick things off as they go in the cart.
  */
 @Composable
-fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit) {
+fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onScanReceipt: () -> Unit = {}) {
     val s by viewModel.state.collectAsState()
     val message by viewModel.message.collectAsState()
     val cs = MaterialTheme.colorScheme
@@ -101,6 +102,7 @@ fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit) {
             ScreenHeader(
                 title = "Shopping list", subtitle = rangeLabel(s.from, s.to), onBack = onBack, fraction = rememberScrollFraction(list),
                 actions = {
+                    IconButton(onClick = onScanReceipt) { Icon(Icons.Default.ReceiptLong, contentDescription = "Prices from a receipt", tint = cs.onSurface) }
                     if (s.list.items.isNotEmpty()) IconButton(onClick = {
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, viewModel.shareText())
                         context.startActivity(Intent.createChooser(send, "Share shopping list").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

@@ -88,12 +88,12 @@ data class PriceDraft(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PriceForm(draft: PriceDraft, onChange: (PriceDraft) -> Unit, units: List<String>, modifier: Modifier = Modifier, hint: String? = null) {
+fun PriceForm(draft: PriceDraft, onChange: (PriceDraft) -> Unit, units: List<String>, modifier: Modifier = Modifier, hint: String? = null, showStore: Boolean = true) {
     val cs = MaterialTheme.colorScheme
     var asPackage by remember { mutableStateOf(draft.packageName.isNotBlank()) }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         hint?.let { Text(it, color = cs.onSurfaceVariant, fontSize = 13.sp) }
-        OutlinedTextField(
+        if (showStore) OutlinedTextField(
             value = draft.store, onValueChange = { onChange(draft.copy(store = it)) },
             label = { Text("Store") }, placeholder = { Text("e.g. Costco") }, singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),

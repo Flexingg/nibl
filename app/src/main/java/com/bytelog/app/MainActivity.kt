@@ -243,7 +243,8 @@ fun ByteLogNavHost(
                 openShareFor = shareRequest,
                 onShareRequestHandled = { shareRequest = null },
                 onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } },
-                onOpenPlanner = { navController.navigate("planner") { launchSingleTop = true } }
+                onOpenPlanner = { navController.navigate("planner") { launchSingleTop = true } },
+                onScanReceipt = { navController.navigate("receipt") { launchSingleTop = true } }
             )
         }
 
@@ -265,7 +266,28 @@ fun ByteLogNavHost(
             val vm: com.bytelog.app.ui.viewmodel.ShoppingListViewModel = viewModel {
                 com.bytelog.app.ui.viewmodel.ShoppingListViewModel(app.planRepository, app.priceRepository, foodRepo)
             }
-            com.bytelog.app.ui.screens.ShoppingListScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            com.bytelog.app.ui.screens.ShoppingListScreen(
+                viewModel = vm, onBack = { navController.popBackStack() },
+                onScanReceipt = { navController.navigate("receipt") { launchSingleTop = true } }
+            )
+        }
+
+        // 1e. Prices from a receipt, read on the phone and matched to the shopping list and foods
+        page("receipt") {
+            val vm: com.bytelog.app.ui.viewmodel.ReceiptViewModel = viewModel {
+                com.bytelog.app.ui.viewmodel.ReceiptViewModel(
+                    com.bytelog.app.data.receipts.MlKitReceiptReader(app), app.priceRepository, app.planRepository, foodRepo
+                )
+            }
+            com.bytelog.app.ui.screens.ReceiptScreen(
+                viewModel = vm, onBack = { navController.popBackStack() },
+                onShoppingList = {
+                    if (!navController.popBackStack("shopping", inclusive = false)) {
+                        navController.popBackStack()
+                        navController.navigate("shopping") { launchSingleTop = true }
+                    }
+                }
+            )
         }
 
         // 1b. Copy recent meals into the day open in the Diary (shares the Diary's view model)

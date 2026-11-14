@@ -165,4 +165,26 @@ class ShoppingRenderTest {
         waitFor { compose.onAllNodes(hasText("to get", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
         shot("35-home-plan-cards")
     }
+
+    @Test fun receiptReview() {
+        val vm = com.bytelog.app.ui.viewmodel.ReceiptViewModel({ Result.success(emptyList()) }, prices, plans, foods)
+        runBlocking {
+            vm.review("""
+                COSTCO WHOLESALE
+                11/14/26
+                E 1234567 KS GRK YOG 48OZ   6.49 N
+                E 987654 ATLANTIC SALMON 2.1LB   21.99 N
+                BANANAS 4 CT  1.00
+                E 44444 PAPER TOWELS   19.99
+                TOTAL  49.47
+            """.trimIndent().lines().map { com.bytelog.app.data.receipts.OcrLine(it) })
+        }
+        compose.setContent {
+            ByteLogTheme(darkTheme = false, dynamicColor = false) {
+                com.bytelog.app.ui.screens.ReceiptScreen(vm, onBack = {}, onShoppingList = {})
+            }
+        }
+        waitFor { compose.onAllNodes(hasText("Save", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("36-receipt-review")
+    }
 }

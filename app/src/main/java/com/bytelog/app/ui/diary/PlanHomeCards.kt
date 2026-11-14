@@ -109,7 +109,7 @@ fun MealPlanHomeCard(days: List<PlanDaySummary>, calorieGoal: Float, onOpen: () 
 
 /** What to buy for the week's plan on the home screen: how much is left to get, the cost and the next few items. */
 @Composable
-fun ShoppingHomeCard(list: ShoppingListResult, checked: Set<String>, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+fun ShoppingHomeCard(list: ShoppingListResult, checked: Set<String>, onOpen: () -> Unit, modifier: Modifier = Modifier, onScanReceipt: (() -> Unit)? = null) {
     val cs = MaterialTheme.colorScheme
     val left = list.items.filter { it.key !in checked }
     Column(
@@ -141,6 +141,12 @@ fun ShoppingHomeCard(list: ShoppingListResult, checked: Set<String>, onOpen: () 
                 Modifier.pressBounce().clip(RoundedCornerShape(50)).background(cs.primary)
                     .clickable(role = Role.Button, onClick = onOpen).heightIn(min = 44.dp).padding(horizontal = 16.dp, vertical = 11.dp)
             ) { Text("Open shopping list", color = cs.onPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+        }
+        onScanReceipt?.let { scan ->
+            Text(
+                "Back from the shop? Scan the receipt for prices", color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).clickable(role = Role.Button, onClick = scan).padding(vertical = 8.dp)
+            )
         }
     }
 }
