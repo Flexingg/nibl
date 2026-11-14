@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
@@ -184,6 +185,7 @@ private fun Settings(c: PlannerConfig, onChange: (PlannerConfig) -> Unit) {
         }
         Toggle("Calories against your goal", c.showGoal) { onChange(c.copy(showGoal = it)) }
         Toggle("Protein, carbs and fat", c.showMacros) { onChange(c.copy(showMacros = it)) }
+        Toggle("Costs, from your saved prices", c.showCosts) { onChange(c.copy(showCosts = it)) }
     }
 }
 
@@ -282,6 +284,21 @@ private fun DayCard(
             if (state.config.showMacros) {
                 Text("P ${day.protein.roundToInt()} g · C ${day.carbs.roundToInt()} g · F ${day.fat.roundToInt()} g", color = cs.onSurfaceVariant, fontSize = 12.sp)
             }
+            if (state.config.showCosts && day.priced > 0) {
+                // The day's cost, and protein per dollar over the foods with prices
+                val pricedProtein = day.entries.filter { it.id in state.costs }.sumOf { it.protein.toDouble() }
+                val missing = day.entries.size - day.priced
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Savings, contentDescription = null, tint = cs.tertiary, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "About ${com.bytelog.app.data.repository.ShoppingList.money(day.cost)}" +
+                            (if (day.cost > 0) " · ${(pricedProtein / day.cost).roundToInt()} g protein per $" else "") +
+                            (if (missing > 0) " · $missing without a price" else ""),
+                        color = cs.tertiary, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                    )
+                }
+            }
         }
         day.meals.forEach { (meal, items) ->
             Text(meal, color = cs.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp, start = 2.dp))
@@ -337,7 +354,10 @@ private fun PlannedRow(
                 Text(e.foodName + (e.brandName?.let { " · $it" } ?: ""), color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(Portion(e.quantity, e.unit).label, color = cs.onSurfaceVariant, fontSize = 12.sp)
             }
-            Text("${e.calories.roundToInt()} kcal", color = cs.onSurfaceVariant, fontSize = 13.sp)
+            Column(horizontalAlignment = Alignment.End) {
+                Text("${e.calories.roundToInt()} kcal", color = cs.onSurfaceVariant, fontSize = 13.sp)
+                if (state.config.showCosts) state.costs[e.id]?.let { Text(com.bytelog.app.data.repository.ShoppingList.money(it), color = cs.tertiary, fontSize = 12.sp) }
+            }
         }
         if (open) {
             Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

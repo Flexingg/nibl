@@ -136,7 +136,7 @@ class ShoppingRenderTest {
     }
 
     @Test fun mealPlanner() {
-        val vm = com.bytelog.app.ui.viewmodel.MealPlannerViewModel(plans, foods, null)
+        val vm = com.bytelog.app.ui.viewmodel.MealPlannerViewModel(plans, foods, null, prices = prices)
         compose.setContent {
             ByteLogTheme(darkTheme = false, dynamicColor = false) {
                 com.bytelog.app.ui.screens.MealPlannerScreen(vm, onBack = {}, onAddFood = { _, _, _ -> }, onShoppingList = {})
@@ -186,5 +186,39 @@ class ShoppingRenderTest {
         }
         waitFor { compose.onAllNodes(hasText("Save", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
         shot("36-receipt-review")
+    }
+
+    @Test fun valueViews() {
+        runBlocking {
+            db.foodDao().insertFood(FoodItem("f-salmon", "Salmon", servingSize = 150f, servingUnit = "g", calories = 310f, protein = 34f, fat = 18f))
+            db.foodDao().insertFood(FoodItem("f-rice", "Brown Rice", servingSize = 1f, servingUnit = "cup", calories = 216f, protein = 5f, carbs = 45f, fiber = 3.5f))
+            db.foodDao().insertFood(FoodItem("f-chicken", "Chicken Breast", servingSize = 100f, servingUnit = "g", calories = 165f, protein = 31f, fat = 3.6f))
+            prices.save(null, "Chicken Breast", null, SparkyPrice("Costco", 12.99f, 3f, "lb"))
+        }
+        val vm = ShoppingListViewModel(plans, prices, foods)
+        compose.setContent { ByteLogTheme(darkTheme = false, dynamicColor = false) { ShoppingListScreen(vm, onBack = {}) } }
+        waitFor { compose.onAllNodes(hasText("Protein per $"), true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(hasText("Protein per $"), true).onFirst().performClick()
+        waitFor { compose.onAllNodes(hasText("protein ·", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("37-shopping-by-value")
+    }
+
+    @Test fun bestValue() {
+        runBlocking {
+            db.foodDao().insertFood(FoodItem("f-chicken", "Chicken Breast", servingSize = 100f, servingUnit = "g", calories = 165f, protein = 31f, fat = 3.6f))
+            db.foodDao().insertFood(FoodItem("f-eggs", "Large Eggs", servingSize = 1f, servingUnit = "each", calories = 72f, protein = 6.3f, fat = 4.8f))
+            db.foodDao().insertFood(FoodItem("f-oats", "Rolled Oats", servingSize = 40f, servingUnit = "g", calories = 150f, protein = 5f, carbs = 27f, fiber = 4f))
+            prices.save(null, "Chicken Breast", null, SparkyPrice("Costco", 12.99f, 3f, "lb"))
+            prices.save(null, "Large Eggs", null, SparkyPrice("Aldi", 3.29f, 12f, "each"))
+            prices.save(null, "Rolled Oats", null, SparkyPrice("Aldi", 4.49f, 42f, "oz"))
+        }
+        val vm = com.bytelog.app.ui.viewmodel.BestValueViewModel(prices, foods)
+        compose.setContent {
+            ByteLogTheme(darkTheme = false, dynamicColor = false) {
+                com.bytelog.app.ui.screens.BestValueScreen(vm, onBack = {}, onOpenFood = {}, onScanReceipt = {})
+            }
+        }
+        waitFor { compose.onAllNodes(hasText("Chicken Breast", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("38-best-value")
     }
 }

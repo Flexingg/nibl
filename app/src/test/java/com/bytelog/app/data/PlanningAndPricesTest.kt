@@ -77,6 +77,8 @@ class PlanningAndPricesTest {
                         variantCustom = (Json.parseToJsonElement(body).jsonObject["custom_nutrients"] as JsonObject).toString()
                         MockResponse().setBody("{}")
                     }
+                    path == "/api/foods/scan-label" -> MockResponse().setBody("""{"name":"Protein Granola","brand":"Bear","serving_size":45,"serving_unit":"g","calories":200,"protein":12,"carbs":24,"fat":7,"fiber":4}""")
+                    request.method == "POST" && path == "/api/foods" -> MockResponse().setResponseCode(201).setBody("""{"id":"77777777-2222-3333-4444-555555555555"}""")
                     path == "/api/foods/food-variants/v-shared" -> MockResponse().setResponseCode(403).setBody("""{"error":"Forbidden: You do not have permission to update this food variant."}""")
                     else -> MockResponse().setResponseCode(404)
                 }
@@ -267,9 +269,9 @@ class PlanningAndPricesTest {
 
         val yog = s.lines[0].draft
         assertEquals("4.99", yog.price); assertEquals("32", yog.quantity); assertEquals("oz", yog.unit)
-        // 3 lb isn't one of the chicken's units, so it's put in one that is
+        // The chicken is weighed in grams, so a price per pound is fine (it converts)
         val chicken = s.lines[1].draft
-        assertEquals("12.99", chicken.price); assertEquals("g", chicken.unit); assertEquals(1360.78f, chicken.quantity.toFloat(), 0.5f)
+        assertEquals("12.99", chicken.price); assertEquals("lb", chicken.unit); assertEquals("3", chicken.quantity)
         // Bananas by the count: 3 for 0.75 is 0.25 for 1 medium
         val banana = s.lines[2].draft
         assertEquals("0.75", banana.price); assertEquals("3", banana.quantity); assertEquals("medium", banana.unit)
@@ -287,5 +289,83 @@ class PlanningAndPricesTest {
         val list = ShoppingListViewModel(plans, prices, foods)
         val chickenItem = waitFor({ list.state.value }) { st -> st.list.items.any { it.name == "Chicken Breast" && it.cost != null } }.list.items.first { it.name == "Chicken Breast" }
         assertEquals(12.99, chickenItem.cost!!, 0.001)
+    }
+
+    @Test fun valueAndCostsComeFromPrices() = runBlocking {
+        val yogurt = db.foodDao().getFoodById(yogurtId)!!
+        prices.save(yogurtId, "Greek Yogurt", "Fage", SparkyPrice("Costco", 4.99f, 32f, "oz"))
+        val price = prices.get(yogurtId, "Greek Yogurt", "Fage")
+        // 32 oz is 907 g: 5.34 servings of 170 g, so 93 cents a serving and 16 g of protein a dollar
+        val v = com.bytelog.app.data.repository.FoodValue.of(yogurt, price)!!
+        assertEquals(0.935, v.costPerServing, 0.005)
+        assertEquals(16.0f, v.perDollar(com.bytelog.app.data.repository.ValueMetric.PROTEIN), 0.2f)
+        assertEquals(160f, v.perDollar(com.bytelog.app.data.repository.ValueMetric.CALORIES), 2f)
+        assertEquals(1.87, v.costOf(2f, "serving")!!, 0.01)
+        assertNull("a unit that isn't the food's", v.costOf(1f, "tub"))
+        assertNull("no amount, no value", com.bytelog.app.data.repository.FoodValue.of(yogurt, price!!.copy(quantity = null)))
+
+        plans.plan(listOf(
+            FoodEntry("y1", yogurtId, "Greek Yogurt", "Fage", "breakfast", "Breakfast", 2f, "serving", 300f, 30f, 12f, 10f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT),
+            FoodEntry("w1", null, "Wrap", null, "lunch", "Lunch", 1f, "serving", 400f, 20f, 40f, 15f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT)
+        ))
+        // The shopping list ranks by value
+        val list = ShoppingListViewModel(plans, prices, foods)
+        val item = waitFor({ list.state.value }) { st -> st.list.items.any { it.value != null } }.list.items.first { it.name == "Greek Yogurt" }
+        assertEquals(16.0f, item.value!!.perDollar(com.bytelog.app.data.repository.ValueMetric.PROTEIN), 0.2f)
+        assertNull(list.state.value.list.items.first { it.name == "Wrap" }.value)
+
+        // The planner costs each food and day
+        val planner = com.bytelog.app.ui.viewmodel.MealPlannerViewModel(plans, foods, null, prices = prices)
+        val st = waitFor({ planner.state.value }) { it.costs.isNotEmpty() }
+        assertEquals(1.87, st.costs.getValue("y1"), 0.01)
+        val tomorrow = st.days.first { it.date == today.plusDays(1) }
+        assertEquals(1, tomorrow.priced); assertEquals(1.87, tomorrow.cost, 0.01)
+
+        // Best value ranks the priced foods
+        val best = com.bytelog.app.ui.viewmodel.BestValueViewModel(prices, foods)
+        val ranked = waitFor({ best.state.value }) { it.ranked.isNotEmpty() }.ranked
+        assertEquals("Greek Yogurt", ranked.single().food.name)
+    }
+
+    @Test fun theReceiptAsksAboutWhatItIsntSureOfAndScansBarcodesAndLabels() = runBlocking {
+        db.foodDao().insertFood(FoodItem("f-oats", "Rolled Oats", barcode = "0123456789012", servingSize = 40f, servingUnit = "g", calories = 150f, protein = 5f))
+        plans.plan(listOf(FoodEntry("y", yogurtId, "Greek Yogurt", "Fage", "breakfast", "Breakfast", 1f, "serving", 150f, 15f, 6f, 5f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT)))
+        val vm = com.bytelog.app.ui.viewmodel.ReceiptViewModel({ Result.success(emptyList()) }, prices, plans, foods)
+        vm.review(listOf("ALDI", "KS GRK YOG 32OZ  4.99", "YOG DRINK  2.49", "OATS QK  3.29", "GRANOLA BAR  4.79").map { com.bytelog.app.data.receipts.OcrLine(it) })
+        var s = vm.state.value
+        val yog = s.lines[0]; val drink = s.lines[1]; val oats = s.lines[2]; val granola = s.lines[3]
+        assertFalse("a clear match isn't asked about", yog.unsure)
+        // "YOG DRINK" half-matches the yogurt: asked about, and needs you until confirmed or changed
+        assertEquals("Greek Yogurt", drink.match?.name); assertTrue(drink.unsure)
+        assertEquals("Is this Greek Yogurt?", drink.problem)
+        assertEquals(drink.id, vm.nextToCheck())
+        vm.include(drink.id, false)
+
+        // Oats aren't a known food yet: scanning the barcode finds them
+        assertNull(oats.match)
+        vm.scanBarcode(oats.id, "0123456789012")
+        s = waitFor({ vm.state.value }) { st -> st.lines[2].match != null }
+        assertEquals("Rolled Oats", s.lines[2].match!!.name); assertFalse(s.lines[2].unsure)
+        // An unknown barcode says so
+        vm.scanBarcode(granola.id, "999")
+        s = waitFor({ vm.state.value }) { st -> st.lines[3].note != null }
+        assertTrue(s.lines[3].note!!.contains("No product found"))
+
+        // The granola's label becomes a new food (read by Sparky's AI, saved to your foods)
+        vm.scanLabel(granola.id, android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888))
+        s = waitFor({ vm.state.value }) { st -> st.lines[3].match != null && st.lines[3].busy == null }
+        assertEquals("Protein Granola", s.lines[3].match!!.name)
+        assertNotNull(db.foodDao().getFoodById("77777777-2222-3333-4444-555555555555"))
+        assertEquals("4.79", s.lines[3].draft.price)
+        // Neither the oats nor the granola said how much their price buys: "Next to check" goes to each in turn
+        assertEquals(oats.id, vm.nextToCheck())
+        assertEquals(granola.id, vm.nextToCheck(oats.id))
+        vm.editDraft(granola.id, s.lines[3].draft.copy(quantity = "340", unit = "g"))
+        assertNull(vm.state.value.lines[3].problem)
+        assertEquals(oats.id, vm.nextToCheck(oats.id))
+        assertEquals("How much does $3.29 buy?", vm.state.value.lines[2].problem)
+        vm.editDraft(oats.id, vm.state.value.lines[2].draft.copy(quantity = "42", unit = "oz"))
+        assertNull(vm.nextToCheck())
+        assertEquals(3, vm.state.value.ready.size)
     }
 }

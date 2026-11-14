@@ -141,7 +141,7 @@ class FoodEditorViewModel(
     val priceUnits: List<String> get() {
         val f = _state.value.food ?: return emptyList()
         val item = f.sparky?.toFoodItem(f.local) ?: f.local ?: return emptyList()
-        return com.bytelog.app.ui.logging.Portions.unitOptions(item)
+        return com.bytelog.app.data.repository.ShoppingList.priceUnits(item)
     }
 
     private fun priceTarget(): Triple<String?, String, String?>? {

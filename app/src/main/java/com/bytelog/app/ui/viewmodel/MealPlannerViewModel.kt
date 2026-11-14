@@ -32,7 +32,10 @@ data class PlannerDay(
     val calories: Float,
     val protein: Float,
     val carbs: Float,
-    val fat: Float
+    val fat: Float,
+    /** What the day's food costs, from the foods with prices; [priced] of its foods have one. */
+    val cost: Double = 0.0,
+    val priced: Int = 0
 ) {
     val entries: List<PlannedEntry> get() = meals.flatMap { it.second }
     val isEmpty: Boolean get() = meals.isEmpty()
@@ -47,7 +50,9 @@ class MealPlannerViewModel(
     private val plans: PlanRepository,
     private val foods: FoodRepository,
     private val settings: SettingsRepository?,
-    private val today: () -> LocalDate = { LocalDate.now() }
+    private val today: () -> LocalDate = { LocalDate.now() },
+    /** Saved prices, for what each food and day costs. */
+    private val prices: com.bytelog.app.data.repository.PriceRepository? = null
 ) : ViewModel() {
 
     data class State(
@@ -58,6 +63,8 @@ class MealPlannerViewModel(
         val goal: Float = 0f,
         val mealTypes: List<MealType> = MealType.DEFAULT_MEAL_TYPES,
         val foods: Map<String, FoodItem> = emptyMap(),
+        /** Cost per entry id, where its food has a price. */
+        val costs: Map<String, Double> = emptyMap(),
         val loading: Boolean = true
     ) {
         val to: LocalDate get() = from.plusDays((config.days - 1).toLong())
@@ -79,10 +86,20 @@ class MealPlannerViewModel(
         runCatching { foods.foodsByIds(list.mapNotNull { it.foodId }.distinct()) }.getOrDefault(emptyList()).associateBy { it.id }
     }
 
+    private val pricedFoods = combine(foodMap, prices?.prices ?: flowOf(emptyList())) { fm, pr -> fm to pr.associateBy { it.key } }
+
     private val mealTypes = foods.getAllMealTypes()
     private val goal: Flow<Float> = settings?.targetCalories ?: flowOf(0f)
 
-    val state: StateFlow<State> = combine(range, planned, foodMap, mealTypes, goal) { (c, page, start), p, fm, mt, g ->
+    val state: StateFlow<State> = combine(range, planned, pricedFoods, mealTypes, goal) { (c, page, start), p, (fm, byKey), mt, g ->
+        // What each planned food costs: its food's value at its price, for the amount planned
+        val costs = HashMap<String, Double>()
+        for (e in p) {
+            val key = com.bytelog.app.data.repository.ShoppingList.keyOf(e.foodId, e.foodName, e.brandName)
+            val price = byKey[key] ?: byKey[com.bytelog.app.data.repository.ShoppingList.keyOf(null, e.foodName, e.brandName)] ?: continue
+            val food = e.foodId?.let { fm[it] } ?: com.bytelog.app.data.repository.FoodValue.foodOf(e)
+            com.bytelog.app.data.repository.FoodValue.of(food, price)?.costOf(e.quantity, e.unit)?.let { costs[e.id] = it }
+        }
         val types = mt.ifEmpty { MealType.DEFAULT_MEAL_TYPES }
         val order = types.mapIndexed { i, t -> t.name.lowercase() to i }.toMap()
         val byDate = p.groupBy { it.entryDate }
@@ -93,10 +110,11 @@ class MealPlannerViewModel(
                 d,
                 items.groupBy { it.mealName }.toList().sortedBy { order[it.first.lowercase()] ?: 99 },
                 items.sumOf { it.calories.toDouble() }.toFloat(), items.sumOf { it.protein.toDouble() }.toFloat(),
-                items.sumOf { it.carbs.toDouble() }.toFloat(), items.sumOf { it.fat.toDouble() }.toFloat()
+                items.sumOf { it.carbs.toDouble() }.toFloat(), items.sumOf { it.fat.toDouble() }.toFloat(),
+                cost = items.sumOf { costs[it.id] ?: 0.0 }, priced = items.count { it.id in costs }
             )
         }
-        State(c, page, start, days, g, types, fm, loading = false)
+        State(c, page, start, days, g, types, fm, costs, loading = false)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, State())
 
     // ----- Showing -----

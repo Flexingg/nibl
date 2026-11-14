@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -55,7 +56,7 @@ import kotlin.math.roundToInt
 
 /** The user's own foods on Sparky. Tap one to edit it. */
 @Composable
-fun MyFoodsScreen(viewModel: MyFoodsViewModel, onBack: () -> Unit, onOpenFood: (String) -> Unit) {
+fun MyFoodsScreen(viewModel: MyFoodsViewModel, onBack: () -> Unit, onOpenFood: (String) -> Unit, onBestValue: () -> Unit = {}) {
     val s by viewModel.state.collectAsState()
     val cs = MaterialTheme.colorScheme
     val list = rememberLazyListState()
@@ -64,7 +65,12 @@ fun MyFoodsScreen(viewModel: MyFoodsViewModel, onBack: () -> Unit, onOpenFood: (
     Scaffold(
         modifier = Modifier.fluidBackdrop(),
         containerColor = Color.Transparent,
-        topBar = { ScreenHeader(title = "My foods", subtitle = "Your Sparky library", onBack = onBack, fraction = rememberScrollFraction(list)) }
+        topBar = {
+            ScreenHeader(
+                title = "My foods", subtitle = "Your Sparky library", onBack = onBack, fraction = rememberScrollFraction(list),
+                actions = { androidx.compose.material3.IconButton(onClick = onBestValue) { Icon(Icons.Default.Savings, contentDescription = "Best value foods", tint = cs.onSurface) } }
+            )
+        }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(
