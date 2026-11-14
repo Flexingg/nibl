@@ -244,14 +244,15 @@ fun ByteLogNavHost(
                 onShareRequestHandled = { shareRequest = null },
                 onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } },
                 onOpenPlanner = { navController.navigate("planner") { launchSingleTop = true } },
-                onScanReceipt = { navController.navigate("receipt") { launchSingleTop = true } }
+                onScanReceipt = { navController.navigate("receipt") { launchSingleTop = true } },
+                onBestValue = { navController.navigate("value") { launchSingleTop = true } }
             )
         }
 
         // 1d. The meal planner: the days ahead, everything planned editable
         page("planner") {
             val vm: com.bytelog.app.ui.viewmodel.MealPlannerViewModel = viewModel {
-                com.bytelog.app.ui.viewmodel.MealPlannerViewModel(app.planRepository, foodRepo, settingsRepo)
+                com.bytelog.app.ui.viewmodel.MealPlannerViewModel(app.planRepository, foodRepo, settingsRepo, prices = app.priceRepository)
             }
             com.bytelog.app.ui.screens.MealPlannerScreen(
                 viewModel = vm,
@@ -268,6 +269,19 @@ fun ByteLogNavHost(
             }
             com.bytelog.app.ui.screens.ShoppingListScreen(
                 viewModel = vm, onBack = { navController.popBackStack() },
+                onScanReceipt = { navController.navigate("receipt") { launchSingleTop = true } },
+                onBestValue = { navController.navigate("value") { launchSingleTop = true } }
+            )
+        }
+
+        // 1f. Bang for your buck: priced foods ranked by a nutrient per dollar
+        page("value") {
+            val vm: com.bytelog.app.ui.viewmodel.BestValueViewModel = viewModel {
+                com.bytelog.app.ui.viewmodel.BestValueViewModel(app.priceRepository, foodRepo)
+            }
+            com.bytelog.app.ui.screens.BestValueScreen(
+                viewModel = vm, onBack = { navController.popBackStack() },
+                onOpenFood = { id -> navController.navigate("food/${android.net.Uri.encode(id)}") { launchSingleTop = true } },
                 onScanReceipt = { navController.navigate("receipt") { launchSingleTop = true } }
             )
         }
@@ -421,7 +435,8 @@ fun ByteLogNavHost(
             MyFoodsScreen(
                 viewModel = vm,
                 onBack = { navController.popBackStack() },
-                onOpenFood = { id -> navController.navigate("food/${android.net.Uri.encode(id)}") { launchSingleTop = true } }
+                onOpenFood = { id -> navController.navigate("food/${android.net.Uri.encode(id)}") { launchSingleTop = true } },
+                onBestValue = { navController.navigate("value") { launchSingleTop = true } }
             )
         }
 

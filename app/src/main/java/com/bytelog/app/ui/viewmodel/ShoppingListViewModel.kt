@@ -40,6 +40,11 @@ class ShoppingListViewModel(
         val left: Int get() = list.items.count { it.key !in checked }
     }
 
+    /** How the list is ordered: by store, or best value first by a nutrient per dollar. */
+    private val _sort = MutableStateFlow<com.bytelog.app.data.repository.ValueMetric?>(null)
+    val sort: StateFlow<com.bytelog.app.data.repository.ValueMetric?> = _sort.asStateFlow()
+    fun setSort(m: com.bytelog.app.data.repository.ValueMetric?) { _sort.value = m }
+
     private val _days = MutableStateFlow(7)
     fun setDays(days: Int) { _days.value = days }
 

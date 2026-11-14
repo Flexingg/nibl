@@ -44,13 +44,25 @@ class ReceiptViewModel(
         val match: MatchCandidate?,
         val alternatives: List<MatchCandidate>,
         val draft: PriceDraft,
-        val include: Boolean
+        val include: Boolean,
+        /** How sure the automatic match is (1 when you picked or scanned it). */
+        val score: Float = 1f,
+        /** You said the automatic match is right. */
+        val confirmed: Boolean = false,
+        /** What's happening for this line ("Looking up the barcode…"). */
+        val busy: String? = null,
+        /** Something to tell you about this line (a barcode that wasn't found). */
+        val note: String? = null
     ) {
         val units: List<String> get() = match?.let { unitsOf(it) }.orEmpty()
+        /** An automatic match that isn't a clear one: asked about before saving. */
+        val unsure: Boolean get() = match != null && score < SURE && !confirmed
         val problem: String? get() = when {
             !include -> null
-            match == null -> "Pick the food this is"
-            else -> draft.problem(units) ?: if (draft.quantity.isBlank()) "Say how much the price buys" else null
+            match == null -> "Which food is this?"
+            unsure -> "Is this ${match.name}?"
+            draft.quantity.isBlank() -> "How much does ${com.bytelog.app.data.repository.ShoppingList.money((draft.toPrice().price ?: item.unitPrice).toDouble())} buy?"
+            else -> draft.problem(units)
         }
     }
 
@@ -124,7 +136,7 @@ class ReceiptViewModel(
     private fun linesFor(receipt: Receipt, candidates: List<MatchCandidate>): List<Line> = receipt.items.mapIndexed { i, item ->
         val matches = ReceiptMatcher.matches(item.name, candidates)
         val best = matches.firstOrNull()?.candidate
-        Line(i, item, best, matches.map { it.candidate }, draftFor(item, best, receipt.store), include = best != null)
+        Line(i, item, best, matches.map { it.candidate }, draftFor(item, best, receipt.store), include = best != null, score = matches.firstOrNull()?.score ?: 0f)
     }
 
     private fun draftFor(item: ReceiptItem, match: MatchCandidate?, store: String?): PriceDraft {
@@ -139,8 +151,61 @@ class ReceiptViewModel(
     fun include(id: Int, on: Boolean) = updateLine(id) { it.copy(include = on) }
 
     fun choose(id: Int, candidate: MatchCandidate?) = updateLine(id) { l ->
-        l.copy(match = candidate, include = candidate != null, draft = draftFor(l.item, candidate, _state.value.store).copy(store = _state.value.store))
+        l.copy(match = candidate, include = candidate != null, draft = draftFor(l.item, candidate, _state.value.store).copy(store = _state.value.store), score = 1f, confirmed = true, note = null, busy = null)
     }
+
+    /** The automatic match is right. */
+    fun confirm(id: Int) = updateLine(id) { it.copy(confirmed = true) }
+
+    /** The id of the next line that needs you, after [after] (wrapping round), or null when none do. */
+    fun nextToCheck(after: Int? = null): Int? {
+        val need = _state.value.lines.filter { it.include && it.problem != null }.map { it.id }
+        if (need.isEmpty()) return null
+        return need.firstOrNull { after == null || it > after } ?: need.first()
+    }
+
+    /** The line is this product: looked up by its barcode (your foods first, then Sparky and Open Food Facts). */
+    fun scanBarcode(id: Int, code: String) {
+        updateLine(id) { it.copy(busy = "Looking up the barcode…", note = null) }
+        viewModelScope.launch {
+            val food = runCatching { foods.lookupBarcode(code) }.getOrNull()
+            if (food == null) { updateLine(id) { it.copy(busy = null, note = "No product found for barcode $code. Try its nutrition label.") }; return@launch }
+            runCatching { foods.rememberFood(food) }
+            choose(id, candidateFor(food))
+        }
+    }
+
+    /**
+     * The line is a new food read from its nutrition label (Sparky's AI reads it), saved to your foods, named from
+     * the label or else the receipt.
+     */
+    fun scanLabel(id: Int, photo: android.graphics.Bitmap) {
+        val line = _state.value.lines.firstOrNull { it.id == id } ?: return
+        updateLine(id) { it.copy(busy = "Reading the label…", note = null) }
+        viewModelScope.launch {
+            val b64 = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                com.bytelog.app.util.ImageUtils.convertBitmapToBase64(photo, maxDim = 1600, quality = 90)
+            }
+            val label = foods.scanNutritionLabel(b64).getOrElse { e ->
+                updateLine(id) { it.copy(busy = null, note = "Couldn't read that label: ${e.message ?: "try again"}") }; return@launch
+            }
+            val name = label.name?.takeIf { it.isNotBlank() } ?: titleCase(line.item.name)
+            val created = foods.createCustomFood(
+                name = name, brand = label.brand, servingSize = label.servingSize ?: 100f, servingUnit = label.servingUnit ?: "g",
+                calories = label.calories ?: 0f, protein = label.protein ?: 0f, carbs = label.carbs ?: 0f, fat = label.fat ?: 0f, fiber = label.fiber
+            ).getOrElse { e -> updateLine(id) { it.copy(busy = null, note = "Read the label but couldn't save the food: ${e.message}") }; return@launch }
+            choose(id, candidateFor(created))
+        }
+    }
+
+    private fun candidateFor(food: FoodItem): MatchCandidate {
+        val key = ShoppingList.keyOf(food.id, food.name, food.brand)
+        val c = _state.value.candidates.firstOrNull { it.key == key } ?: MatchCandidate(key, food.id, food.name, food.brand, onList = false, food = food)
+        _state.update { s -> if (s.candidates.any { it.key == key }) s else s.copy(candidates = s.candidates + c) }
+        return c
+    }
+
+    private fun titleCase(s: String) = s.lowercase().split(' ').filter { it.isNotBlank() }.joinToString(" ") { w -> w.replaceFirstChar { it.titlecase() } }
 
     fun editDraft(id: Int, draft: PriceDraft) = updateLine(id) { it.copy(draft = draft) }
 
@@ -179,7 +244,10 @@ class ReceiptViewModel(
     fun restart() { _state.value = State() }
 
     companion object {
+        /** Matches scoring below this are asked about. */
+        const val SURE = 0.75f
+
         fun unitsOf(c: MatchCandidate): List<String> =
-            c.food?.let { com.bytelog.app.ui.logging.Portions.unitOptions(it) } ?: listOf("serving")
+            c.food?.let { ShoppingList.priceUnits(it) } ?: listOf("serving")
     }
 }

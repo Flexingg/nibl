@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Storefront
@@ -73,9 +75,10 @@ import java.util.Locale
  * store, with what it should cost where you've saved a price. Tick things off as they go in the cart.
  */
 @Composable
-fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onScanReceipt: () -> Unit = {}) {
+fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onScanReceipt: () -> Unit = {}, onBestValue: () -> Unit = {}) {
     val s by viewModel.state.collectAsState()
     val message by viewModel.message.collectAsState()
+    val sort by viewModel.sort.collectAsState()
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
     val list = rememberLazyListState()
@@ -102,6 +105,7 @@ fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onS
             ScreenHeader(
                 title = "Shopping list", subtitle = rangeLabel(s.from, s.to), onBack = onBack, fraction = rememberScrollFraction(list),
                 actions = {
+                    IconButton(onClick = onBestValue) { Icon(Icons.Default.Savings, contentDescription = "Best value foods", tint = cs.onSurface) }
                     IconButton(onClick = onScanReceipt) { Icon(Icons.Default.ReceiptLong, contentDescription = "Prices from a receipt", tint = cs.onSurface) }
                     if (s.list.items.isNotEmpty()) IconButton(onClick = {
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, viewModel.shareText())
@@ -137,8 +141,17 @@ fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onS
             }
             if (s.list.items.isNotEmpty()) {
                 item(key = "summary") { Summary(s) { viewModel.clearChecks() } }
+                item(key = "sort") { com.bytelog.app.ui.components.ValueMetricChips(sort, viewModel::setSort, noneLabel = "By store") }
             }
-            s.list.byStore.forEach { (store, items) ->
+            val metric = sort
+            if (metric != null) {
+                // Best value first: what a dollar buys of the nutrient, against the best on the list
+                val ranked = s.list.items.sortedByDescending { it.value?.perDollar(metric) ?: -1f }
+                val best = ranked.firstOrNull()?.value?.perDollar(metric)?.takeIf { it > 0f }
+                items(ranked, key = { it.key }) { i ->
+                    ItemRow(i, i.key in s.checked, onToggle = { viewModel.toggle(i) }, onPrice = { editing = i }, metric = metric, best = best)
+                }
+            } else s.list.byStore.forEach { (store, items) ->
                 item(key = "store:${store ?: ""}") {
                     Row(Modifier.padding(start = 4.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Storefront, contentDescription = null, tint = cs.onSurfaceVariant, modifier = Modifier.size(16.dp))
@@ -203,7 +216,10 @@ private fun Summary(s: ShoppingListViewModel.State, onClearTicks: () -> Unit) {
 }
 
 @Composable
-private fun ItemRow(i: ShoppingItem, checked: Boolean, onToggle: () -> Unit, onPrice: () -> Unit) {
+private fun ItemRow(
+    i: ShoppingItem, checked: Boolean, onToggle: () -> Unit, onPrice: () -> Unit,
+    metric: com.bytelog.app.data.repository.ValueMetric = com.bytelog.app.data.repository.ValueMetric.PROTEIN, best: Float? = null
+) {
     val cs = MaterialTheme.colorScheme
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(cs.surfaceContainer)
@@ -241,6 +257,10 @@ private fun ItemRow(i: ShoppingItem, checked: Boolean, onToggle: () -> Unit, onP
                 p?.price != null ->
                     Text("${ShoppingList.money(p.price.toDouble())}${p.quantity?.let { q -> " for ${ShoppingAmount.trim(q.toDouble())} ${p.unit.orEmpty()}" } ?: ""} · amounts don't convert", color = cs.onSurfaceVariant, fontSize = 12.sp)
                 else -> Text("Add price", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+            i.value?.let { v ->
+                com.bytelog.app.ui.components.ValueLine(v, metric, Modifier.padding(top = 2.dp))
+                if (best != null) com.bytelog.app.ui.components.ValueBar(v.perDollar(metric) / best, Modifier.padding(top = 4.dp, end = 8.dp))
             }
         }
         i.cost?.let { Text(ShoppingList.money(it), color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }

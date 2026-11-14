@@ -50,7 +50,9 @@ data class ShoppingItem(
     /** Packages to buy, when the price says what one holds and the units convert. */
     val packages: Int?,
     /** What those packages cost. Null when it can't be worked out. */
-    val cost: Double?
+    val cost: Double?,
+    /** What a dollar buys of it, when its price and nutrition are known. */
+    val value: FoodValue? = null
 ) {
     val store: String? get() = price?.store?.takeIf { it.isNotBlank() }
     val amountLabel: String get() = amounts.joinToString(" + ") { it.label }
@@ -130,17 +132,31 @@ object ShoppingList {
         amounts += a
     }
 
-    /** Whether [unit] is one of [food]'s units (so its serving maths applies). */
+    /**
+     * The units a price can be given in for [food]: its own (serving, household measures, what they convert to) plus
+     * the shop measures of the same kind (lb and kg for food weighed in grams, quarts and gallons for millilitres),
+     * which all convert exactly.
+     */
+    fun priceUnits(food: FoodItem): List<String> {
+        val out = Portions.unitOptions(food).toMutableList()
+        fun add(u: String) { if (out.none { (UnitConverter.canonical(it) ?: normalUnit(it)) == u }) out += u }
+        val dims = out.mapNotNull { UnitConverter.canonical(it)?.let { c -> UnitConverter.dimension(c) } }.toSet()
+        if (UnitConverter.Dimension.MASS in dims) { add("lb"); add("kg") }
+        if (UnitConverter.Dimension.VOLUME in dims) { add("fl oz"); add("l"); add("quart"); add("gallon") }
+        return out
+    }
+
+    /** Whether [unit] is one of [food]'s price units (so its serving maths applies). */
     fun isFoodUnit(food: FoodItem, unit: String): Boolean {
         val c = UnitConverter.canonical(unit) ?: normalUnit(unit)
-        return Portions.unitOptions(food).any { (UnitConverter.canonical(it) ?: normalUnit(it)) == c }
+        return priceUnits(food).any { (UnitConverter.canonical(it) ?: normalUnit(it)) == c }
     }
 
     /** The units a price can use for a food: its own, or for a food the phone doesn't have, those of what's planned. */
     fun unitsFor(food: FoodItem?, name: String, plannedUnits: List<String>): List<String> {
-        if (food != null) return Portions.unitOptions(food)
+        if (food != null) return priceUnits(food)
         val base = plannedUnits.firstOrNull { UnitConverter.canonical(it) != null } ?: plannedUnits.firstOrNull() ?: "serving"
-        val out = Portions.unitOptions(FoodItem(id = "", name = name, servingSize = 1f, servingUnit = base)).toMutableList()
+        val out = priceUnits(FoodItem(id = "", name = name, servingSize = 1f, servingUnit = base)).toMutableList()
         plannedUnits.forEach { u -> if (out.none { normalUnit(it) == normalUnit(u) }) out += u }
         return out
     }
@@ -179,7 +195,8 @@ object ShoppingList {
             val (packages, cost) = food?.let { f -> costByServings(f, raw, price) } ?: costOf(amounts, price, first.foodName)
             ShoppingItem(
                 key, first.foodName, first.brandName, first.foodId, amounts, unitsFor(food, first.foodName, entries.map { it.unit }),
-                entries.map { it.entryDate }.distinct().sorted(), price, packages, cost
+                entries.map { it.entryDate }.distinct().sorted(), price, packages, cost,
+                value = FoodValue.of(food ?: FoodValue.foodOf(first), price)
             )
         }
         return ShoppingListResult(items.sortedBy { it.name.lowercase() })

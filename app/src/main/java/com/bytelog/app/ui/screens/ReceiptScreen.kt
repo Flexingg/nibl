@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,6 +72,7 @@ import com.bytelog.app.ui.theme.fluidBackdrop
 import com.bytelog.app.ui.viewmodel.ReceiptViewModel
 import com.bytelog.app.ui.viewmodel.ReceiptViewModel.Phase
 import java.io.File
+import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -120,6 +122,25 @@ fun ReceiptScreen(viewModel: ReceiptViewModel, onBack: () -> Unit, onShoppingLis
     val list = rememberLazyListState()
     var captureError by remember { mutableStateOf<String?>(null) }
     val capture = rememberReceiptCapture(onPhoto = { captureError = null; viewModel.read(it) }, onError = { captureError = it })
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Which line the barcode scanner or label photo is for, and the line last brought into view
+    var barcodeFor by remember { mutableStateOf<Int?>(null) }
+    var labelFor by remember { mutableStateOf<Int?>(null) }
+    var focused by remember { mutableStateOf<Int?>(null) }
+    val labelCapture = com.bytelog.app.ui.logging.rememberMealPhotoCapture(
+        onPhoto = { bmp -> labelFor?.let { viewModel.scanLabel(it, bmp) }; labelFor = null },
+        onError = { captureError = it }
+    )
+    fun goToNext() {
+        val id = viewModel.nextToCheck(focused) ?: return
+        focused = id
+        val index = s.lines.indexOfFirst { it.id == id }
+        if (index >= 0) scope.launch { list.animateScrollToItem(index + 1) }
+    }
+    val actions = LineActions(
+        onScanBarcode = { barcodeFor = it },
+        onScanLabel = { labelFor = it; labelCapture.takePhoto() }
+    )
 
     Scaffold(
         modifier = Modifier.fluidBackdrop(),
@@ -141,7 +162,16 @@ fun ReceiptScreen(viewModel: ReceiptViewModel, onBack: () -> Unit, onShoppingLis
                     Modifier.fillMaxWidth().background(cs.surface.copy(alpha = 0.96f)).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (s.needsAttention > 0) Text("${s.needsAttention} line${if (s.needsAttention == 1) " needs" else "s need"} a look before it can be saved", color = cs.onSurfaceVariant, fontSize = 12.sp)
+                    if (s.needsAttention > 0) Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${s.needsAttention} line${if (s.needsAttention == 1) " needs" else "s need"} you before ${if (s.needsAttention == 1) "it" else "they"} can be saved",
+                            color = cs.error, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "Next to check", color = cs.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).clickable(role = Role.Button) { goToNext() }.padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                    }
                     Box(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(if (n > 0) cs.primary else cs.surfaceContainerHigh)
                             .clickable(enabled = n > 0, role = Role.Button) { viewModel.save() }.heightIn(min = 52.dp).padding(14.dp),
@@ -173,11 +203,21 @@ fun ReceiptScreen(viewModel: ReceiptViewModel, onBack: () -> Unit, onShoppingLis
                         )
                     }
                 }
-                items(s.lines, key = { it.id }) { line -> LineCard(line, viewModel) }
+                items(s.lines, key = { it.id }) { line -> LineCard(line, viewModel, actions, highlighted = focused == line.id) }
             }
         }
     }
+    barcodeFor?.let { id ->
+        com.bytelog.app.ui.components.BarcodeScanOverlay(
+            title = "Scan the barcode of ${s.lines.firstOrNull { it.id == id }?.item?.name ?: "the product"}",
+            onCode = { code -> barcodeFor = null; viewModel.scanBarcode(id, code) },
+            onClose = { barcodeFor = null }
+        )
+    }
 }
+
+/** What a line can ask for: the product's barcode, or a photo of its nutrition label. */
+private class LineActions(val onScanBarcode: (Int) -> Unit, val onScanLabel: (Int) -> Unit)
 
 @Composable
 private fun PickPhoto(modifier: Modifier, error: String?, capture: ReceiptCapture) {
@@ -246,11 +286,14 @@ private fun Done(modifier: Modifier, d: Phase.Done, onShoppingList: () -> Unit, 
 }
 
 @Composable
-private fun LineCard(line: ReceiptViewModel.Line, viewModel: ReceiptViewModel) {
+private fun LineCard(line: ReceiptViewModel.Line, viewModel: ReceiptViewModel, actions: LineActions, highlighted: Boolean) {
     val cs = MaterialTheme.colorScheme
     var picking by remember { mutableStateOf(false) }
+    val needsYou = line.include && line.problem != null
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainer).animateContentSize().padding(14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainer)
+            .then(if (needsYou || highlighted) Modifier.border(2.dp, if (needsYou) cs.error.copy(alpha = 0.7f) else cs.primary, RoundedCornerShape(20.dp)) else Modifier)
+            .animateContentSize().padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -270,35 +313,91 @@ private fun LineCard(line: ReceiptViewModel.Line, viewModel: ReceiptViewModel) {
                 modifier = Modifier.semantics { contentDescription = "Save a price from ${line.item.name}" }
             )
         }
-        if (line.include || line.match == null) {
-            // What it was matched to; tap to change
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(cs.surfaceContainerHigh)
-                    .clickable(role = Role.Button, onClickLabel = "Change the food") { picking = !picking }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        line.match?.let { m -> m.name + (m.brand?.let { " · $it" } ?: "") } ?: "Which food is this?",
-                        color = if (line.match == null) cs.primary else cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        when { line.match == null -> "Tap to pick one, or switch the line off"; line.match.onList -> "On your shopping list"; else -> "From your foods" },
-                        color = cs.onSurfaceVariant, fontSize = 12.sp
-                    )
-                }
-                Text(if (picking) "Done" else "Change", color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        line.busy?.let { b ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                LoadingSpinner(Modifier.size(16.dp), color = cs.primary, strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(b, color = cs.onSurfaceVariant, fontSize = 13.sp)
             }
-            if (picking) FoodPicker(line, viewModel) { picking = false }
         }
-        if (line.include && line.match != null && !picking) {
-            PriceForm(
-                line.draft, { viewModel.editDraft(line.id, it) }, line.units, showStore = false
-            )
+        line.note?.let { Text(it, color = cs.error, fontSize = 12.sp) }
+        if (line.busy == null && (line.include || line.match == null)) {
+            when {
+                // Nothing matched: ask, with every way to say what it is
+                line.match == null && !picking -> {
+                    Prompt("Which food is this?")
+                    ActionRow {
+                        Action("Pick a food", primary = true) { picking = true }
+                        Action("Scan barcode") { actions.onScanBarcode(line.id) }
+                        Action("Scan label") { actions.onScanLabel(line.id) }
+                        if (line.include) Action("Not food") { viewModel.include(line.id, false) }
+                    }
+                }
+                // A match that isn't a clear one: ask before using it
+                line.unsure && !picking -> {
+                    MatchRow(line) { picking = !picking }
+                    Prompt("Is this ${line.match!!.name}?")
+                    ActionRow {
+                        Action("Yes", primary = true) { viewModel.confirm(line.id) }
+                        Action("Change") { picking = true }
+                        Action("Scan barcode") { actions.onScanBarcode(line.id) }
+                    }
+                }
+                else -> MatchRow(line, picking) { picking = !picking }
+            }
+            if (picking) {
+                FoodPicker(line, viewModel) { picking = false }
+                ActionRow {
+                    Action("Scan barcode") { picking = false; actions.onScanBarcode(line.id) }
+                    Action("Scan label") { picking = false; actions.onScanLabel(line.id) }
+                }
+            }
         }
-        line.problem?.takeIf { line.include && !picking && line.match == null }?.let { Text(it, color = cs.error, fontSize = 12.sp) }
+        if (line.include && line.match != null && !line.unsure && !picking && line.busy == null) {
+            line.problem?.let { Prompt(it) }
+            PriceForm(line.draft, { viewModel.editDraft(line.id, it) }, line.units, showStore = false)
+        }
     }
+}
+
+@Composable
+private fun Prompt(text: String) {
+    val cs = MaterialTheme.colorScheme
+    Text(text, color = cs.error, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+}
+
+@Composable
+private fun MatchRow(line: ReceiptViewModel.Line, picking: Boolean = false, onToggle: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val m = line.match ?: return
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(cs.surfaceContainerHigh)
+            .clickable(role = Role.Button, onClickLabel = "Change the food", onClick = onToggle)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(m.name + (m.brand?.let { " · $it" } ?: ""), color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (m.onList) "On your shopping list" else "From your foods", color = cs.onSurfaceVariant, fontSize = 12.sp)
+        }
+        Text(if (picking) "Done" else "Change", color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ActionRow(content: @Composable () -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+}
+
+@Composable
+private fun Action(label: String, primary: Boolean = false, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Text(
+        label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (primary) cs.onPrimary else cs.primary,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(if (primary) cs.primary else cs.primary.copy(alpha = 0.1f))
+            .clickable(role = Role.Button, onClick = onClick).heightIn(min = 40.dp).padding(horizontal = 14.dp, vertical = 10.dp)
+    )
 }
 
 @Composable

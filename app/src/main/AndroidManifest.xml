@@ -37,6 +37,12 @@
         android:theme="@style/Theme.ByteLog.Starting"
         android:usesCleartextTraffic="true">
 
+        <!-- Receipt text recognition: Play Services fetches the model when the app is installed -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr" />
+
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

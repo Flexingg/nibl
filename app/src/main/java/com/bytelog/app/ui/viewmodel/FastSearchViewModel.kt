@@ -196,7 +196,8 @@ class FastSearchViewModel(
         val missing = foods.map { it.id }.filter { it !in _lastPortions.value }
         if (missing.isEmpty()) return
         viewModelScope.launch {
-            val found = foodRepository.lastPortions(missing)
+            // Only a convenience: a failed lookup (the database going away as the screen closes) is no error
+            val found = try { foodRepository.lastPortions(missing) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyMap() }
             if (found.isNotEmpty()) _lastPortions.value = _lastPortions.value + found.mapValues { (_, v) -> Portion(v.first, v.second) }
         }
     }
