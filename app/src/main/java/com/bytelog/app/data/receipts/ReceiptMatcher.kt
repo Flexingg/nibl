@@ -88,6 +88,15 @@ object ReceiptMatcher {
         return (s + if (c.onList) 0.08f else 0f).coerceAtMost(1f)
     }
 
+    /**
+     * A receipt name as words to search for: shortenings spelled out and store-brand marks dropped
+     * ("KS GRK YOG" is "greek yogurt").
+     */
+    fun searchText(receiptName: String): String =
+        words(receiptName).filter { it !in setOf("ks", "gv", "mm", "hb", "kirkland", "signature") }
+            .flatMap { t -> abbreviations[t] ?: listOf(t) }
+            .distinct().joinToString(" ")
+
     /** The likeliest foods for a receipt name, best first; only those that are a reasonable match. */
     fun matches(receiptName: String, candidates: List<MatchCandidate>, limit: Int = 5, threshold: Float = 0.5f): List<ReceiptMatch> =
         candidates.asSequence()

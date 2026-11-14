@@ -221,4 +221,17 @@ class ShoppingRenderTest {
         waitFor { compose.onAllNodes(hasText("Chicken Breast", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
         shot("38-best-value")
     }
+
+    @Test fun receiptSearchAndCreate() {
+        val vm = com.bytelog.app.ui.viewmodel.ReceiptViewModel({ Result.success(emptyList()) }, prices, plans, foods)
+        runBlocking { vm.review(listOf("ALDI", "HOUSE BLEND SALSA  3.49", "KS GRK YOG 48OZ  6.49").map { com.bytelog.app.data.receipts.OcrLine(it) }) }
+        compose.setContent { ByteLogTheme(darkTheme = false, dynamicColor = false) { com.bytelog.app.ui.screens.ReceiptScreen(vm, onBack = {}, onShoppingList = {}) } }
+        waitFor { compose.onAllNodes(hasText("Find a food"), true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(hasText("Find a food"), true).onFirst().performClick()
+        waitFor { compose.onAllNodes(hasText("as a new food", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("39-receipt-search")
+        compose.onAllNodes(hasText("as a new food", substring = true), true).onFirst().performClick()
+        waitFor { compose.onAllNodes(hasText("New food"), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("40-receipt-create")
+    }
 }

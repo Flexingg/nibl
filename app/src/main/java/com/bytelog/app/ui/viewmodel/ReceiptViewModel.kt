@@ -209,6 +209,116 @@ class ReceiptViewModel(
 
     fun editDraft(id: Int, draft: PriceDraft) = updateLine(id) { it.copy(draft = draft) }
 
+    // ----- Finding or making the food for a line -----
+
+    /** A search for one line's food: your foods as you type, then Sparky's and Open Food Facts'. */
+    data class FoodSearchState(
+        val lineId: Int,
+        val query: String,
+        val mine: List<MatchCandidate> = emptyList(),
+        val online: List<MatchCandidate> = emptyList(),
+        val searchingOnline: Boolean = false
+    )
+
+    private val _search = MutableStateFlow<FoodSearchState?>(null)
+    val search: StateFlow<FoodSearchState?> = _search.asStateFlow()
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    /** Opens the search for a line, starting from its receipt name spelled out ("KS GRK YOG" is "greek yogurt"). */
+    fun startSearch(id: Int) {
+        val line = _state.value.lines.firstOrNull { it.id == id } ?: return
+        setQuery(id, com.bytelog.app.data.receipts.ReceiptMatcher.searchText(line.item.name))
+    }
+
+    fun closeSearch() { searchJob?.cancel(); _search.value = null }
+
+    fun setQuery(id: Int, query: String) {
+        _search.value = FoodSearchState(id, query, mine = search(id, query), searchingOnline = query.isNotBlank())
+        searchJob?.cancel()
+        if (query.isBlank()) return
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300)
+            // Everything you've logged or saved, not just the foods the receipt started with
+            runCatching { foods.searchOnDevice(query).first() }.getOrNull()?.let { (logged, saved) ->
+                val found = (logged + saved).map { candidateOf(it.food) }
+                _search.update { s -> s?.takeIf { it.lineId == id && it.query == query }?.copy(mine = (s.mine + found).distinctBy { it.key }.take(25)) ?: s }
+            }
+            runCatching {
+                foods.searchRemote(query).collect { remote ->
+                    val mineKeys = _search.value?.mine.orEmpty().map { it.key }.toSet()
+                    _search.update { s -> s?.takeIf { it.lineId == id && it.query == query }?.copy(online = remote.map(::candidateOf).filter { it.key !in mineKeys }.take(20)) ?: s }
+                }
+            }
+            _search.update { s -> s?.takeIf { it.lineId == id && it.query == query }?.copy(searchingOnline = false) ?: s }
+        }
+    }
+
+    private fun candidateOf(food: FoodItem): MatchCandidate {
+        val key = ShoppingList.keyOf(food.id, food.name, food.brand)
+        return _state.value.candidates.firstOrNull { it.key == key } ?: MatchCandidate(key, food.id, food.name, food.brand, onList = false, food = food)
+    }
+
+    /** Uses a food found by the search; one from Sparky or Open Food Facts is kept on the phone. */
+    fun pick(id: Int, c: MatchCandidate) {
+        closeSearch()
+        c.food?.let { f -> viewModelScope.launch { runCatching { foods.rememberFood(f) } } }
+        choose(id, candidateFor(c.food ?: return choose(id, c)))
+    }
+
+    /** What's typed to make a new food for a line. Numbers are text until saved. */
+    data class NewFood(
+        val name: String = "", val brand: String = "", val servingSize: String = "100", val servingUnit: String = "g",
+        val calories: String = "", val protein: String = "", val carbs: String = "", val fat: String = ""
+    ) {
+        private fun n(s: String) = s.trim().replace(',', '.').toFloatOrNull()
+        val problem: String? get() = when {
+            name.isBlank() -> "Give it a name"
+            n(servingSize) == null || n(servingSize)!! <= 0f -> "Enter the serving size"
+            servingUnit.isBlank() -> "Enter the serving unit"
+            n(calories) == null -> "Enter its calories per serving"
+            listOf(protein, carbs, fat).any { it.isNotBlank() && n(it) == null } -> "Macros are numbers in grams"
+            else -> null
+        }
+        fun size() = n(servingSize) ?: 100f
+        fun num(s: String) = n(s) ?: 0f
+    }
+
+    /** A blank new food for a line, named from the receipt. */
+    fun newFoodFor(id: Int): NewFood {
+        val line = _state.value.lines.firstOrNull { it.id == id }
+        val q = _search.value?.takeIf { it.lineId == id }?.query?.takeIf { it.isNotBlank() }
+        return NewFood(name = titleCase(q ?: line?.item?.name.orEmpty()))
+    }
+
+    /** Saves a new food to your foods (in Sparky) and uses it for the line. */
+    fun createFood(id: Int, f: NewFood) {
+        if (f.problem != null) return
+        closeSearch()
+        updateLine(id) { it.copy(busy = "Saving ${f.name.trim()}…", note = null) }
+        viewModelScope.launch {
+            foods.createCustomFood(
+                name = f.name.trim(), brand = f.brand.trim().ifBlank { null }, servingSize = f.size(), servingUnit = f.servingUnit.trim(),
+                calories = f.num(f.calories), protein = f.num(f.protein), carbs = f.num(f.carbs), fat = f.num(f.fat)
+            ).fold(
+                onSuccess = { created -> choose(id, candidateFor(created)) },
+                onFailure = { e -> updateLine(id) { it.copy(busy = null, note = "Couldn't save the food: ${e.message ?: "try again"}") } }
+            )
+        }
+    }
+
+    /** Makes the food with Sparky's AI estimating its nutrition from the name, and uses it for the line. */
+    fun createWithAi(id: Int, name: String) {
+        val line = _state.value.lines.firstOrNull { it.id == id } ?: return
+        closeSearch()
+        updateLine(id) { it.copy(busy = "Sparky's AI is working out ${name.trim()}…", note = null) }
+        viewModelScope.launch {
+            foods.generateFoodWithAi(name.trim(), description = "Bought at ${_state.value.store.ifBlank { "a grocery store" }}; the receipt line read \"${line.item.raw}\"").fold(
+                onSuccess = { created -> runCatching { foods.rememberFood(created) }; choose(id, candidateFor(created)) },
+                onFailure = { e -> updateLine(id) { it.copy(busy = null, note = "Sparky's AI couldn't make it: ${e.message ?: "try again"}") } }
+            )
+        }
+    }
+
     /** Foods to pick from for a line, by name, matches for it first. */
     fun search(id: Int, query: String): List<MatchCandidate> {
         val s = _state.value
