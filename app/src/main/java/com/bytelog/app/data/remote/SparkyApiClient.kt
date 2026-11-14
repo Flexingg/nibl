@@ -2455,7 +2455,11 @@ data class ChatMessageOutput(
     /** Pages the web research assistant used. */
     val webSources: List<com.bytelog.app.research.WebSource> = emptyList(),
     /** True for answers from the web research assistant (not Sparky's own chat). */
-    val viaWeb: Boolean = false
+    val viaWeb: Boolean = false,
+    /** A meal plan in the answer, which the user can add to their Planned list. */
+    val mealPlan: com.bytelog.app.data.repository.MealPlanDraft? = null,
+    /** Set once that plan has been added. */
+    val planAdded: Boolean = false
 )
 
 @kotlinx.serialization.Serializable

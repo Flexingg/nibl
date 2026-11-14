@@ -4,6 +4,7 @@ import com.bytelog.app.data.local.db.PlannedEntryDao
 import com.bytelog.app.data.local.model.FoodEntry
 import com.bytelog.app.data.local.model.PlannedEntry
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 
 /**
@@ -21,6 +22,22 @@ class PlanRepository(private val dao: PlannedEntryDao, private val foods: FoodRe
         val entries = planned.map { it.toEntry() }
         foods.commitMultiAdd(entries)
         dao.delete(planned.map { it.id })
+        return entries
+    }
+
+    /**
+     * Puts a meal plan on the Planned list, each food on its day, using your saved food where you have it. Returns
+     * the entries added.
+     */
+    suspend fun addPlan(plan: MealPlanDraft): List<PlannedEntry> {
+        val types = foods.getAllMealTypes().first()
+        val ids = HashMap<String, String?>()
+        val entries = MealPlan.toPlanned(plan, types).map { e ->
+            val key = FoodSearch.identity(e.foodName, e.brandName)
+            val id = if (key in ids) ids[key] else foods.savedFoodId(e.foodName, e.brandName).also { ids[key] = it }
+            e.copy(foodId = id)
+        }
+        dao.insert(entries)
         return entries
     }
 

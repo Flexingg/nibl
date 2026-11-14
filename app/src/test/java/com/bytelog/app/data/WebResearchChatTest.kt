@@ -106,7 +106,8 @@ class WebResearchChatTest {
         val base = server.url("").toString().trimEnd('/')
         val api = SparkyApiClient(baseUrl = base, apiKey = "sparky-key")
         val food = FoodRepository(db.foodDao(), db.foodEntryDao(), db.mealTypeDao(), api, settings, scope, db.prepBatchDao())
-        chat = SparkyChatRepository(api, food, WeightRepository(db.weightDao(), api, settings, scope), scope, settings, providerBaseUrl = base)
+        chat = SparkyChatRepository(api, food, WeightRepository(db.weightDao(), api, settings, scope), scope, settings, providerBaseUrl = base,
+            planRepository = com.bytelog.app.data.repository.PlanRepository(db.plannedEntryDao(), food), today = { java.time.LocalDate.of(2026, 11, 14) })
         settings.saveResearchKey(ProviderId.ANTHROPIC, "sk-ant-test")
         Unit
     }
@@ -186,6 +187,64 @@ class WebResearchChatTest {
         chat.sendMessage("hi") // no webResearch: goes to /api/chat (404 here), never to the model
         assertTrue(modelRequests.isEmpty())
         assertFalse(chat.messages.value.any { it.viaWeb })
+    }
+
+    // --- Meal plans ---
+
+    private val planJson = """{"items":[{"date":"2026-11-15","meal":"Breakfast","food":"Oats","quantity":1,"unit":"cup","calories":300,"protein":10,"carbs":54,"fat":5},
+        {"date":"2026-11-15","meal":"Dinner","food":"Salmon","quantity":150,"unit":"g","calories":310,"protein":34,"carbs":0,"fat":18},
+        {"date":"2026-11-16","meal":"Lunch","food":"Turkey wrap","calories":420,"protein":30,"carbs":40,"fat":14}]}"""
+
+    @Test fun sparkysChatWritesAMealPlanThatGoesOnThePlannedList() = runBlocking {
+        val content = "Here's a 2-day plan built around your targets.\n\n```nibl-plan\n$planJson\n```"
+        sparkyAiReplies.add("""{"content":${kotlinx.serialization.json.JsonPrimitive(content)},"executedTools":[]}""")
+
+        chat.sendMessage("Make me a meal plan for the next 2 days")
+
+        // Sparky's AI was asked for the plan in a form Nibl can save; the user's message in the chat doesn't show that
+        val sent = sparkyAiRequests.single()
+        assertTrue(sent.contains("nibl-plan")); assertTrue(sent.contains("2026-11-14"))
+        assertEquals("Make me a meal plan for the next 2 days", chat.messages.value.first { it.role == "user" }.content)
+
+        val answer = chat.messages.value.last()
+        assertEquals("Here's a 2-day plan built around your targets.", answer.content)
+        val plan = answer.mealPlan!!
+        assertEquals(listOf("Oats", "Salmon", "Turkey wrap"), plan.items.map { it.food })
+        assertFalse(answer.planAdded)
+        // Nothing is planned or logged until the user taps Add
+        assertTrue(db.plannedEntryDao().forDate("2026-11-15").first().isEmpty())
+
+        val summary = chat.addPlan(answer.id)!!
+        assertTrue(summary, summary.startsWith("3 foods over 2 days"))
+        val day1 = db.plannedEntryDao().forDate("2026-11-15").first()
+        assertEquals(listOf("Oats", "Salmon"), day1.map { it.foodName })
+        assertEquals(listOf("Breakfast", "Dinner"), day1.map { it.mealName })
+        assertEquals(150f, day1[1].quantity); assertEquals("g", day1[1].unit); assertEquals(34f, day1[1].protein)
+        assertEquals(1, db.plannedEntryDao().forDate("2026-11-16").first().size)
+        assertTrue(chat.messages.value.last().planAdded)
+
+        // Tapping again doesn't add it twice
+        chat.addPlan(answer.id)
+        assertEquals(2, db.plannedEntryDao().forDate("2026-11-15").first().size)
+    }
+
+    @Test fun ordinaryMessagesAreSentAsTyped() = runBlocking {
+        sparkyAiReplies.add("""{"content":"Logged.","executedTools":[]}""")
+        chat.sendMessage("Log 2 eggs for breakfast")
+        assertFalse(sparkyAiRequests.single().contains("nibl-plan"))
+        assertNull(chat.messages.value.last().mealPlan)
+    }
+
+    @Test fun theWebAssistantsMealPlanCanBeAddedToo() = runBlocking {
+        reply("""{"content":[{"type":"tool_use","id":"toolu_1","name":"plan_meals","input":$planJson}],"stop_reason":"tool_use"}""")
+        reply("""{"content":[{"type":"text","text":"Here's your plan. Tap Add to Planned to save it."}],"stop_reason":"end_turn"}""")
+        chat.sendMessage("Plan my meals for 2 days", webResearch = true)
+        assertTrue(modelRequests.first().contains("plan_meals"))
+        val answer = chat.messages.value.last()
+        assertEquals(3, answer.mealPlan!!.items.size)
+        assertTrue(mcpCalls.isEmpty())
+        chat.addPlan(answer.id)
+        assertEquals(1, db.plannedEntryDao().forDate("2026-11-16").first().size)
     }
 
     // --- Hand-off to Sparky's own AI ---

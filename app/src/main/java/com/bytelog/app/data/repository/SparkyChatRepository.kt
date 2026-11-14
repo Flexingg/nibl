@@ -26,7 +26,10 @@ class SparkyChatRepository(
     /** Replaces the AI providers' web address (tests). */
     private val providerBaseUrl: String? = null,
     /** Replaces the hand-off to Sparky's AI (tests). */
-    private val sparkyAiBackend: com.bytelog.app.research.SparkyAiBackend? = null
+    private val sparkyAiBackend: com.bytelog.app.research.SparkyAiBackend? = null,
+    /** Where meal plans from the assistant are added. */
+    private val planRepository: PlanRepository? = null,
+    private val today: () -> LocalDate = { LocalDate.now() }
 ) {
     private val _messages = MutableStateFlow<List<ChatMessageOutput>>(emptyList())
     val messages: StateFlow<List<ChatMessageOutput>> = _messages.asStateFlow()
@@ -76,13 +79,15 @@ class SparkyChatRepository(
                     val askPrompt = if (entry.message_type != "user") {
                         SparkyApiClient.extractAskUserPromptFromText(entry.content)
                     } else null
-                    ChatMessageOutput(
+                    val fromUser = entry.message_type == "user"
+                    withPlan(ChatMessageOutput(
                         id = entry.id,
-                        role = if (entry.message_type == "user") "user" else "assistant",
-                        content = entry.content,
+                        role = if (fromUser) "user" else "assistant",
+                        // The meal plan note Nibl adds to a request is stored with it on the server
+                        content = if (fromUser) MealPlan.stripNote(entry.content) else entry.content,
                         createdAt = System.currentTimeMillis(),
                         askUserPrompt = askPrompt
-                    )
+                    ))
                 }
                 _messages.value = mapped
             } else {
@@ -126,11 +131,13 @@ class SparkyChatRepository(
             return
         }
 
-        // Prepare context for backend chat
+        // Prepare context for backend chat. A meal plan request carries a note asking Sparky's AI to attach the plan in
+        // a form Nibl can save, since Sparky can't save day-by-day plans itself.
+        val asksForPlan = planRepository != null && MealPlan.wantsPlan(trimmed)
         val payloadMessages = currentList.filter { it.id != "welcome" }.map {
             ChatMessageInput(
                 role = it.role,
-                content = it.content,
+                content = if (asksForPlan && it.id == userMessage.id) it.content + MealPlan.formatNote(today()) else it.content,
                 imageBase64 = it.imageBase64
             )
         }
@@ -141,7 +148,7 @@ class SparkyChatRepository(
         _isLoading.value = false
 
         if (result.isSuccess) {
-            val response = result.getOrNull()
+            val response = result.getOrNull()?.let(::withPlan)
             if (response != null) {
                 val updated = _messages.value.toMutableList()
                 updated.add(response)
@@ -227,7 +234,7 @@ class SparkyChatRepository(
         result.fold(
             onSuccess = { r ->
                 val body = if (r.notice != null && r.text != r.notice) r.text + "\n\n_${r.notice}_" else r.text
-                addAssistant(body, viaWeb = true, sources = r.sources, tools = r.sparkyToolsRun + r.delegatedTools.map { "sparky_ai:$it" })
+                addAssistant(body, viaWeb = true, sources = r.sources, tools = r.sparkyToolsRun + r.delegatedTools.map { "sparky_ai:$it" }, plan = r.mealPlan)
                 if (r.wroteData) {
                     val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                     appScope.launch(Dispatchers.IO) {
@@ -259,15 +266,35 @@ class SparkyChatRepository(
         content: String,
         viaWeb: Boolean = false,
         sources: List<com.bytelog.app.research.WebSource> = emptyList(),
-        tools: List<String> = emptyList()
+        tools: List<String> = emptyList(),
+        plan: MealPlanDraft? = null
     ) {
         _messages.value = _messages.value + ChatMessageOutput(
             role = "assistant",
             content = content,
             executedTools = tools,
             webSources = sources,
-            viaWeb = viaWeb
+            viaWeb = viaWeb,
+            mealPlan = plan
         )
+    }
+
+    /** An answer with its meal plan block (if any) read into a plan and taken out of the text. */
+    private fun withPlan(m: ChatMessageOutput): ChatMessageOutput {
+        if (m.role != "assistant" || planRepository == null) return m
+        val plan = MealPlan.parse(m.content, today()) ?: return m
+        return m.copy(content = MealPlan.stripBlock(m.content), mealPlan = plan)
+    }
+
+    /** Adds the meal plan in message [messageId] to the Planned list. Returns a summary, or null if there's none. */
+    suspend fun addPlan(messageId: String): String? {
+        val repo = planRepository ?: return null
+        val msg = _messages.value.firstOrNull { it.id == messageId } ?: return null
+        val plan = msg.mealPlan ?: return null
+        if (msg.planAdded) return MealPlan.summary(plan)
+        repo.addPlan(plan)
+        _messages.value = _messages.value.map { if (it.id == messageId) it.copy(planAdded = true) else it }
+        return MealPlan.summary(plan)
     }
 
     suspend fun editAndResend(targetMessageId: String, newText: String, newImageBase64: String? = null, webResearch: Boolean = false) {

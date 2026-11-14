@@ -116,7 +116,8 @@ class ByteLogApplication : Application() {
             foodRepository = foodRepository,
             weightRepository = weightRepository,
             appScope = applicationScope,
-            settingsRepository = settingsRepository
+            settingsRepository = settingsRepository,
+            planRepository = planRepository
         )
     }
 
