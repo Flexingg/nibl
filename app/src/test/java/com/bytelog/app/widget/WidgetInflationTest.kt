@@ -3,6 +3,7 @@ package com.bytelog.app.widget
 import android.appwidget.AppWidgetManager
 import android.view.View
 import android.widget.ImageView
+import android.widget.ViewFlipper
 import androidx.test.core.app.ApplicationProvider
 import com.bytelog.app.ByteLogApplication
 import com.bytelog.app.R
@@ -41,11 +42,33 @@ class WidgetInflationTest {
     @Test fun everyWidgetInflatesAndShowsItsPicture() {
         for ((kind, layout) in layouts) {
             val view = place(kind, layout)
+            if (kind == WidgetKind.WATER) continue     // animated: see theWaterWidgetIsALoopOfFrames
             val img = view.findViewById<ImageView>(R.id.img_light)
             assertNotNull("$kind has its picture", img.drawable)
             assertEquals("$kind light look shows by day", View.VISIBLE, img.visibility)
             assertEquals("$kind dark look hidden by day", View.GONE, view.findViewById<View>(R.id.img_dark).visibility)
         }
+    }
+
+    @Test fun theWaterWidgetIsALoopOfFrames() {
+        val view = place(WidgetKind.WATER, R.layout.widget_water)
+        val light = view.findViewById<ViewFlipper>(R.id.flip_light)
+        assertEquals(View.VISIBLE, light.visibility)
+        assertEquals(View.GONE, view.findViewById<View>(R.id.flip_dark).visibility)
+        assertEquals(WidgetRenderer.WAVE_FRAMES, light.childCount)
+        assertNotNull(light.getChildAt(0).findViewById<ImageView>(R.id.frame).drawable)
+        // Updating again replaces the frames rather than adding more
+        runBlocking { WidgetUpdater.update(app, WidgetKind.WATER, AppWidgetManager.getInstance(app).getAppWidgetIds(android.content.ComponentName(app, WaterWidgetProvider::class.java)), WidgetData.Sample) }
+        val again = shadowOf(AppWidgetManager.getInstance(app)).getViewFor(AppWidgetManager.getInstance(app).getAppWidgetIds(android.content.ComponentName(app, WaterWidgetProvider::class.java)).first())
+        assertEquals(WidgetRenderer.WAVE_FRAMES, again.findViewById<ViewFlipper>(R.id.flip_light).childCount)
+        view.findViewById<View>(R.id.tap_water).performClick()
+        assertTrue(shadowOf(app).broadcastIntents.any { it.action == WidgetLinks.ACTION_ADD_WATER })
+    }
+
+    @Test fun withAnimationsOffTheWaterStandsStill() {
+        android.provider.Settings.Global.putFloat(app.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
+        val view = place(WidgetKind.WATER, R.layout.widget_water)
+        assertEquals(1, view.findViewById<ViewFlipper>(R.id.flip_light).childCount)
     }
 
     @Test fun tappingTheTodayWidgetDoesTheRightThings() {
@@ -93,8 +116,9 @@ class WidgetNightInflationTest {
         val id = shadow.createWidget(WaterWidgetProvider::class.java, R.layout.widget_water)
         runBlocking { WidgetUpdater.update(app, WidgetKind.WATER, intArrayOf(id), WidgetData.Sample) }
         val view = shadow.getViewFor(id)
-        assertEquals(View.GONE, view.findViewById<View>(R.id.img_light).visibility)
-        assertEquals(View.VISIBLE, view.findViewById<View>(R.id.img_dark).visibility)
-        assertNotNull(view.findViewById<ImageView>(R.id.img_dark).drawable)
+        assertEquals(View.GONE, view.findViewById<View>(R.id.flip_light).visibility)
+        val dark = view.findViewById<ViewFlipper>(R.id.flip_dark)
+        assertEquals(View.VISIBLE, dark.visibility)
+        assertNotNull(dark.getChildAt(0).findViewById<ImageView>(R.id.frame).drawable)
     }
 }
