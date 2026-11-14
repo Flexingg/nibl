@@ -543,6 +543,13 @@ class FoodRepository(
         return foodEntryDao.getEntriesForDate(date)
     }
 
+    /** The id of a saved food with this name and brand, if you have one. */
+    suspend fun savedFoodId(name: String, brand: String?): String? = withContext(Dispatchers.IO) {
+        val key = FoodSearch.identity(name, brand)
+        runCatching { foodDao.searchFoods(name).first() }.getOrDefault(emptyList())
+            .firstOrNull { FoodSearch.identity(it.name, it.brand) == key }?.id
+    }
+
     fun getAllMealTypes(): Flow<List<MealType>> {
         val uuidRegex = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         return mealTypeDao.getAllMealTypes().map { list ->

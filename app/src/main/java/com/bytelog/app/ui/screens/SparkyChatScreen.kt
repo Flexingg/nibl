@@ -596,6 +596,14 @@ fun SparkyChatScreen(
                             snackbarHostState.showSnackbar("Message copied to clipboard")
                         }
                     },
+                    onAddPlan = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.addPlan(message.id) { summary ->
+                            scope.launch {
+                                snackbarHostState.showSnackbar(if (summary != null) "Added to Planned: $summary" else "Couldn't add the plan")
+                            }
+                        }
+                    },
                     onEdit = { msg ->
                         editingMessageId = msg.id
                         inputText = msg.content
@@ -623,7 +631,8 @@ fun ChatMessageBubble(
     isLastAssistantMessage: Boolean = false,
     onOptionSelected: (String) -> Unit = {},
     onCopy: (String) -> Unit,
-    onEdit: (ChatMessageOutput) -> Unit
+    onEdit: (ChatMessageOutput) -> Unit,
+    onAddPlan: () -> Unit = {}
 ) {
     val isUser = message.role == "user"
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -834,6 +843,14 @@ fun ChatMessageBubble(
                             .padding(vertical = 2.dp)
                             .clickable { runCatching { uriHandler.openUri(src.url) } }
                     )
+                }
+            }
+
+            // A meal plan, ready to add to the Planned list
+            message.mealPlan?.let { plan ->
+                if (!isUser) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    com.bytelog.app.ui.components.MealPlanCard(plan, added = message.planAdded, onAdd = onAddPlan)
                 }
             }
 

@@ -22,6 +22,11 @@ import com.bytelog.app.research.SecretCipher
 import com.bytelog.app.ui.components.ResearchAssistantCard
 import com.bytelog.app.ui.components.SparkyToolsCard
 import com.bytelog.app.ui.screens.SparkyChatScreen
+import com.bytelog.app.ui.screens.ChatMessageBubble
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.bytelog.app.ui.theme.ByteLogTheme
 import com.bytelog.app.ui.viewmodel.SparkyChatViewModel
 import androidx.compose.foundation.layout.Column
@@ -147,6 +152,41 @@ class ResearchScreensRenderTest {
         compose.onNodeWithText("Dark", substring = true).performClick()
         assertTrue(mode == com.bytelog.app.ui.theme.ThemeMode.DARK)
         shot("24-settings-light")
+    }
+
+    @Test fun aMealPlanInTheChatOpensByDayAndAdds() {
+        val plan = com.bytelog.app.data.repository.MealPlan.parse("""Plan below.
+            ```nibl-plan
+            {"items":[{"day":1,"meal":"Breakfast","food":"Greek Yogurt","brand":"Fage","quantity":1,"unit":"cup","calories":190,"protein":18},
+            {"day":1,"meal":"Lunch","food":"Chicken & rice bowl","quantity":1,"unit":"bowl","calories":620,"protein":48},
+            {"day":1,"meal":"Dinner","food":"Salmon","quantity":150,"unit":"g","calories":310,"protein":34},
+            {"day":1,"meal":"Snacks","food":"Apple","calories":95},
+            {"day":2,"meal":"Breakfast","food":"Oats","quantity":1,"unit":"cup","calories":300,"protein":10},
+            {"day":2,"meal":"Dinner","food":"Turkey chili","quantity":1.5,"unit":"cup","calories":540,"protein":42}]}
+            ```""".trimIndent())!!
+        var added by androidx.compose.runtime.mutableStateOf(false)
+        var taps = 0
+        var dark by androidx.compose.runtime.mutableStateOf(true)
+        compose.setContent {
+            ByteLogTheme(darkTheme = dark, dynamicColor = false) {
+                Column(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background).padding(16.dp)) {
+                    ChatMessageBubble(
+                        com.bytelog.app.data.remote.ChatMessageOutput(content = "Here's a 2-day plan around 2,600 kcal with plenty of protein.", mealPlan = plan, planAdded = added),
+                        onCopy = {}, onEdit = {}, onAddPlan = { taps++; added = true }
+                    )
+                }
+            }
+        }
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Add to Planned"), true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Tomorrow").performClick()
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Greek Yogurt", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("26-chat-meal-plan")
+        compose.onNodeWithText("Add to Planned").performClick()
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Added to Planned"), true).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(taps == 1)
+        shot("27-chat-meal-plan-added")
+        dark = false
+        shot("28-chat-meal-plan-light")
     }
 
     @Test fun lightModeChat() {

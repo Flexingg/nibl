@@ -77,6 +77,33 @@ class ResearchAgentTest {
         assertEquals("rice?", provider.question); assertEquals(1, provider.history.size)
     }
 
+    @Test fun aMealPlanComesBackForTheUserToAddWithoutWritingAnything() = runBlocking {
+        val sparky = FakeSparky(allTools)
+        val day1 = """{"items":[{"date":"2026-10-06","meal":"Breakfast","food":"Oats","calories":300,"protein":10},
+            {"date":"2026-10-06","meal":"Dinner","food":"Salmon","calories":500,"protein":40}]}"""
+        // A second call redoes day 1's dinner and adds day 2
+        val day2 = """{"items":[{"date":"2026-10-06","meal":"Dinner","food":"Tofu bowl","calories":450},
+            {"date":"2026-10-07","meal":"Lunch","food":"Wrap","calories":400}]}"""
+        val provider = ScriptedProvider { step, _ ->
+            when (step) {
+                0 -> LlmTurn("", listOf(call("1", "plan_meals", day1)))
+                1 -> LlmTurn("", listOf(call("2", "plan_meals", day2), call("3", "plan_meals", """{"items":[{"meal":"Lunch"}]}""")))
+                else -> LlmTurn("Here's your plan. Tap Add to Planned.")
+            }
+        }
+        var asked = 0
+        val r = agent(provider, sparky, confirm = { asked++; true }).run(emptyList(), "meal plan for 2 days").getOrThrow()
+        assertTrue(provider.tools.any { it.name == "plan_meals" })
+        assertTrue(provider.system.contains("plan_meals"))
+        assertEquals(0, asked)
+        assertTrue(sparky.calls.isEmpty())
+        assertFalse(r.wroteData)
+        val plan = r.mealPlan!!
+        assertEquals(listOf("Oats", "Tofu bowl", "Wrap"), plan.items.map { it.food })
+        assertTrue(provider.sentResults[1].single().text.contains("Add to Planned"))
+        assertTrue("a plan without items is an error", provider.sentResults[2][1].isError)
+    }
+
     @Test fun writesAskFirstAndRunOnApproval() = runBlocking {
         val sparky = FakeSparky(allTools)
         val provider = ScriptedProvider { step, _ ->
@@ -198,7 +225,7 @@ class ResearchAgentTest {
         assertEquals("From the web.", r.text)
         assertTrue(r.notice!!.contains("server down"))
         assertTrue(provider.system.contains("isn't available"))
-        assertEquals(setOf("web_search", "fetch_url"), provider.tools.map { it.name }.toSet())
+        assertEquals(setOf("web_search", "fetch_url", "plan_meals"), provider.tools.map { it.name }.toSet())
     }
 
     @Test fun malformedToolArgumentsAreReportedBack() = runBlocking {

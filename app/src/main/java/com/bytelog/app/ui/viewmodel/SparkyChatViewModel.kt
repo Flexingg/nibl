@@ -19,7 +19,8 @@ class SparkyChatViewModel(
         "Log 2 eggs and toast for breakfast",
         "What are my remaining calories and protein today?",
         "Log my weight as 175.5 lbs",
-        "Give me a high protein snack under 200 calories"
+        "Give me a high protein snack under 200 calories",
+        "Make me a meal plan for the next 3 days"
     )
 
     val researchStatus: StateFlow<String?> = chatRepository.researchStatus
@@ -37,6 +38,13 @@ class SparkyChatViewModel(
     fun editAndResend(targetMessageId: String, newContent: String, newImageBase64: String? = null, webResearch: Boolean = false) {
         viewModelScope.launch {
             chatRepository.editAndResend(targetMessageId, newContent, newImageBase64, webResearch)
+        }
+    }
+
+    /** Adds a message's meal plan to the Planned list; [done] gets a summary of what was added. */
+    fun addPlan(messageId: String, done: (String?) -> Unit = {}) {
+        viewModelScope.launch {
+            done(runCatching { chatRepository.addPlan(messageId) }.getOrNull())
         }
     }
 
