@@ -196,4 +196,45 @@ class PlanningAndPricesTest {
         assertEquals(1, ticked.left)
         assertTrue(vm.shareText().contains("☑ Greek Yogurt (Fage)"))
     }
+
+    @Test fun thePlannerShowsEditsAndMovesPlannedFood() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val settings = SettingsRepository(context)
+        settings.savePlannerConfig(com.bytelog.app.data.repository.PlannerConfig(days = 3))
+        plans.plan(listOf(
+            FoodEntry("y", yogurtId, "Greek Yogurt", "Fage", "breakfast", "Breakfast", 1f, "serving", 150f, 15f, 6f, 5f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT),
+            FoodEntry("w", null, "Wrap", null, "lunch", "Lunch", 1f, "serving", 400f, 20f, 40f, 15f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT)
+        ))
+        val vm = com.bytelog.app.ui.viewmodel.MealPlannerViewModel(plans, foods, settings)
+        val s = waitFor({ vm.state.value }) { !it.loading && it.days.size == 3 && it.planned == 2 && it.foods.isNotEmpty() }
+        assertEquals(today, s.from)
+        val tomorrow = s.days[1]
+        assertEquals(listOf("Breakfast", "Lunch"), tomorrow.meals.map { it.first })
+        assertEquals(550f, tomorrow.calories, 0.1f)
+
+        // Amounts recalculate from the food, in any of its units
+        val yog = tomorrow.entries.first { it.foodName == "Greek Yogurt" }
+        assertTrue(vm.unitsFor(yog).containsAll(listOf("serving", "g", "oz")))
+        val double = vm.withAmount(yog, 2f, "serving")
+        assertEquals(300f, double.calories, 0.1f)
+        val inGrams = vm.inUnit(yog, "g")
+        assertEquals("g", inGrams.unit); assertEquals(170f, inGrams.quantity, 0.5f); assertEquals(150f, inGrams.calories, 1f)
+        // A food the phone doesn't have scales in its own unit only
+        val wrap = tomorrow.entries.first { it.foodName == "Wrap" }
+        assertEquals(listOf("serving"), vm.unitsFor(wrap))
+        assertEquals(600f, vm.withAmount(wrap, 1.5f, "serving").calories, 0.1f)
+
+        vm.save(double)
+        vm.moveTo(wrap, today.plusDays(2))
+        val after = waitFor({ vm.state.value }) { st -> st.days[2].entries.any { it.foodName == "Wrap" } && st.days[1].calories > 250f }
+        assertEquals(300f, after.days[1].calories, 0.1f)
+
+        // Showing more days is remembered
+        vm.setConfig(after.config.copy(days = 7, showMacros = false))
+        waitFor({ vm.state.value }) { it.days.size == 7 }
+        assertEquals(7, waitFor({ settings.plannerConfig.first() }) { it.days == 7 }.days)
+        vm.nextPage()
+        val next = waitFor({ vm.state.value }) { it.page == 1 }
+        assertEquals(today.plusDays(7), next.from)
+    }
 }

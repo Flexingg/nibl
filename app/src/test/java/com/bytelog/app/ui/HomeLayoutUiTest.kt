@@ -191,8 +191,15 @@ class HomeLayoutUiTest {
         compose.onNodeWithText("HYDRATION").performTouchInput { swipeUp(startY = centerY, endY = centerY - 900f, durationMillis = 500) }
         compose.waitForIdle()
         shot("home_scroll_from_header")
-        waitFor { compose.onAllNodesWithText("Weight vs Calories").fetchSemanticsNodes().isNotEmpty() }
+        // The meal plan and shopping cards sit between the header and the chart, so keep going until it's well in view
         val screen = compose.onRoot().fetchSemanticsNode().size.height
+        repeat(3) {
+            if (compose.onAllNodesWithText("Weight vs Calories").fetchSemanticsNodes().isEmpty() || top("Weight vs Calories") > screen * 0.6f) {
+                compose.onRoot().performTouchInput { swipeUp(startY = centerY + 300f, endY = centerY - 500f, durationMillis = 500) }
+                compose.waitForIdle()
+            }
+        }
+        waitFor { compose.onAllNodesWithText("Weight vs Calories").fetchSemanticsNodes().isNotEmpty() }
         assertTrue("the list came up under the folded header", top("Weight vs Calories") < screen * 0.6f)
 
         // A drag up or down that starts on the chart moves the page instead of being taken by the chart

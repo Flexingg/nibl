@@ -146,7 +146,9 @@ fun DiaryScreen(
     openShareFor: String? = null,
     onShareRequestHandled: () -> Unit = {},
     /** Opens the shopping list for planned food. */
-    onOpenShoppingList: () -> Unit = {}
+    onOpenShoppingList: () -> Unit = {},
+    /** Opens the meal planner. */
+    onOpenPlanner: () -> Unit = {}
 ) {
     var copyPlanFrom by remember { mutableStateOf<List<com.bytelog.app.data.local.model.PlannedEntry>?>(null) }
     val family by (familyViewModel?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(com.bytelog.app.ui.viewmodel.FamilyState(loading = false)) }).collectAsState()
@@ -227,6 +229,8 @@ fun DiaryScreen(
     val mealShortcuts by viewModel.mealShortcuts.collectAsState()
     val whatFits by viewModel.whatFits.collectAsState()
     val weeklyReview by viewModel.weeklyReview.collectAsState()
+    val weekPlan by viewModel.weekPlan.collectAsState()
+    val weekShopping by viewModel.weekShopping.collectAsState()
     val plannedEntries by viewModel.plannedEntries.collectAsState()
     val homeLayout by viewModel.homeLayout.collectAsState()
 
@@ -540,9 +544,26 @@ fun DiaryScreen(
                                         },
                                         modifier = Modifier.homeItem(this, listState, "planned"),
                                         onCopyToDays = { copyPlanFrom = plannedEntries },
-                                        onShoppingList = onOpenShoppingList
+                                        onShoppingList = onOpenShoppingList,
+                                        onOpenPlanner = onOpenPlanner
                                     )
                                 }
+                            }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.MEAL_PLAN -> {
+                            item(key = "meal_plan") {
+                                com.bytelog.app.ui.diary.MealPlanHomeCard(
+                                    days = weekPlan, calorieGoal = dailySummary.targetCalories, onOpen = onOpenPlanner,
+                                    modifier = Modifier.homeItem(this, listState, "meal_plan")
+                                )
+                            }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.SHOPPING -> {
+                            item(key = "shopping") {
+                                com.bytelog.app.ui.diary.ShoppingHomeCard(
+                                    list = weekShopping.first, checked = weekShopping.second, onOpen = onOpenShoppingList,
+                                    modifier = Modifier.homeItem(this, listState, "shopping")
+                                )
                             }
                         }
                         com.bytelog.app.data.repository.HomeSection.MEALS -> {

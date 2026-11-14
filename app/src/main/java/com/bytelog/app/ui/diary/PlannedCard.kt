@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material3.Icon
@@ -55,7 +56,9 @@ fun PlannedCard(
     /** Copies the day's plan to other days; null hides the button. */
     onCopyToDays: (() -> Unit)? = null,
     /** Opens the shopping list for what's planned; null hides the button. */
-    onShoppingList: (() -> Unit)? = null
+    onShoppingList: (() -> Unit)? = null,
+    /** Opens the meal planner; null hides the button. */
+    onOpenPlanner: (() -> Unit)? = null
 ) {
     val cs = MaterialTheme.colorScheme
     val plannedKcal = planned.sumOf { it.calories.toDouble() }.toFloat()
@@ -130,10 +133,11 @@ fun PlannedCard(
                 }
             }
         }
-        if (onCopyToDays != null || onShoppingList != null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                onCopyToDays?.let { PlanAction(Icons.Default.ContentCopy, "Copy to days", it, Modifier.weight(1f)) }
-                onShoppingList?.let { PlanAction(Icons.Default.ShoppingCart, "Shopping list", it, Modifier.weight(1f)) }
+        if (onCopyToDays != null || onShoppingList != null || onOpenPlanner != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                onOpenPlanner?.let { PlanAction(Icons.Default.EditCalendar, "Planner", it, Modifier.weight(1f)) }
+                onCopyToDays?.let { PlanAction(Icons.Default.ContentCopy, "Copy", it, Modifier.weight(1f)) }
+                onShoppingList?.let { PlanAction(Icons.Default.ShoppingCart, "Shopping", it, Modifier.weight(1f)) }
             }
         }
         Text(

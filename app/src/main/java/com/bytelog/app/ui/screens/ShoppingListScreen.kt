@@ -86,7 +86,8 @@ fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit) {
     editing?.let { item ->
         PriceDialog(
             title = item.name,
-            initial = item.price?.let { SparkyPrice(it.store, it.price, it.quantity, it.unit) },
+            initial = item.price?.toSparky(),
+            units = item.units,
             onSave = { viewModel.savePrice(item, it); editing = null },
             onDismiss = { editing = null }
         )

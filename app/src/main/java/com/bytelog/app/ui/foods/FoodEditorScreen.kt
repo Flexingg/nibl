@@ -259,12 +259,12 @@ fun FoodEditorScreen(
                     val pr by viewModel.price.collectAsState()
                     Section("Where you buy it") {
                         com.bytelog.app.ui.components.PriceForm(
-                            pr.draft, viewModel::editPrice,
+                            pr.draft, viewModel::editPrice, viewModel.priceUnits,
                             hint = "Optional. Used for the shopping list's costs" + if (s.owned) ", and saved on this food in Sparky." else "."
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(pr.status.orEmpty(), color = cs.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            TextButton(onClick = viewModel::savePrice, enabled = pr.dirty && !pr.saving && pr.draft.problem == null) {
+                            TextButton(onClick = viewModel::savePrice, enabled = pr.dirty && !pr.saving && pr.draft.problem(viewModel.priceUnits) == null) {
                                 Text(if (pr.saving) "Saving…" else "Save price")
                             }
                         }

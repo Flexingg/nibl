@@ -33,13 +33,13 @@ class PriceRepository(
         get(foodId, name, brand)?.let { return it }
         if (foodId == null || !isSparkyId(foodId) || api == null) return null
         val p = api.fetchFoodPrice(foodId).getOrNull()?.takeUnless { it.isEmpty } ?: return null
-        return FoodPrice(foodId, foodId, name, brand, p.store, p.price, p.quantity, p.unit, savedToSparky = true).also { dao.upsert(it) }
+        return FoodPrice(foodId, foodId, name, brand, p.store, p.price, p.quantity, p.unit, p.packageName, savedToSparky = true).also { dao.upsert(it) }
     }
 
     /** Saves a food's store and price; all empty clears them. */
     suspend fun save(foodId: String?, name: String, brand: String?, price: SparkyPrice): Saved {
         val key = ShoppingList.keyOf(foodId, name, brand)
-        val local = FoodPrice(key, foodId, name, brand, price.store?.trim()?.ifBlank { null }, price.price, price.quantity, price.unit?.trim()?.ifBlank { null })
+        val local = FoodPrice(key, foodId, name, brand, price.store?.trim()?.ifBlank { null }, price.price, price.quantity, price.unit?.trim()?.ifBlank { null }, price.packageName?.trim()?.ifBlank { null })
         if (local.isEmpty && local.quantity == null) dao.delete(key) else dao.upsert(local)
         val stored = local.takeUnless { it.isEmpty && it.quantity == null }
         if (foodId == null || !isSparkyId(foodId) || api == null) return Saved(stored, onSparky = false, problem = "Saved on this phone. This food isn't in your Sparky foods.")
@@ -66,7 +66,7 @@ class PriceRepository(
             if (dao.get(f.id) != null) continue
             val p = client.fetchFoodPrice(f.id).getOrNull() ?: continue
             if (p.isEmpty) continue
-            dao.upsert(FoodPrice(f.id, f.id, f.name, f.brand, p.store, p.price, p.quantity, p.unit, savedToSparky = true))
+            dao.upsert(FoodPrice(f.id, f.id, f.name, f.brand, p.store, p.price, p.quantity, p.unit, p.packageName, savedToSparky = true))
             found++
         }
         return found

@@ -62,6 +62,9 @@ class PlanRepository(private val dao: PlannedEntryDao, private val foods: FoodRe
         return entries
     }
 
+    /** Saves a change to planned food (amount, meal or day). */
+    suspend fun update(entries: List<PlannedEntry>) = dao.insert(entries)
+
     suspend fun remove(planned: List<PlannedEntry>) = dao.delete(planned.map { it.id })
 
     /** Puts entries back on the plan (undoing a remove). */

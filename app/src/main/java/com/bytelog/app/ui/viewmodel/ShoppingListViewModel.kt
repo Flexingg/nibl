@@ -48,10 +48,10 @@ class ShoppingListViewModel(
         plans.between(start.toString(), start.plusDays((n - 1).toLong()).toString())
     }
 
-    /** Saved serving sizes of the planned foods, so "2 servings" can be bought by weight. */
+    /** The planned foods saved on the phone, so their servings and household measures convert. */
     private val servings = planned.mapLatest { list ->
         val ids = list.mapNotNull { it.foodId }.distinct()
-        foods.foodsByIds(ids).associate { it.id to (it.servingSize to it.servingUnit) }
+        runCatching { foods.foodsByIds(ids) }.getOrDefault(emptyList()).associateBy { it.id }
     }
 
     val state: StateFlow<State> = combine(_days, planned, servings, prices.prices, prices.checks) { days, p, sv, pr, ch ->
@@ -59,7 +59,7 @@ class ShoppingListViewModel(
         val start = today()
         State(
             days = days, from = start.toString(), to = start.plusDays((days - 1).toLong()).toString(),
-            list = ShoppingList.build(p, priceOf = { byKey[it] }, servingOf = { sv[it] }),
+            list = ShoppingList.build(p, priceOf = { byKey[it] }, foodOf = { sv[it] }),
             checked = ch.map { it.key }.toSet(), loading = false
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, State())

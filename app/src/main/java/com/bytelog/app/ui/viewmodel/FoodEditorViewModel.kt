@@ -137,6 +137,13 @@ class FoodEditorViewModel(
 
     fun editPrice(d: com.bytelog.app.ui.components.PriceDraft) = _price.update { it.copy(draft = d, status = null) }
 
+    /** The units a price can use: the food's own, as saved. */
+    val priceUnits: List<String> get() {
+        val f = _state.value.food ?: return emptyList()
+        val item = f.sparky?.toFoodItem(f.local) ?: f.local ?: return emptyList()
+        return com.bytelog.app.ui.logging.Portions.unitOptions(item)
+    }
+
     private fun priceTarget(): Triple<String?, String, String?>? {
         val f = _state.value.food ?: return null
         val sp = f.sparky
@@ -148,7 +155,7 @@ class FoodEditorViewModel(
         val (id, name, brand) = priceTarget() ?: return
         viewModelScope.launch {
             val p = runCatching { repo.load(id, name, brand) }.getOrNull()
-            val d = com.bytelog.app.ui.components.PriceDraft.from(p?.let { com.bytelog.app.data.repository.SparkyPrice(it.store, it.price, it.quantity, it.unit) })
+            val d = com.bytelog.app.ui.components.PriceDraft.from(p?.toSparky())
             _price.update { it.copy(draft = d, saved = d) }
         }
     }
@@ -157,7 +164,7 @@ class FoodEditorViewModel(
         val repo = prices ?: return
         val (id, name, brand) = priceTarget() ?: return
         val d = _price.value.draft
-        if (d.problem != null) return
+        if (d.problem(priceUnits) != null) return
         _price.update { it.copy(saving = true, status = null) }
         viewModelScope.launch {
             val r = repo.save(id?.takeIf { com.bytelog.app.data.repository.PriceRepository.isSparkyId(it) }, name, brand, d.toPrice())
