@@ -73,9 +73,21 @@ class PriceRepository(
     }
 
     suspend fun check(key: String, on: Boolean) = if (on) dao.check(ShoppingCheck(key)) else dao.uncheck(key)
+
+    /** Takes an item off the shopping list (bought, or already in the cupboard), or puts it back. */
+    suspend fun remove(key: String, removed: Boolean) = if (removed) dao.check(ShoppingCheck(REMOVED + key)) else dao.uncheck(REMOVED + key)
     suspend fun clearChecks() = dao.clearChecks()
 
     companion object {
+        /** Removed items are kept as ticks under this prefix. */
+        const val REMOVED = "x:"
+
+        /** Ticked and removed keys from the stored ticks. */
+        fun split(checks: List<ShoppingCheck>): Pair<Set<String>, Set<String>> {
+            val (removed, ticked) = checks.map { it.key }.partition { it.startsWith(REMOVED) }
+            return ticked.toSet() to removed.map { it.removePrefix(REMOVED) }.toSet()
+        }
+
         private val uuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         /** Foods saved in Sparky have UUIDs; others (Open Food Facts results, chat plans) don't. */
         fun isSparkyId(id: String) = uuid.matches(id)

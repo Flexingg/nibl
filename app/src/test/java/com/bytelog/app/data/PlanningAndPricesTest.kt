@@ -77,6 +77,10 @@ class PlanningAndPricesTest {
                         variantCustom = (Json.parseToJsonElement(body).jsonObject["custom_nutrients"] as JsonObject).toString()
                         MockResponse().setBody("{}")
                     }
+                    path.startsWith("/api/foods/foods-paginated") && path.contains("searchTerm=chickpeas") -> MockResponse().setBody(
+                        """{"foods":[{"id":"55555555-2222-3333-4444-555555555555","name":"Chickpeas","brand":"Goya","default_variant":{"calories":110,"protein":6,"carbs":20,"fat":2,"serving_size":130,"serving_unit":"g"}}]}"""
+                    )
+                    path.startsWith("/api/foods/foods-paginated") -> MockResponse().setBody("""{"foods":[]}""")
                     path == "/api/foods/scan-label" -> MockResponse().setBody("""{"name":"Protein Granola","brand":"Bear","serving_size":45,"serving_unit":"g","calories":200,"protein":12,"carbs":24,"fat":7,"fiber":4}""")
                     request.method == "POST" && path == "/api/foods" -> MockResponse().setResponseCode(201).setBody("""{"id":"77777777-2222-3333-4444-555555555555"}""")
                     path == "/api/foods/food-variants/v-shared" -> MockResponse().setResponseCode(403).setBody("""{"error":"Forbidden: You do not have permission to update this food variant."}""")
@@ -99,13 +103,14 @@ class PlanningAndPricesTest {
 
     private fun day(n: Int) = today.plusDays(n.toLong()).toString()
 
-    private suspend fun <T> waitFor(read: suspend () -> T, ok: (T) -> Boolean): T = withTimeout(10_000) {
+    private suspend fun <T> waitFor(read: suspend () -> T, ok: (T) -> Boolean): T {
+        val end = System.currentTimeMillis() + 10_000
         while (true) {
-            org.robolectric.shadows.ShadowLooper.idleMainLooper()
-            val v = read(); if (ok(v)) return@withTimeout v
+            org.robolectric.shadows.ShadowLooper.idleMainLooper(20, java.util.concurrent.TimeUnit.MILLISECONDS)
+            val v = read(); if (ok(v)) return v
+            check(System.currentTimeMillis() < end) { "Timed out waiting; last value: $v" }
             Thread.sleep(20)
         }
-        @Suppress("UNREACHABLE_CODE") read()
     }
 
     @Test fun theTrayCanBePlannedOnSeveralDaysAtOnce() = runBlocking {
@@ -367,5 +372,65 @@ class PlanningAndPricesTest {
         vm.editDraft(oats.id, vm.state.value.lines[2].draft.copy(quantity = "42", unit = "oz"))
         assertNull(vm.nextToCheck())
         assertEquals(3, vm.state.value.ready.size)
+    }
+
+    @Test fun swipingTakesThingsOffTheShoppingList() = runBlocking {
+        plans.plan(listOf(
+            FoodEntry("y", yogurtId, "Greek Yogurt", "Fage", "breakfast", "Breakfast", 1f, "serving", 150f, 15f, 6f, 5f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT),
+            FoodEntry("w", null, "Wrap", null, "lunch", "Lunch", 1f, "serving", 400f, 20f, 40f, 15f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT)
+        ))
+        val vm = ShoppingListViewModel(plans, prices, foods)
+        val s = waitFor({ vm.state.value }) { it.list.items.size == 2 }
+        vm.remove(s.list.items.first { it.name == "Wrap" })
+        val after = waitFor({ vm.state.value }) { it.removed.isNotEmpty() }
+        assertEquals(listOf("Greek Yogurt"), after.list.items.map { it.name })
+        assertEquals(listOf("Wrap"), after.removed.map { it.name })
+        // Put back
+        vm.remove(after.removed.single(), removed = false)
+        waitFor({ vm.state.value }) { it.removed.isEmpty() && it.list.items.size == 2 }
+        // Reset clears ticks and removals
+        vm.remove(vm.state.value.list.items.first())
+        waitFor({ vm.state.value }) { it.removed.isNotEmpty() }
+        vm.clearChecks()
+        waitFor({ vm.state.value }) { it.removed.isEmpty() && it.list.items.size == 2 }
+        Unit
+    }
+
+    @Test fun aReceiptLineCanBeSearchedForOrMadeIntoANewFood() = runBlocking {
+        val vm = com.bytelog.app.ui.viewmodel.ReceiptViewModel({ Result.success(emptyList()) }, prices, plans, foods)
+        vm.review(listOf("ALDI", "KS GRK YOG  4.99", "GOYA CHICKPEAS 15OZ  1.29", "HOUSE BLEND SALSA  3.49").map { com.bytelog.app.data.receipts.OcrLine(it) })
+        val lines = vm.state.value.lines
+
+        // The search starts from the receipt name spelled out, and finds foods in your whole library
+        vm.startSearch(lines[0].id)
+        assertEquals("greek yogurt", vm.search.value!!.query)
+        val mine = waitFor({ vm.search.value!! }) { it.mine.any { c -> c.name == "Greek Yogurt" } && !it.searchingOnline }
+        assertTrue(mine.mine.first().name == "Greek Yogurt")
+
+        // Online results for something you've never had: picking one keeps it and uses it
+        vm.setQuery(lines[1].id, "chickpeas")
+        val online = waitFor({ vm.search.value!! }) { it.online.isNotEmpty() }.online
+        assertEquals("Chickpeas", online.single().name)
+        vm.pick(lines[1].id, online.single())
+        assertNull(vm.search.value)
+        var line = vm.state.value.lines[1]
+        assertEquals("Chickpeas", line.match!!.name); assertFalse(line.unsure)
+        // 15 oz from the receipt name, in the food's own units
+        assertEquals("15", line.draft.quantity); assertEquals("oz", line.draft.unit)
+
+        // Nothing like the salsa anywhere: make it
+        val draft = vm.newFoodFor(lines[2].id)
+        assertEquals("House Blend Salsa", draft.name)
+        assertEquals("Enter its calories per serving", draft.problem)
+        vm.createFood(lines[2].id, draft.copy(servingSize = "2", servingUnit = "tbsp", calories = "10", carbs = "2"))
+        line = waitFor({ vm.state.value.lines[2] }) { it.match != null }
+        assertEquals("House Blend Salsa", line.match!!.name)
+        assertNotNull(db.foodDao().getFoodById("77777777-2222-3333-4444-555555555555"))
+        assertTrue(line.include)
+
+        // Sparky's AI failing to make one says so on the line
+        vm.createWithAi(lines[0].id, "Greek Yogurt")
+        val failed = waitFor({ vm.state.value.lines[0] }) { it.note != null }
+        assertTrue(failed.note!!, failed.note!!.startsWith("Sparky's AI couldn't make it"))
     }
 }

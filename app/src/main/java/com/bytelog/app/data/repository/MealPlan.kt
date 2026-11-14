@@ -62,12 +62,18 @@ object MealPlan {
         "the plan starts tomorrow. Prefer foods from the user's own library, with their nutrition. " +
         "Don't log anything to the diary and don't mention this note or the code block.)\n$NOTE_END"
 
-    /** A message without the format note (it's stored on the server with the message). */
+    /** A message without the notes Nibl added to it (they're stored on the server with the message). */
     fun stripNote(text: String): String {
-        val start = text.indexOf(NOTE_START)
-        if (start < 0) return text
-        val end = text.indexOf(NOTE_END, start).let { if (it < 0) text.length else it + NOTE_END.length }
-        return (text.substring(0, start) + text.substring(end)).trim()
+        var t = text
+        for ((open, close) in listOf(NOTE_START to NOTE_END, PlanEdits.NOTE_START to PlanEdits.NOTE_END)) {
+            while (true) {
+                val start = t.indexOf(open)
+                if (start < 0) break
+                val end = t.indexOf(close, start).let { if (it < 0) t.length else it + close.length }
+                t = t.substring(0, start) + t.substring(end)
+            }
+        }
+        return t.trim()
     }
 
     private val block = Regex("""```\s*$FENCE\s*\n([\s\S]*?)```""")

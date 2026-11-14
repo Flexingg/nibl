@@ -35,6 +35,8 @@ class ShoppingListViewModel(
         val to: String = "",
         val list: ShoppingListResult = ShoppingListResult(emptyList()),
         val checked: Set<String> = emptySet(),
+        /** Items swiped off the list (bought, or already in the cupboard). */
+        val removed: List<ShoppingItem> = emptyList(),
         val loading: Boolean = true
     ) {
         val left: Int get() = list.items.count { it.key !in checked }
@@ -62,10 +64,12 @@ class ShoppingListViewModel(
     val state: StateFlow<State> = combine(_days, planned, servings, prices.prices, prices.checks) { days, p, sv, pr, ch ->
         val byKey = pr.associateBy { it.key }
         val start = today()
+        val all = ShoppingList.build(p, priceOf = { byKey[it] }, foodOf = { sv[it] })
+        val (ticked, removed) = PriceRepository.split(ch)
         State(
             days = days, from = start.toString(), to = start.plusDays((days - 1).toLong()).toString(),
-            list = ShoppingList.build(p, priceOf = { byKey[it] }, foodOf = { sv[it] }),
-            checked = ch.map { it.key }.toSet(), loading = false
+            list = ShoppingListResult(all.items.filter { it.key !in removed }),
+            checked = ticked, removed = all.items.filter { it.key in removed }, loading = false
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, State())
 
@@ -91,7 +95,11 @@ class ShoppingListViewModel(
         viewModelScope.launch { prices.check(item.key, on) }
     }
 
+    /** Clears ticks and puts removed items back. */
     fun clearChecks() { viewModelScope.launch { prices.clearChecks() } }
+
+    /** Takes an item off the list (bought or already have it), or puts it back. */
+    fun remove(item: ShoppingItem, removed: Boolean = true) { viewModelScope.launch { prices.remove(item.key, removed) } }
 
     fun savePrice(item: ShoppingItem, price: SparkyPrice) {
         viewModelScope.launch {

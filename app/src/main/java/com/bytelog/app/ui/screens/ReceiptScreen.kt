@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
@@ -288,7 +289,11 @@ private fun Done(modifier: Modifier, d: Phase.Done, onShoppingList: () -> Unit, 
 @Composable
 private fun LineCard(line: ReceiptViewModel.Line, viewModel: ReceiptViewModel, actions: LineActions, highlighted: Boolean) {
     val cs = MaterialTheme.colorScheme
-    var picking by remember { mutableStateOf(false) }
+    val search by viewModel.search.collectAsState()
+    val picking = search?.lineId == line.id
+    var creating by remember { mutableStateOf<ReceiptViewModel.NewFood?>(null) }
+    fun togglePicker() { creating = null; if (picking) viewModel.closeSearch() else viewModel.startSearch(line.id) }
+    fun startCreating() { viewModel.closeSearch(); creating = viewModel.newFoodFor(line.id) }
     val needsYou = line.include && line.problem != null
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainer)
@@ -324,10 +329,12 @@ private fun LineCard(line: ReceiptViewModel.Line, viewModel: ReceiptViewModel, a
         if (line.busy == null && (line.include || line.match == null)) {
             when {
                 // Nothing matched: ask, with every way to say what it is
+                creating != null -> {}
                 line.match == null && !picking -> {
                     Prompt("Which food is this?")
                     ActionRow {
-                        Action("Pick a food", primary = true) { picking = true }
+                        Action("Find a food", primary = true) { togglePicker() }
+                        Action("Create a food") { startCreating() }
                         Action("Scan barcode") { actions.onScanBarcode(line.id) }
                         Action("Scan label") { actions.onScanLabel(line.id) }
                         if (line.include) Action("Not food") { viewModel.include(line.id, false) }
@@ -335,25 +342,34 @@ private fun LineCard(line: ReceiptViewModel.Line, viewModel: ReceiptViewModel, a
                 }
                 // A match that isn't a clear one: ask before using it
                 line.unsure && !picking -> {
-                    MatchRow(line) { picking = !picking }
+                    MatchRow(line) { togglePicker() }
                     Prompt("Is this ${line.match!!.name}?")
                     ActionRow {
                         Action("Yes", primary = true) { viewModel.confirm(line.id) }
-                        Action("Change") { picking = true }
+                        Action("Change") { togglePicker() }
                         Action("Scan barcode") { actions.onScanBarcode(line.id) }
                     }
                 }
-                else -> MatchRow(line, picking) { picking = !picking }
+                else -> MatchRow(line, picking) { togglePicker() }
             }
-            if (picking) {
-                FoodPicker(line, viewModel) { picking = false }
+            if (picking) search?.let { st ->
+                FoodPicker(line, st, viewModel, onCreate = { startCreating() })
                 ActionRow {
-                    Action("Scan barcode") { picking = false; actions.onScanBarcode(line.id) }
-                    Action("Scan label") { picking = false; actions.onScanLabel(line.id) }
+                    Action("Scan barcode") { viewModel.closeSearch(); actions.onScanBarcode(line.id) }
+                    Action("Scan label") { viewModel.closeSearch(); actions.onScanLabel(line.id) }
                 }
             }
+            creating?.let { draft ->
+                CreateFood(
+                    draft, onChange = { creating = it },
+                    onSave = { viewModel.createFood(line.id, draft); creating = null },
+                    onAi = { viewModel.createWithAi(line.id, draft.name); creating = null },
+                    onLabel = { creating = null; actions.onScanLabel(line.id) },
+                    onCancel = { creating = null }
+                )
+            }
         }
-        if (line.include && line.match != null && !line.unsure && !picking && line.busy == null) {
+        if (line.include && line.match != null && !line.unsure && !picking && creating == null && line.busy == null) {
             line.problem?.let { Prompt(it) }
             PriceForm(line.draft, { viewModel.editDraft(line.id, it) }, line.units, showStore = false)
         }
@@ -401,27 +417,104 @@ private fun Action(label: String, primary: Boolean = false, onClick: () -> Unit)
 }
 
 @Composable
-private fun FoodPicker(line: ReceiptViewModel.Line, viewModel: ReceiptViewModel, onPicked: () -> Unit) {
+private fun FoodPicker(line: ReceiptViewModel.Line, st: ReceiptViewModel.FoodSearchState, viewModel: ReceiptViewModel, onCreate: () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    var query by remember { mutableStateOf("") }
-    val options = remember(query, line.id) { viewModel.search(line.id, query) }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text("Search your foods") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        options.forEach { c: MatchCandidate ->
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .clickable(role = Role.Button) { viewModel.choose(line.id, c); onPicked() }
-                    .heightIn(min = 44.dp).padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(c.name + (c.brand?.let { " · $it" } ?: ""), color = cs.onSurface, fontSize = 14.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (c.onList) Text("on list", color = cs.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            }
+        OutlinedTextField(
+            value = st.query, onValueChange = { viewModel.setQuery(line.id, it) },
+            label = { Text("Search foods") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            trailingIcon = { if (st.searchingOnline) LoadingSpinner(Modifier.size(18.dp), color = cs.primary, strokeWidth = 2.dp) }
+        )
+        if (st.mine.isNotEmpty()) SectionLabel("Your foods")
+        st.mine.forEach { c -> PickRow(c) { viewModel.pick(line.id, c) } }
+        if (st.online.isNotEmpty()) SectionLabel("Sparky & Open Food Facts")
+        st.online.forEach { c -> PickRow(c) { viewModel.pick(line.id, c) } }
+        if (st.mine.isEmpty() && st.online.isEmpty() && !st.searchingOnline) {
+            Text(if (st.query.isBlank()) "Type to search your foods and online." else "Nothing matches \"${st.query}\".", color = cs.onSurfaceVariant, fontSize = 13.sp, modifier = Modifier.padding(4.dp))
         }
-        if (options.isEmpty()) Text("No foods of yours match.", color = cs.onSurfaceVariant, fontSize = 13.sp)
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.primary.copy(alpha = 0.08f))
+                .clickable(role = Role.Button, onClick = onCreate).heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(androidx.compose.material.icons.Icons.Default.Add, contentDescription = null, tint = cs.primary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Create \"${st.query.ifBlank { line.item.name }}\" as a new food", color = cs.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+        }
         Text(
             "Not a food: skip this line", color = cs.onSurfaceVariant, fontSize = 13.sp,
-            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { viewModel.choose(line.id, null); viewModel.include(line.id, false); onPicked() }.padding(10.dp)
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { viewModel.closeSearch(); viewModel.choose(line.id, null); viewModel.include(line.id, false) }.padding(10.dp)
         )
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) = Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+
+@Composable
+private fun PickRow(c: MatchCandidate, onPick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onPick)
+            .heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(c.name + (c.brand?.let { " · $it" } ?: ""), color = cs.onSurface, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            c.food?.takeIf { it.calories > 0f }?.let { f ->
+                Text("${com.bytelog.app.ui.logging.Portion(f.servingSize, f.servingUnit).label} · ${f.calories.toInt()} kcal · P ${f.protein.toInt()} g", color = cs.onSurfaceVariant, fontSize = 12.sp, maxLines = 1)
+            }
+        }
+        if (c.onList) Text("on list", color = cs.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** A new food for a receipt line: typed in, made by Sparky's AI from its name, or read from its label. */
+@Composable
+private fun CreateFood(
+    f: ReceiptViewModel.NewFood,
+    onChange: (ReceiptViewModel.NewFood) -> Unit,
+    onSave: () -> Unit,
+    onAi: () -> Unit,
+    onLabel: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    @Composable
+    fun field(label: String, value: String, modifier: Modifier, number: Boolean = false, set: (String) -> Unit) = OutlinedTextField(
+        value = value, onValueChange = set, label = { Text(label) }, singleLine = true, modifier = modifier,
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+            keyboardType = if (number) androidx.compose.ui.text.input.KeyboardType.Decimal else androidx.compose.ui.text.input.KeyboardType.Text,
+            capitalization = if (number) androidx.compose.ui.text.input.KeyboardCapitalization.None else androidx.compose.ui.text.input.KeyboardCapitalization.Words
+        )
+    )
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("New food", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        field("Name", f.name, Modifier.fillMaxWidth()) { onChange(f.copy(name = it)) }
+        field("Brand (optional)", f.brand, Modifier.fillMaxWidth()) { onChange(f.copy(brand = it)) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            field("Serving", f.servingSize, Modifier.weight(1f), number = true) { onChange(f.copy(servingSize = it)) }
+            field("Unit", f.servingUnit, Modifier.weight(1f)) { onChange(f.copy(servingUnit = it)) }
+            field("Calories", f.calories, Modifier.weight(1.1f), number = true) { onChange(f.copy(calories = it)) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            field("Protein g", f.protein, Modifier.weight(1f), number = true) { onChange(f.copy(protein = it)) }
+            field("Carbs g", f.carbs, Modifier.weight(1f), number = true) { onChange(f.copy(carbs = it)) }
+            field("Fat g", f.fat, Modifier.weight(1f), number = true) { onChange(f.copy(fat = it)) }
+        }
+        f.problem?.takeIf { f.calories.isNotBlank() || f.name.isBlank() }?.let { Text(it, color = cs.error, fontSize = 12.sp) }
+        ActionRow {
+            if (f.problem == null) Action("Save food", primary = true, onClick = onSave)
+            if (f.name.isNotBlank()) Action("Fill in with Sparky AI", primary = f.problem != null, onClick = onAi)
+            Action("Scan its label", onClick = onLabel)
+            Action("Cancel", onClick = onCancel)
+        }
+        Text("Saved to your foods in Sparky. Sparky's AI estimates the nutrition from the name if you'd rather not type it.", color = cs.onSurfaceVariant, fontSize = 11.sp)
     }
 }
