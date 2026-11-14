@@ -148,7 +148,9 @@ fun DiaryScreen(
     /** Opens the shopping list for planned food. */
     onOpenShoppingList: () -> Unit = {},
     /** Opens the meal planner. */
-    onOpenPlanner: () -> Unit = {}
+    onOpenPlanner: () -> Unit = {},
+    /** Prices from a receipt. */
+    onScanReceipt: () -> Unit = {}
 ) {
     var copyPlanFrom by remember { mutableStateOf<List<com.bytelog.app.data.local.model.PlannedEntry>?>(null) }
     val family by (familyViewModel?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(com.bytelog.app.ui.viewmodel.FamilyState(loading = false)) }).collectAsState()
@@ -561,7 +563,7 @@ fun DiaryScreen(
                         com.bytelog.app.data.repository.HomeSection.SHOPPING -> {
                             item(key = "shopping") {
                                 com.bytelog.app.ui.diary.ShoppingHomeCard(
-                                    list = weekShopping.first, checked = weekShopping.second, onOpen = onOpenShoppingList,
+                                    list = weekShopping.first, checked = weekShopping.second, onOpen = onOpenShoppingList, onScanReceipt = onScanReceipt,
                                     modifier = Modifier.homeItem(this, listState, "shopping")
                                 )
                             }

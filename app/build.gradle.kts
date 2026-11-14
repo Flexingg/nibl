@@ -127,6 +127,7 @@ dependencies {
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
     implementation(libs.mlkit.barcode)
+    implementation(libs.mlkit.text)
     implementation(libs.guava)
 
     // DataStore & WorkManager

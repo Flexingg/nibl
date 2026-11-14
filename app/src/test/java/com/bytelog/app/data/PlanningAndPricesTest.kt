@@ -237,4 +237,55 @@ class PlanningAndPricesTest {
         val next = waitFor({ vm.state.value }) { it.page == 1 }
         assertEquals(today.plusDays(7), next.from)
     }
+
+    @Test fun aReceiptBecomesPricesOnTheMatchedFoods() = runBlocking {
+        db.foodDao().insertFood(FoodItem("f-chicken", "Chicken Breast", servingSize = 100f, servingUnit = "g", calories = 165f))
+        db.foodDao().insertFood(FoodItem("f-banana", "Banana", servingSize = 118f, servingUnit = "g", calories = 105f, householdServings = com.bytelog.app.recipes.HouseholdServings.encode(listOf(com.bytelog.app.recipes.HouseholdServing("medium", 1f)))))
+        plans.plan(listOf(
+            FoodEntry("y", yogurtId, "Greek Yogurt", "Fage", "breakfast", "Breakfast", 1f, "serving", 150f, 15f, 6f, 5f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT),
+            FoodEntry("c", "f-chicken", "Chicken Breast", null, "dinner", "Dinner", 200f, "g", 330f, 62f, 0f, 7f, day(2), FoodEntry.SYNC_STATUS_PENDING_INSERT),
+            FoodEntry("b", "f-banana", "Banana", null, "snacks", "Snacks", 1f, "medium", 105f, 1f, 27f, 0f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT)
+        ))
+        val vm = com.bytelog.app.ui.viewmodel.ReceiptViewModel(
+            { Result.success(emptyList()) }, prices, plans, foods
+        )
+        val lines = """
+            COSTCO WHOLESALE
+            E 1234567 KS GRK YOG 32OZ   4.99 N
+            E 987654 CHKN BRST BNLS 3LB   12.99 N
+            BANANAS 3 CT  0.75
+            E 44444 PAPER TOWELS   19.99
+            TOTAL  38.72
+        """.trimIndent().lines().map { com.bytelog.app.data.receipts.OcrLine(it) }
+        vm.review(lines)
+        val s = vm.state.value
+        assertEquals(com.bytelog.app.ui.viewmodel.ReceiptViewModel.Phase.Review, s.phase)
+        assertEquals("Costco", s.store)
+        assertEquals(listOf("Greek Yogurt", "Chicken Breast", "Banana", null), s.lines.map { it.match?.name })
+        // Paper towels match nothing and are switched off
+        assertFalse(s.lines[3].include)
+
+        val yog = s.lines[0].draft
+        assertEquals("4.99", yog.price); assertEquals("32", yog.quantity); assertEquals("oz", yog.unit)
+        // 3 lb isn't one of the chicken's units, so it's put in one that is
+        val chicken = s.lines[1].draft
+        assertEquals("12.99", chicken.price); assertEquals("g", chicken.unit); assertEquals(1360.78f, chicken.quantity.toFloat(), 0.5f)
+        // Bananas by the count: 3 for 0.75 is 0.25 for 1 medium
+        val banana = s.lines[2].draft
+        assertEquals("0.75", banana.price); assertEquals("3", banana.quantity); assertEquals("medium", banana.unit)
+        assertEquals(3, s.ready.size)
+
+        // Saving puts store and price on each food: on Sparky for the yogurt (a Sparky food), on the phone for the rest
+        vm.save()
+        val done = waitFor({ vm.state.value.phase }) { it is com.bytelog.app.ui.viewmodel.ReceiptViewModel.Phase.Done } as com.bytelog.app.ui.viewmodel.ReceiptViewModel.Phase.Done
+        assertEquals(3, done.saved); assertEquals(1, done.onSparky)
+        assertTrue(puts.single().contains("\"nibl_store\":\"Costco\""))
+        assertEquals(0.75f, prices.get("f-banana", "Banana", null)!!.price)
+        assertEquals("Costco", prices.get("f-chicken", "Chicken Breast", null)!!.store)
+
+        // And the shopping list prices the plan from them: 200 g of chicken is one 3 lb pack
+        val list = ShoppingListViewModel(plans, prices, foods)
+        val chickenItem = waitFor({ list.state.value }) { st -> st.list.items.any { it.name == "Chicken Breast" && it.cost != null } }.list.items.first { it.name == "Chicken Breast" }
+        assertEquals(12.99, chickenItem.cost!!, 0.001)
+    }
 }
