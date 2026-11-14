@@ -66,6 +66,8 @@ import com.bytelog.app.ui.components.ScreenHeader
 import com.bytelog.app.ui.components.rememberScrollFraction
 import com.bytelog.app.ui.theme.fluidBackdrop
 import com.bytelog.app.ui.viewmodel.ShoppingListViewModel
+import androidx.compose.ui.semantics.customActions
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -84,6 +86,15 @@ fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onS
     val list = rememberLazyListState()
     val snackbar = remember { SnackbarHostState() }
     var editing by remember { mutableStateOf<ShoppingItem?>(null) }
+    var showRemoved by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun removeWithUndo(i: ShoppingItem) {
+        viewModel.remove(i)
+        scope.launch {
+            val r = snackbar.showSnackbar("Took ${i.name} off the list", actionLabel = "Undo", duration = androidx.compose.material3.SnackbarDuration.Short)
+            if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.remove(i, removed = false)
+        }
+    }
 
     LaunchedEffect(message) { message?.let { snackbar.showSnackbar(it); viewModel.messageShown() } }
 
@@ -131,9 +142,11 @@ fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onS
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = cs.primary, modifier = Modifier.size(32.dp))
-                        Text("Nothing planned for these days", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        val done = s.removed.isNotEmpty()
+                        Text(if (done) "All done" else "Nothing planned for these days", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "Plan food for the days ahead from the home screen, or ask the chat for a meal plan, and it shows up here.",
+                            if (done) "Everything planned is bought or already in the cupboard."
+                            else "Plan food for the days ahead from the home screen, or ask the chat for a meal plan, and it shows up here.",
                             color = cs.onSurfaceVariant, fontSize = 13.sp
                         )
                     }
@@ -149,7 +162,9 @@ fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onS
                 val ranked = s.list.items.sortedByDescending { it.value?.perDollar(metric) ?: -1f }
                 val best = ranked.firstOrNull()?.value?.perDollar(metric)?.takeIf { it > 0f }
                 items(ranked, key = { it.key }) { i ->
-                    ItemRow(i, i.key in s.checked, onToggle = { viewModel.toggle(i) }, onPrice = { editing = i }, metric = metric, best = best)
+                    SwipeOff(i, onRemove = { removeWithUndo(i) }) {
+                        ItemRow(i, i.key in s.checked, onToggle = { viewModel.toggle(i) }, onPrice = { editing = i }, metric = metric, best = best)
+                    }
                 }
             } else s.list.byStore.forEach { (store, items) ->
                 item(key = "store:${store ?: ""}") {
@@ -162,11 +177,66 @@ fun ShoppingListScreen(viewModel: ShoppingListViewModel, onBack: () -> Unit, onS
                     }
                 }
                 items.forEach { i ->
-                    item(key = i.key) { ItemRow(i, i.key in s.checked, onToggle = { viewModel.toggle(i) }, onPrice = { editing = i }) }
+                    item(key = i.key) {
+                        SwipeOff(i, onRemove = { removeWithUndo(i) }) {
+                            ItemRow(i, i.key in s.checked, onToggle = { viewModel.toggle(i) }, onPrice = { editing = i })
+                        }
+                    }
+                }
+            }
+            if (s.removed.isNotEmpty()) {
+                item(key = "removed") {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            (if (showRemoved) "Hide" else "Show") + " ${s.removed.size} taken off the list",
+                            color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).clickable(role = Role.Button) { showRemoved = !showRemoved }.padding(horizontal = 4.dp, vertical = 10.dp)
+                        )
+                        if (showRemoved) s.removed.forEach { r ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainer.copy(alpha = 0.6f)).padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(r.name, color = cs.onSurfaceVariant, fontSize = 14.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, textDecoration = TextDecoration.LineThrough)
+                                Text(
+                                    "Put back", color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clip(RoundedCornerShape(50)).clickable(role = Role.Button) { viewModel.remove(r, removed = false) }.padding(horizontal = 10.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+/** Swipe an item either way to take it off the list: bought, or already in the cupboard. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeOff(item: ShoppingItem, onRemove: () -> Unit, content: @Composable () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val state = androidx.compose.material3.rememberSwipeToDismissBoxState(
+        confirmValueChange = { v -> if (v != androidx.compose.material3.SwipeToDismissBoxValue.Settled) { onRemove(); true } else false },
+        positionalThreshold = { it * 0.35f }
+    )
+    androidx.compose.material3.SwipeToDismissBox(
+        state = state,
+        modifier = Modifier.semantics {
+            customActions = listOf(androidx.compose.ui.semantics.CustomAccessibilityAction("Take ${item.name} off the list") { onRemove(); true })
+        },
+        backgroundContent = {
+            val toEnd = state.dismissDirection == androidx.compose.material3.SwipeToDismissBoxValue.StartToEnd
+            Row(
+                Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)).background(cs.tertiaryContainer).padding(horizontal = 20.dp),
+                horizontalArrangement = if (toEnd) Arrangement.Start else Arrangement.End, verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = cs.onTertiaryContainer)
+                Spacer(Modifier.width(8.dp))
+                Text(if (toEnd) "Bought it" else "Have it", color = cs.onTertiaryContainer, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    ) { content() }
 }
 
 private fun rangeLabel(from: String, to: String): String = runCatching {
@@ -205,9 +275,9 @@ private fun Summary(s: ShoppingListViewModel.State, onClearTicks: () -> Unit) {
                     color = cs.onSurfaceVariant, fontSize = 13.sp
                 )
             }
-            if (s.checked.isNotEmpty()) {
+            if (s.checked.isNotEmpty() || s.removed.isNotEmpty()) {
                 Text(
-                    "Clear ticks", color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    if (s.removed.isNotEmpty()) "Reset list" else "Clear ticks", color = cs.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.clip(RoundedCornerShape(50)).clickable(role = Role.Button, onClick = onClearTicks).padding(horizontal = 10.dp, vertical = 8.dp)
                 )
             }

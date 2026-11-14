@@ -391,7 +391,9 @@ class DiaryViewModel(
         prices?.checks ?: kotlinx.coroutines.flow.flowOf(emptyList())
     ) { (list, foods), pr, ch ->
         val byKey = pr.associateBy { it.key }
-        com.bytelog.app.data.repository.ShoppingList.build(list, priceOf = { byKey[it] }, foodOf = { foods[it] }) to ch.map { it.key }.toSet()
+        val (ticked, removed) = com.bytelog.app.data.repository.PriceRepository.split(ch)
+        val built = com.bytelog.app.data.repository.ShoppingList.build(list, priceOf = { byKey[it] }, foodOf = { foods[it] })
+        com.bytelog.app.data.repository.ShoppingListResult(built.items.filter { it.key !in removed }) to ticked
     }.stateIn(viewModelScope, SharingStarted.Eagerly, com.bytelog.app.data.repository.ShoppingListResult(emptyList()) to emptySet())
 
     /** Ticks planned food off: logged on its day. */

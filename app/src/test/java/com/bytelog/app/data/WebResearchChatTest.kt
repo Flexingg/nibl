@@ -247,6 +247,59 @@ class WebResearchChatTest {
         assertEquals(1, db.plannedEntryDao().forDate("2026-11-16").first().size)
     }
 
+    @Test fun theChatChangesThePlanWithAnApplyAndAnUndo() = runBlocking {
+        val tomorrow = java.time.LocalDate.of(2026, 11, 15).toString()
+        val plans = com.bytelog.app.data.repository.PlanRepository(db.plannedEntryDao(), FoodRepository(db.foodDao(), db.foodEntryDao(), db.mealTypeDao(), SparkyApiClient(baseUrl = server.url("").toString().trimEnd('/'), apiKey = "k"), settings, scope, db.prepBatchDao()))
+        db.plannedEntryDao().insert(listOf(
+            com.bytelog.app.data.local.model.PlannedEntry("aaaaaaaa-0000-0000-0000-000000000001", null, "Salmon", null, "dinner", "Dinner", 150f, "g", 310f, 34f, 0f, 18f, tomorrow),
+            com.bytelog.app.data.local.model.PlannedEntry("bbbbbbbb-0000-0000-0000-000000000002", null, "Oats", null, "breakfast", "Breakfast", 40f, "g", 150f, 5f, 27f, 3f, tomorrow)
+        ))
+        val content = "Swapped tomorrow's salmon for chicken.\n\n```nibl-plan-edit\n" +
+            """{"changes":[{"op":"remove","ref":"aaaaaaaa"},{"op":"add","date":"$tomorrow","meal":"Dinner","food":"Chicken Breast","quantity":150,"unit":"g","calories":248,"protein":46,"carbs":0,"fat":5}]}""" +
+            "\n```"
+        sparkyAiReplies.add("""{"content":${kotlinx.serialization.json.JsonPrimitive(content)},"executedTools":[]}""")
+
+        chat.sendMessage("Swap tomorrow's dinner for something cheaper")
+
+        // Sparky's AI was shown the plan with refs; the user's message reads as typed
+        val sent = sparkyAiRequests.single()
+        assertTrue(sent.contains("aaaaaaaa: $tomorrow"))
+        assertTrue(sent.contains("nibl-plan-edit"))
+        assertEquals("Swap tomorrow's dinner for something cheaper", chat.messages.value.first { it.role == "user" }.content)
+
+        val answer = chat.messages.value.last()
+        assertEquals("Swapped tomorrow's salmon for chicken.", answer.content)
+        assertEquals(2, answer.planEditLines.size)
+        // Nothing changes until it's applied
+        assertEquals(listOf("Salmon", "Oats").sorted(), db.plannedEntryDao().forDate(tomorrow).first().map { it.foodName }.sorted())
+
+        assertEquals(2, chat.applyPlanEdit(answer.id))
+        assertEquals(listOf("Chicken Breast", "Oats"), db.plannedEntryDao().forDate(tomorrow).first().map { it.foodName }.sorted())
+        assertTrue(chat.messages.value.last().planEditApplied)
+
+        chat.undoPlanEdit(answer.id)
+        assertEquals(listOf("Oats", "Salmon"), db.plannedEntryDao().forDate(tomorrow).first().map { it.foodName }.sorted())
+        assertFalse(chat.messages.value.last().planEditApplied)
+        assertTrue(plans.upcoming(java.time.LocalDate.of(2026, 11, 14)).isNotEmpty())
+    }
+
+    @Test fun theWebAssistantReadsAndEditsThePlan() = runBlocking {
+        val tomorrow = "2026-11-15"
+        db.plannedEntryDao().insert(listOf(
+            com.bytelog.app.data.local.model.PlannedEntry("cccccccc-0000-0000-0000-000000000003", null, "Pasta", null, "lunch", "Lunch", 1f, "serving", 600f, 20f, 100f, 10f, tomorrow)
+        ))
+        reply("""{"content":[{"type":"tool_use","id":"t1","name":"get_planned_meals","input":{}}],"stop_reason":"tool_use"}""")
+        reply("""{"content":[{"type":"tool_use","id":"t2","name":"edit_plan","input":{"changes":[{"op":"update","ref":"cccccccc","quantity":0.5,"calories":300,"protein":10,"carbs":50,"fat":5}]}}],"stop_reason":"tool_use"}""")
+        reply("""{"content":[{"type":"text","text":"Halved tomorrow's pasta. Tap Apply."}],"stop_reason":"end_turn"}""")
+        chat.sendMessage("Halve tomorrow's lunch in my plan", webResearch = true)
+        assertTrue(modelRequests.toList()[1].contains("cccccccc: $tomorrow"))
+        val answer = chat.messages.value.last()
+        assertEquals(1, answer.planEditLines.size)
+        chat.applyPlanEdit(answer.id)
+        val pasta = db.plannedEntryDao().forDate(tomorrow).first().single()
+        assertEquals(0.5f, pasta.quantity); assertEquals(300f, pasta.calories)
+    }
+
     // --- Hand-off to Sparky's own AI ---
 
     @Test fun theWebModelHandsItsFindingsToSparkyAiWhichLogsThem() = runBlocking {

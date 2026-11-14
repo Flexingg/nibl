@@ -107,7 +107,8 @@ import kotlinx.coroutines.launch
 fun SparkyChatScreen(
     viewModel: SparkyChatViewModel,
     onNavigateBack: () -> Unit,
-    onOpenShoppingList: () -> Unit = {}
+    onOpenShoppingList: () -> Unit = {},
+    onOpenPlanner: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -598,6 +599,14 @@ fun SparkyChatScreen(
                         }
                     },
                     onShoppingList = onOpenShoppingList,
+                    onOpenPlanner = onOpenPlanner,
+                    onApplyEdit = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.applyPlanEdit(message.id) { n ->
+                            scope.launch { snackbarHostState.showSnackbar(if (n == null) "Couldn't change the plan" else "Plan updated: $n food${if (n == 1) "" else "s"} changed") }
+                        }
+                    },
+                    onUndoEdit = { viewModel.undoPlanEdit(message.id) },
                     onAddPlan = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         viewModel.addPlan(message.id) { summary ->
@@ -635,7 +644,10 @@ fun ChatMessageBubble(
     onCopy: (String) -> Unit,
     onEdit: (ChatMessageOutput) -> Unit,
     onAddPlan: () -> Unit = {},
-    onShoppingList: () -> Unit = {}
+    onShoppingList: () -> Unit = {},
+    onApplyEdit: () -> Unit = {},
+    onUndoEdit: () -> Unit = {},
+    onOpenPlanner: (() -> Unit)? = null
 ) {
     val isUser = message.role == "user"
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -855,6 +867,14 @@ fun ChatMessageBubble(
                     Spacer(modifier = Modifier.height(8.dp))
                     com.bytelog.app.ui.components.MealPlanCard(plan, added = message.planAdded, onAdd = onAddPlan, onShoppingList = onShoppingList)
                 }
+            }
+
+            // Changes to the meal plan, ready to apply
+            if (!isUser && message.planEdit != null && message.planEditLines.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                com.bytelog.app.ui.components.PlanEditCard(
+                    message.planEditLines, applied = message.planEditApplied, onApply = onApplyEdit, onUndo = onUndoEdit, onOpenPlanner = onOpenPlanner
+                )
             }
 
             // Executed tool execution badges (excluding sparky_ask_user which renders interactive chips)

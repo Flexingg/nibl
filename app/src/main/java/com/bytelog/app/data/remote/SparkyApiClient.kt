@@ -2496,7 +2496,13 @@ data class ChatMessageOutput(
     /** A meal plan in the answer, which the user can add to their Planned list. */
     val mealPlan: com.bytelog.app.data.repository.MealPlanDraft? = null,
     /** Set once that plan has been added. */
-    val planAdded: Boolean = false
+    val planAdded: Boolean = false,
+    /** Changes to the plan in the answer, which the user can apply. */
+    val planEdit: com.bytelog.app.data.repository.PlanEditDraft? = null,
+    /** Those changes as they read, against the plan when the answer came. */
+    val planEditLines: List<com.bytelog.app.data.repository.PlanChangeLine> = emptyList(),
+    /** Set once the changes have been applied (and cleared again by an undo). */
+    val planEditApplied: Boolean = false
 )
 
 @kotlinx.serialization.Serializable

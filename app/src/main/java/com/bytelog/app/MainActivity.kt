@@ -258,7 +258,8 @@ fun ByteLogNavHost(
                 viewModel = vm,
                 onBack = { navController.popBackStack() },
                 onAddFood = { date, mealId, mealName -> navController.navigate("search/$mealId/$mealName/$date?plan=true") },
-                onShoppingList = { navController.navigate("shopping") { launchSingleTop = true } }
+                onShoppingList = { navController.navigate("shopping") { launchSingleTop = true } },
+                onAskChat = { navController.navigate(NavMotion.CHAT) { launchSingleTop = true } }
             )
         }
 
@@ -507,7 +508,8 @@ fun ByteLogNavHost(
             SparkyChatScreen(
                 viewModel = chatViewModel,
                 onNavigateBack = { navController.popBackStack() },
-                onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } }
+                onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } },
+                onOpenPlanner = { navController.navigate("planner") { launchSingleTop = true } }
             )
         }
     }

@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
@@ -90,7 +91,9 @@ fun MealPlannerScreen(
     viewModel: MealPlannerViewModel,
     onBack: () -> Unit,
     onAddFood: (date: String, mealTypeId: String, mealName: String) -> Unit,
-    onShoppingList: () -> Unit
+    onShoppingList: () -> Unit,
+    /** Opens the chat, to have the assistant change the plan. */
+    onAskChat: (() -> Unit)? = null
 ) {
     val s by viewModel.state.collectAsState()
     val cs = MaterialTheme.colorScheme
@@ -131,6 +134,7 @@ fun MealPlannerScreen(
             ScreenHeader(
                 title = "Meal plan", subtitle = rangeLabel(s.from, s.to), onBack = onBack, fraction = rememberScrollFraction(list),
                 actions = {
+                    onAskChat?.let { ask -> IconButton(onClick = ask) { Icon(Icons.Default.AutoAwesome, contentDescription = "Ask the assistant to change the plan", tint = cs.onSurface) } }
                     IconButton(onClick = onShoppingList) { Icon(Icons.Default.ShoppingCart, contentDescription = "Shopping list", tint = cs.onSurface) }
                     IconButton(onClick = { showSettings = !showSettings }) { Icon(Icons.Default.Tune, contentDescription = "Planner settings", tint = if (showSettings) cs.primary else cs.onSurface) }
                 }

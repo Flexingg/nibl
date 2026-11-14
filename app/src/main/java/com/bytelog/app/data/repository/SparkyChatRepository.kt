@@ -134,10 +134,13 @@ class SparkyChatRepository(
         // Prepare context for backend chat. A meal plan request carries a note asking Sparky's AI to attach the plan in
         // a form Nibl can save, since Sparky can't save day-by-day plans itself.
         val asksForPlan = planRepository != null && MealPlan.wantsPlan(trimmed)
+        // A change to the plan: Sparky's AI is shown what's planned (it can't see the plan) and asked for the changes
+        val planned = if (planRepository != null && PlanEdits.wantsEdit(trimmed)) runCatching { planRepository?.upcoming(today()) }.getOrNull().orEmpty() else emptyList()
+        val editNote = if (planned.isNotEmpty()) PlanEdits.formatNote(planned, today()) else ""
         val payloadMessages = currentList.filter { it.id != "welcome" }.map {
             ChatMessageInput(
                 role = it.role,
-                content = if (asksForPlan && it.id == userMessage.id) it.content + MealPlan.formatNote(today()) else it.content,
+                content = if (it.id == userMessage.id) it.content + (if (asksForPlan) MealPlan.formatNote(today()) else "") + editNote else it.content,
                 imageBase64 = it.imageBase64
             )
         }
@@ -148,7 +151,7 @@ class SparkyChatRepository(
         _isLoading.value = false
 
         if (result.isSuccess) {
-            val response = result.getOrNull()?.let(::withPlan)
+            val response = result.getOrNull()?.let { withPlan(it) }
             if (response != null) {
                 val updated = _messages.value.toMutableList()
                 updated.add(response)
@@ -217,7 +220,8 @@ class SparkyChatRepository(
             confirm = { action -> askUser(action) },
             onProgress = { _researchStatus.value = it },
             // Logging goes through Sparky's own AI, which the assistant can talk to as often as it needs.
-            sparkyAi = sparkyAiBackend ?: com.bytelog.app.research.ChatSparkyAiBackend(sparkyApiClient)
+            sparkyAi = sparkyAiBackend ?: com.bytelog.app.research.ChatSparkyAiBackend(sparkyApiClient),
+            planReader = planRepository?.let { repo -> { repo.upcoming(today()) } }
         )
         val history = priorMessages.filter { it.id != "welcome" && it.content.isNotBlank() }.takeLast(12)
             .map { com.bytelog.app.research.ChatTurn(fromUser = it.role == "user", text = it.content) }
@@ -235,6 +239,11 @@ class SparkyChatRepository(
             onSuccess = { r ->
                 val body = if (r.notice != null && r.text != r.notice) r.text + "\n\n_${r.notice}_" else r.text
                 addAssistant(body, viaWeb = true, sources = r.sources, tools = r.sparkyToolsRun + r.delegatedTools.map { "sparky_ai:$it" }, plan = r.mealPlan)
+                r.planEdit?.let { edit ->
+                    val last = _messages.value.last()
+                    val withCard = withEdit(last, edit)
+                    _messages.value = _messages.value.dropLast(1) + withCard
+                }
                 if (r.wroteData) {
                     val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                     appScope.launch(Dispatchers.IO) {
@@ -280,10 +289,41 @@ class SparkyChatRepository(
     }
 
     /** An answer with its meal plan block (if any) read into a plan and taken out of the text. */
-    private fun withPlan(m: ChatMessageOutput): ChatMessageOutput {
+    /** An answer with its meal plan and plan changes (if any) read into cards and taken out of the text. */
+    private suspend fun withPlan(m: ChatMessageOutput): ChatMessageOutput {
         if (m.role != "assistant" || planRepository == null) return m
-        val plan = MealPlan.parse(m.content, today()) ?: return m
-        return m.copy(content = MealPlan.stripBlock(m.content), mealPlan = plan)
+        var out = m
+        MealPlan.parse(out.content, today())?.let { plan -> out = out.copy(content = MealPlan.stripBlock(out.content), mealPlan = plan) }
+        PlanEdits.parse(out.content, today())?.let { edit -> out = withEdit(out.copy(content = PlanEdits.stripBlock(out.content)), edit) }
+        return out
+    }
+
+    private suspend fun withEdit(m: ChatMessageOutput, edit: PlanEditDraft): ChatMessageOutput {
+        val planned = runCatching { planRepository?.upcoming(today()) }.getOrNull().orEmpty()
+        return m.copy(planEdit = edit, planEditLines = PlanEdits.describe(edit, planned))
+    }
+
+    /** What applying each message's plan changes did, for its undo. */
+    private val appliedEdits = HashMap<String, AppliedPlanEdit>()
+
+    /** Applies the plan changes in message [messageId]. Returns how many foods changed, or null if there were none. */
+    suspend fun applyPlanEdit(messageId: String): Int? {
+        val repo = planRepository ?: return null
+        val msg = _messages.value.firstOrNull { it.id == messageId } ?: return null
+        val edit = msg.planEdit ?: return null
+        if (msg.planEditApplied) return 0
+        val applied = repo.applyEdit(edit, today())
+        appliedEdits[messageId] = applied
+        _messages.value = _messages.value.map { if (it.id == messageId) it.copy(planEditApplied = true) else it }
+        return applied.count
+    }
+
+    /** Undoes [applyPlanEdit] for the message. */
+    suspend fun undoPlanEdit(messageId: String) {
+        val repo = planRepository ?: return
+        val applied = appliedEdits.remove(messageId) ?: return
+        repo.undoEdit(applied)
+        _messages.value = _messages.value.map { if (it.id == messageId) it.copy(planEditApplied = false) else it }
     }
 
     /** Adds the meal plan in message [messageId] to the Planned list. Returns a summary, or null if there's none. */

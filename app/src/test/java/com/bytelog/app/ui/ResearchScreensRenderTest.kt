@@ -189,6 +189,31 @@ class ResearchScreensRenderTest {
         shot("28-chat-meal-plan-light")
     }
 
+    @Test fun planChangesInTheChat() {
+        val lines = listOf(
+            com.bytelog.app.data.repository.PlanChangeLine(com.bytelog.app.data.repository.PlanChangeLine.Kind.REMOVE, "Remove Salmon · Sun dinner"),
+            com.bytelog.app.data.repository.PlanChangeLine(com.bytelog.app.data.repository.PlanChangeLine.Kind.ADD, "Add Chicken Breast · Sun dinner · 150 g, 248 kcal"),
+            com.bytelog.app.data.repository.PlanChangeLine(com.bytelog.app.data.repository.PlanChangeLine.Kind.UPDATE, "Greek Yogurt · Mon breakfast: 1 serving → 2 servings")
+        )
+        val edit = com.bytelog.app.data.repository.PlanEditDraft(listOf(com.bytelog.app.data.repository.PlanChange.Remove("x")))
+        var applied by androidx.compose.runtime.mutableStateOf(false)
+        compose.setContent {
+            ByteLogTheme(darkTheme = false, dynamicColor = false) {
+                Column(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background).padding(16.dp)) {
+                    ChatMessageBubble(
+                        com.bytelog.app.data.remote.ChatMessageOutput(content = "Swapped Sunday's salmon for chicken breast (cheaper, more protein) and doubled Monday's yogurt.", planEdit = edit, planEditLines = lines, planEditApplied = applied),
+                        onCopy = {}, onEdit = {}, onApplyEdit = { applied = true }, onUndoEdit = { applied = false }, onOpenPlanner = {}
+                    )
+                }
+            }
+        }
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Apply changes"), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("29-chat-plan-changes")
+        compose.onNodeWithText("Apply changes").performClick()
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Applied to your plan"), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("29b-chat-plan-changes-applied")
+    }
+
     @Test fun lightModeChat() {
         compose.setContent { ByteLogTheme(darkTheme = false, dynamicColor = false) { SparkyChatScreen(SparkyChatViewModel(chat), onNavigateBack = {}) } }
         waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Web search"), true).fetchSemanticsNodes().isNotEmpty() }

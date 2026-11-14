@@ -62,6 +62,29 @@ class PlanRepository(private val dao: PlannedEntryDao, private val foods: FoodRe
         return entries
     }
 
+    /** What's planned from yesterday to [PlanEdits.DAYS] days ahead: what the chat can see and change. */
+    suspend fun upcoming(today: LocalDate = LocalDate.now()): List<PlannedEntry> =
+        dao.between(today.minusDays(1).toString(), today.plusDays(PlanEdits.DAYS.toLong()).toString()).first()
+
+    /** Applies changes the assistant proposed, against what's planned now. Returns what changed, for an undo. */
+    suspend fun applyEdit(draft: PlanEditDraft, today: LocalDate = LocalDate.now()): AppliedPlanEdit {
+        val planned = upcoming(today)
+        val foodsById = foods.foodsByIds(planned.mapNotNull { it.foodId }.distinct()).associateBy { it.id }
+        val types = foods.getAllMealTypes().first()
+        val edit = PlanEdits.plan(draft, planned, types) { foodsById[it] }
+        // New foods use your saved food where you have it
+        val added = edit.added.map { e -> e.copy(foodId = foods.savedFoodId(e.foodName, e.brandName)) }
+        if (edit.removed.isNotEmpty()) dao.delete(edit.removed.map { it.id })
+        if (edit.after.isNotEmpty() || added.isNotEmpty()) dao.insert(edit.after + added)
+        return edit.copy(added = added)
+    }
+
+    /** Puts the plan back as it was before [edit]. */
+    suspend fun undoEdit(edit: AppliedPlanEdit) {
+        if (edit.added.isNotEmpty()) dao.delete(edit.added.map { it.id })
+        if (edit.removed.isNotEmpty() || edit.before.isNotEmpty()) dao.insert(edit.removed + edit.before)
+    }
+
     /** Saves a change to planned food (amount, meal or day). */
     suspend fun update(entries: List<PlannedEntry>) = dao.insert(entries)
 

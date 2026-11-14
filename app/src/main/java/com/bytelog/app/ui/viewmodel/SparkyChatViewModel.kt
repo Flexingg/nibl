@@ -20,7 +20,8 @@ class SparkyChatViewModel(
         "What are my remaining calories and protein today?",
         "Log my weight as 175.5 lbs",
         "Give me a high protein snack under 200 calories",
-        "Make me a meal plan for the next 3 days"
+        "Make me a meal plan for the next 3 days",
+        "Swap tomorrow's dinner in my plan for something cheaper with more protein"
     )
 
     val researchStatus: StateFlow<String?> = chatRepository.researchStatus
@@ -46,6 +47,15 @@ class SparkyChatViewModel(
         viewModelScope.launch {
             done(runCatching { chatRepository.addPlan(messageId) }.getOrNull())
         }
+    }
+
+    /** Applies a message's plan changes; [done] gets how many foods changed. */
+    fun applyPlanEdit(messageId: String, done: (Int?) -> Unit = {}) {
+        viewModelScope.launch { done(runCatching { chatRepository.applyPlanEdit(messageId) }.getOrNull()) }
+    }
+
+    fun undoPlanEdit(messageId: String) {
+        viewModelScope.launch { runCatching { chatRepository.undoPlanEdit(messageId) } }
     }
 
     fun clearHistory() {

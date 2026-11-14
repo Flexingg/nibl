@@ -368,4 +368,26 @@ class PlanningAndPricesTest {
         assertNull(vm.nextToCheck())
         assertEquals(3, vm.state.value.ready.size)
     }
+
+    @Test fun swipingTakesThingsOffTheShoppingList() = runBlocking {
+        plans.plan(listOf(
+            FoodEntry("y", yogurtId, "Greek Yogurt", "Fage", "breakfast", "Breakfast", 1f, "serving", 150f, 15f, 6f, 5f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT),
+            FoodEntry("w", null, "Wrap", null, "lunch", "Lunch", 1f, "serving", 400f, 20f, 40f, 15f, day(1), FoodEntry.SYNC_STATUS_PENDING_INSERT)
+        ))
+        val vm = ShoppingListViewModel(plans, prices, foods)
+        val s = waitFor({ vm.state.value }) { it.list.items.size == 2 }
+        vm.remove(s.list.items.first { it.name == "Wrap" })
+        val after = waitFor({ vm.state.value }) { it.removed.isNotEmpty() }
+        assertEquals(listOf("Greek Yogurt"), after.list.items.map { it.name })
+        assertEquals(listOf("Wrap"), after.removed.map { it.name })
+        // Put back
+        vm.remove(after.removed.single(), removed = false)
+        waitFor({ vm.state.value }) { it.removed.isEmpty() && it.list.items.size == 2 }
+        // Reset clears ticks and removals
+        vm.remove(vm.state.value.list.items.first())
+        waitFor({ vm.state.value }) { it.removed.isNotEmpty() }
+        vm.clearChecks()
+        waitFor({ vm.state.value }) { it.removed.isEmpty() && it.list.items.size == 2 }
+        Unit
+    }
 }
