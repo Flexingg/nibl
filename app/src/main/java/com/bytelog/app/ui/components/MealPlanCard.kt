@@ -51,7 +51,7 @@ import kotlin.math.roundToInt
  * Planned list (where each food is ticked off as it's eaten).
  */
 @Composable
-fun MealPlanCard(plan: MealPlanDraft, added: Boolean, onAdd: () -> Unit, modifier: Modifier = Modifier) {
+fun MealPlanCard(plan: MealPlanDraft, added: Boolean, onAdd: () -> Unit, modifier: Modifier = Modifier, onShoppingList: (() -> Unit)? = null) {
     val shape = RoundedCornerShape(16.dp)
     var adding by remember(added) { mutableStateOf(false) }
     Column(
@@ -94,6 +94,12 @@ fun MealPlanCard(plan: MealPlanDraft, added: Boolean, onAdd: () -> Unit, modifie
             } else {
                 Text(if (adding) "Adding…" else "Add to Planned", color = androidx.compose.ui.graphics.Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
+        }
+        if (added && onShoppingList != null) {
+            Text(
+                "Open the shopping list", color = ByteTomato, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).clickable(role = Role.Button, onClick = onShoppingList).padding(vertical = 6.dp)
+            )
         }
         Text(
             if (added) "Find each day under Planned on the home screen and tick food off as you eat it."

@@ -12,6 +12,10 @@ interface PlannedEntryDao {
     @Query("SELECT * FROM planned_entries WHERE entryDate = :date ORDER BY createdAt ASC")
     fun forDate(date: String): Flow<List<PlannedEntry>>
 
+    /** Everything planned from [from] to [to] (YYYY-MM-DD, both included). */
+    @Query("SELECT * FROM planned_entries WHERE entryDate >= :from AND entryDate <= :to ORDER BY entryDate ASC, createdAt ASC")
+    fun between(from: String, to: String): Flow<List<PlannedEntry>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entries: List<PlannedEntry>)
 

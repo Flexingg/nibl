@@ -34,6 +34,7 @@ class ByteLogApplication : Application() {
     }
 
     val planRepository by lazy { com.bytelog.app.data.repository.PlanRepository(database.plannedEntryDao(), foodRepository) }
+    val priceRepository by lazy { com.bytelog.app.data.repository.PriceRepository(database.foodPriceDao(), sparkyApiClient) }
 
     val healthConnectSync by lazy {
         com.bytelog.app.health.HealthConnectSync(

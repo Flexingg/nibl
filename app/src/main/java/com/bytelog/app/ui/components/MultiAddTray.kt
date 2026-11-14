@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -88,7 +89,11 @@ fun MultiAddTray(
     /** "Log", or "Plan" when adding to a day ahead. */
     verb: String = "Log",
     /** Foods that often go with what's in the tray, between the search field and the tray's items. */
-    suggestions: (@Composable () -> Unit)? = null
+    suggestions: (@Composable () -> Unit)? = null,
+    /** Opens the picker for planning the tray on several days at once; null hides the button. */
+    onPickDays: (() -> Unit)? = null,
+    /** Days picked to plan on (0: just the day being added to). */
+    planDayCount: Int = 0
 ) {
     if (stagedEntries.isEmpty()) {
         header?.let { Box(modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 10.dp)) { it() } }
@@ -174,19 +179,29 @@ fun MultiAddTray(
             { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLogAll() },
             Modifier.weight(1f).height(56.dp),
             cs.primary,
-            description = "$verb ${stagedEntries.size} to $targetMealName"
+            description = "$verb ${stagedEntries.size} to $targetMealName" + if (planDayCount > 0) " on $planDayCount days" else ""
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Check, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    if (stagedEntries.size == 1) "$verb to $targetMealName" else "$verb ${stagedEntries.size} to $targetMealName",
-                    color = cs.onPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold
+                    (if (stagedEntries.size == 1) "$verb to $targetMealName" else "$verb ${stagedEntries.size} to $targetMealName") +
+                        (if (planDayCount > 1) " · $planDayCount days" else if (planDayCount == 1) " · 1 day" else ""),
+                    color = cs.onPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                 )
                 Box(
                     Modifier.padding(start = 10.dp).clip(RoundedCornerShape(50)).background(cs.onPrimary.copy(alpha = 0.16f))
                         .padding(horizontal = 10.dp, vertical = 3.dp)
                 ) { Text("$totalCalories kcal", color = cs.onPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+        if (onPickDays != null) {
+            MorphButton(
+                { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onPickDays() },
+                Modifier.size(56.dp), if (planDayCount > 0) cs.secondary else cs.primaryContainer, description = "Plan on several days"
+            ) {
+                Icon(Icons.Default.DateRange, contentDescription = null, tint = if (planDayCount > 0) cs.onSecondary else cs.onPrimaryContainer, modifier = Modifier.size(24.dp))
             }
         }
         if (meals.size > 1) {

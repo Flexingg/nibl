@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -48,7 +51,11 @@ fun PlannedCard(
     ahead: Boolean,
     onEat: (List<PlannedEntry>) -> Unit,
     onRemove: (PlannedEntry) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Copies the day's plan to other days; null hides the button. */
+    onCopyToDays: (() -> Unit)? = null,
+    /** Opens the shopping list for what's planned; null hides the button. */
+    onShoppingList: (() -> Unit)? = null
 ) {
     val cs = MaterialTheme.colorScheme
     val plannedKcal = planned.sumOf { it.calories.toDouble() }.toFloat()
@@ -123,10 +130,31 @@ fun PlannedCard(
                 }
             }
         }
+        if (onCopyToDays != null || onShoppingList != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                onCopyToDays?.let { PlanAction(Icons.Default.ContentCopy, "Copy to days", it, Modifier.weight(1f)) }
+                onShoppingList?.let { PlanAction(Icons.Default.ShoppingCart, "Shopping list", it, Modifier.weight(1f)) }
+            }
+        }
         Text(
             if (ahead) "Planned food doesn't count yet. On the day, tick each one off as you eat it."
             else "Tick each one off as you eat it; it's logged then.",
             color = cs.onSurfaceVariant, fontSize = 11.5.sp
         )
+    }
+}
+
+@Composable
+private fun PlanAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    Row(
+        modifier.pressBounce().clip(RoundedCornerShape(50)).background(cs.secondaryContainer)
+            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .heightIn(min = 44.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = cs.onSecondaryContainer, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = cs.onSecondaryContainer, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }

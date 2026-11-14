@@ -40,8 +40,17 @@ class FastSearchViewModel(
     private val plans: com.bytelog.app.data.repository.PlanRepository? = null
 ) : ViewModel() {
 
-    /** True when the day being added to is after today: the tray plans instead of logging. */
-    val isPlanning: Boolean get() = plans != null && com.bytelog.app.data.repository.PlanRepository.isFuture(targetDate)
+    /**
+     * Days to plan the tray on, all in one go ("the same breakfast Monday to Friday"). Empty: just the day being
+     * added to.
+     */
+    private val _planDays = MutableStateFlow<Set<String>>(emptySet())
+    val planDays: StateFlow<Set<String>> = _planDays.asStateFlow()
+    fun setPlanDays(days: Set<String>) { _planDays.value = days }
+    val canPlan: Boolean get() = plans != null
+
+    /** True when the tray plans instead of logging: adding to a day after today, or to days picked to plan. */
+    val isPlanning: Boolean get() = plans != null && (_planDays.value.isNotEmpty() || com.bytelog.app.data.repository.PlanRepository.isFuture(targetDate))
 
     var targetMealTypeId: String = "breakfast"
     var targetMealName: String = "Breakfast"
@@ -344,13 +353,16 @@ class FastSearchViewModel(
 
         viewModelScope.launch {
             val planner = plans
-            if (planner != null && isPlanning) planner.plan(entriesToCommit)
+            val days = _planDays.value
+            if (planner != null && days.isNotEmpty()) planner.planOn(entriesToCommit, days)
+            else if (planner != null && isPlanning) planner.plan(entriesToCommit)
             else {
                 foodRepository.commitMultiAdd(entriesToCommit)
                 // The diary offers to undo this once it is back on screen
                 foodRepository.pendingUndo.value = com.bytelog.app.data.repository.LoggedBatch(entriesToCommit, targetMealName)
             }
             _stagedEntries.value = emptyList()
+            _planDays.value = emptySet()
             stagedFoods.clear()
             libraryBacked.clear()
             _activeStagedId.value = null
@@ -375,7 +387,8 @@ class FastSearchViewModel(
         viewModelScope.launch {
             foodRepository.rememberFood(food)
             val planner = plans
-            if (planner != null && isPlanning) planner.plan(listOf(entry)) else foodRepository.commitMultiAdd(listOf(entry))
+            // A swipe adds to the day being added to; picked plan days are for the tray
+            if (planner != null && com.bytelog.app.data.repository.PlanRepository.isFuture(targetDate)) planner.plan(listOf(entry)) else foodRepository.commitMultiAdd(listOf(entry))
             _lastPortions.value = _lastPortions.value + (food.id to p)
             onLogged(listOf(entry))
         }

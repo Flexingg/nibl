@@ -543,6 +543,11 @@ class FoodRepository(
         return foodEntryDao.getEntriesForDate(date)
     }
 
+    /** Saved foods by id (those on the phone). */
+    suspend fun foodsByIds(ids: List<String>): List<FoodItem> = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) emptyList() else ids.chunked(500).flatMap { foodDao.getFoodsByIds(it) }
+    }
+
     /** The id of a saved food with this name and brand, if you have one. */
     suspend fun savedFoodId(name: String, brand: String?): String? = withContext(Dispatchers.IO) {
         val key = FoodSearch.identity(name, brand)

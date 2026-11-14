@@ -106,7 +106,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun SparkyChatScreen(
     viewModel: SparkyChatViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onOpenShoppingList: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -596,6 +597,7 @@ fun SparkyChatScreen(
                             snackbarHostState.showSnackbar("Message copied to clipboard")
                         }
                     },
+                    onShoppingList = onOpenShoppingList,
                     onAddPlan = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         viewModel.addPlan(message.id) { summary ->
@@ -632,7 +634,8 @@ fun ChatMessageBubble(
     onOptionSelected: (String) -> Unit = {},
     onCopy: (String) -> Unit,
     onEdit: (ChatMessageOutput) -> Unit,
-    onAddPlan: () -> Unit = {}
+    onAddPlan: () -> Unit = {},
+    onShoppingList: () -> Unit = {}
 ) {
     val isUser = message.role == "user"
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -850,7 +853,7 @@ fun ChatMessageBubble(
             message.mealPlan?.let { plan ->
                 if (!isUser) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    com.bytelog.app.ui.components.MealPlanCard(plan, added = message.planAdded, onAdd = onAddPlan)
+                    com.bytelog.app.ui.components.MealPlanCard(plan, added = message.planAdded, onAdd = onAddPlan, onShoppingList = onShoppingList)
                 }
             }
 

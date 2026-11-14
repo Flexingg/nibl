@@ -241,8 +241,17 @@ fun ByteLogNavHost(
                 onOpenFamily = { navController.navigate("family") { launchSingleTop = true } },
                 onOpenFamilyMember = { id -> navController.navigate("family/${android.net.Uri.encode(id)}") { launchSingleTop = true } },
                 openShareFor = shareRequest,
-                onShareRequestHandled = { shareRequest = null }
+                onShareRequestHandled = { shareRequest = null },
+                onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } }
             )
+        }
+
+        // 1c. What to buy for the planned food
+        page("shopping") {
+            val vm: com.bytelog.app.ui.viewmodel.ShoppingListViewModel = viewModel {
+                com.bytelog.app.ui.viewmodel.ShoppingListViewModel(app.planRepository, app.priceRepository, foodRepo)
+            }
+            com.bytelog.app.ui.screens.ShoppingListScreen(viewModel = vm, onBack = { navController.popBackStack() })
         }
 
         // 1b. Copy recent meals into the day open in the Diary (shares the Diary's view model)
@@ -382,7 +391,7 @@ fun ByteLogNavHost(
             arguments = listOf(navArgument("foodId") { type = NavType.StringType })
         ) { entry ->
             val foodId = entry.arguments?.getString("foodId").orEmpty()
-            val vm: FoodEditorViewModel = viewModel { FoodEditorViewModel(foodRepo, foodId) }
+            val vm: FoodEditorViewModel = viewModel { FoodEditorViewModel(foodRepo, foodId, app.priceRepository) }
             FoodEditorScreen(
                 viewModel = vm,
                 onBack = { navController.popBackStack() },
@@ -442,7 +451,8 @@ fun ByteLogNavHost(
             }
             SparkyChatScreen(
                 viewModel = chatViewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } }
             )
         }
     }

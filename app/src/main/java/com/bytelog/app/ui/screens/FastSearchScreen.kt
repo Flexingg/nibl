@@ -124,6 +124,18 @@ fun FastSearchScreen(
     val stagedEntries by viewModel.stagedEntries.collectAsState()
     val isSearchingRemote by viewModel.isSearchingRemote.collectAsState()
     val activeStagedId by viewModel.activeStagedId.collectAsState()
+    val planDays by viewModel.planDays.collectAsState()
+    var showPlanDays by remember { mutableStateOf(false) }
+    if (showPlanDays) {
+        com.bytelog.app.ui.components.PlanDaysDialog(
+            title = "Plan on which days?",
+            note = "Everything in the tray goes on each day you pick, planned for $selectedMealName. It's ticked off as you eat it.",
+            initial = planDays.ifEmpty { setOfNotNull(viewModel.targetDate.takeIf { com.bytelog.app.data.repository.PlanRepository.isFuture(it) }) },
+            confirmLabel = { n -> "Plan on $n day${if (n == 1) "" else "s"}" },
+            onConfirm = { viewModel.setPlanDays(it); showPlanDays = false },
+            onDismiss = { showPlanDays = false }
+        )
+    }
     val lastPortions by viewModel.lastPortions.collectAsState()
     val together by viewModel.together.collectAsState()
 
@@ -235,6 +247,8 @@ fun FastSearchScreen(
                 },
                 onPickMeal = { id, name -> viewModel.setTargetMeal(id, name) },
                 verb = if (viewModel.isPlanning) "Plan" else "Log",
+                onPickDays = if (viewModel.canPlan) ({ focusManager.clearFocus(); showPlanDays = true }) else null,
+                planDayCount = planDays.size,
                 suggestions = if (searchQuery.isBlank() && togetherPicks.isNotEmpty()) ({
                     com.bytelog.app.ui.components.TogetherStrip(
                         label = together?.label.orEmpty(), picks = togetherPicks,
