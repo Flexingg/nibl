@@ -33,9 +33,11 @@ import java.util.UUID
         PrepBatch::class,
         BatchConsumption::class,
         IngredientAlias::class,
-        com.bytelog.app.data.local.model.PlannedEntry::class
+        com.bytelog.app.data.local.model.PlannedEntry::class,
+        com.bytelog.app.data.local.model.FoodPrice::class,
+        com.bytelog.app.data.local.model.ShoppingCheck::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class ByteLogDatabase : RoomDatabase() {
@@ -50,6 +52,7 @@ abstract class ByteLogDatabase : RoomDatabase() {
     abstract fun prepBatchDao(): PrepBatchDao
     abstract fun ingredientAliasDao(): IngredientAliasDao
     abstract fun plannedEntryDao(): PlannedEntryDao
+    abstract fun foodPriceDao(): FoodPriceDao
 
     companion object {
         @Volatile
@@ -124,6 +127,17 @@ abstract class ByteLogDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `food_entries` ADD COLUMN `sourceId` TEXT")
                 db.execSQL("ALTER TABLE `water_log_entries` ADD COLUMN `source` TEXT")
                 db.execSQL("ALTER TABLE `water_log_entries` ADD COLUMN `sourceId` TEXT")
+            }
+        }
+
+        /** Where foods are bought and what they cost, and the shopping list's ticks. Additive only. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `food_prices` (`key` TEXT NOT NULL, `foodId` TEXT, `foodName` TEXT NOT NULL, `brand` TEXT, " +
+                        "`store` TEXT, `price` REAL, `quantity` REAL, `unit` TEXT, `updatedAt` INTEGER NOT NULL, `savedToSparky` INTEGER NOT NULL, PRIMARY KEY(`key`))"
+                )
+                db.execSQL("CREATE TABLE IF NOT EXISTS `shopping_checks` (`key` TEXT NOT NULL, `checkedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))")
             }
         }
 
@@ -245,7 +259,7 @@ abstract class ByteLogDatabase : RoomDatabase() {
                     ByteLogDatabase::class.java,
                     "bytelog_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     // Recipes and batches are user-authored local data: never wipe them on upgrade.
                     // Only downgrades (e.g. sideloading an older APK) fall back to a rebuild.
                     .fallbackToDestructiveMigrationOnDowngrade()

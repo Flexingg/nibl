@@ -144,8 +144,11 @@ fun DiaryScreen(
     onOpenFamily: () -> Unit = {},
     onOpenFamilyMember: (String) -> Unit = {},
     openShareFor: String? = null,
-    onShareRequestHandled: () -> Unit = {}
+    onShareRequestHandled: () -> Unit = {},
+    /** Opens the shopping list for planned food. */
+    onOpenShoppingList: () -> Unit = {}
 ) {
+    var copyPlanFrom by remember { mutableStateOf<List<com.bytelog.app.data.local.model.PlannedEntry>?>(null) }
     val family by (familyViewModel?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(com.bytelog.app.ui.viewmodel.FamilyState(loading = false)) }).collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
     val dailySummary by viewModel.dailySummary.collectAsState()
@@ -175,6 +178,23 @@ fun DiaryScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    copyPlanFrom?.let { from ->
+        val fromDate = from.firstOrNull()?.entryDate
+        com.bytelog.app.ui.components.PlanDaysDialog(
+            title = "Copy this plan to…",
+            note = "${from.size} planned food${if (from.size == 1) "" else "s"}, same meals and amounts, go on each day you pick.",
+            initial = emptySet(),
+            exclude = fromDate,
+            confirmLabel = { n -> "Copy to $n day${if (n == 1) "" else "s"}" },
+            onConfirm = { days ->
+                copyPlanFrom = null
+                if (days.isNotEmpty()) viewModel.copyPlanned(from, days) { n ->
+                    scope.launch { snackbarHostState.showSnackbar("Copied $n food${if (n == 1) "" else "s"} to ${days.size} day${if (days.size == 1) "" else "s"}") }
+                }
+            },
+            onDismiss = { copyPlanFrom = null }
+        )
+    }
     val haptic = LocalHapticFeedback.current
 
     LaunchedEffect(Unit) {
@@ -518,7 +538,9 @@ fun DiaryScreen(
                                                 if (r == SnackbarResult.ActionPerformed) viewModel.restorePlanned(listOf(p))
                                             }
                                         },
-                                        modifier = Modifier.homeItem(this, listState, "planned")
+                                        modifier = Modifier.homeItem(this, listState, "planned"),
+                                        onCopyToDays = { copyPlanFrom = plannedEntries },
+                                        onShoppingList = onOpenShoppingList
                                     )
                                 }
                             }

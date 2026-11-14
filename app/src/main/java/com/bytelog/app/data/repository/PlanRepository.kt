@@ -16,6 +16,27 @@ class PlanRepository(private val dao: PlannedEntryDao, private val foods: FoodRe
 
     suspend fun plan(entries: List<FoodEntry>) = dao.insert(entries.map { PlannedEntry.from(it) })
 
+    /** Everything planned from [from] to [to], both included (for the shopping list). */
+    fun between(from: String, to: String): Flow<List<PlannedEntry>> = dao.between(from, to)
+
+    /** Plans [entries] on each of [dates] (one copy per day). Returns what was added. */
+    suspend fun planOn(entries: List<FoodEntry>, dates: Collection<String>): List<PlannedEntry> {
+        val copies = dates.distinct().sorted().flatMap { d ->
+            entries.map { PlannedEntry.from(it).copy(id = java.util.UUID.randomUUID().toString(), entryDate = d, createdAt = System.currentTimeMillis()) }
+        }
+        dao.insert(copies)
+        return copies
+    }
+
+    /** Copies planned food to other days, same meals and amounts. Returns the copies. */
+    suspend fun copyTo(planned: List<PlannedEntry>, dates: Collection<String>): List<PlannedEntry> {
+        val copies = dates.distinct().sorted().flatMap { d ->
+            planned.filter { it.entryDate != d }.map { it.copy(id = java.util.UUID.randomUUID().toString(), entryDate = d, createdAt = System.currentTimeMillis()) }
+        }
+        dao.insert(copies)
+        return copies
+    }
+
     /** Logs planned food as eaten (on the day it was planned for) and takes it off the plan. Returns the entries. */
     suspend fun eat(planned: List<PlannedEntry>): List<FoodEntry> {
         if (planned.isEmpty()) return emptyList()

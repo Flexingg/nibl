@@ -518,6 +518,43 @@ class SparkyApiClient(
         }
     }
 
+    /** A food's default serving on Sparky: its id and its custom nutrients (where Nibl keeps store and price). */
+    private suspend fun defaultVariant(foodId: String): Result<kotlinx.serialization.json.JsonObject> =
+        fetchFoodVariants(foodId).mapCatching { variants ->
+            variants.firstOrNull { (it["is_default"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull == "true" }
+                ?: variants.firstOrNull() ?: throw IOException("Sparky has no serving for this food")
+        }
+
+    /** The store and price saved on a food in Sparky (all null when none is). */
+    suspend fun fetchFoodPrice(foodId: String): Result<com.bytelog.app.data.repository.SparkyPrice> =
+        defaultVariant(foodId).map { v -> com.bytelog.app.data.repository.PriceCodec.read(v["custom_nutrients"] as? kotlinx.serialization.json.JsonObject) }
+
+    /**
+     * Saves store and price on a food in Sparky, in its default serving's custom nutrients, keeping any other custom
+     * nutrients it has. Only works for the user's own foods (Sparky refuses others with 403).
+     */
+    suspend fun saveFoodPrice(foodId: String, price: com.bytelog.app.data.repository.SparkyPrice, today: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val variant = defaultVariant(foodId).getOrElse { return@withContext Result.failure(it) }
+        val variantId = (variant["id"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+            ?: return@withContext Result.failure(IOException("Sparky's serving has no id"))
+        val custom = com.bytelog.app.data.repository.PriceCodec.write(variant["custom_nutrients"] as? kotlinx.serialization.json.JsonObject, price, today)
+        try {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("food_id", kotlinx.serialization.json.JsonPrimitive(foodId))
+                put("custom_nutrients", custom)
+            }
+            val request = Request.Builder().url("$baseUrl/api/foods/food-variants/$variantId").put(jsonBody(payload)).build()
+            client.newCall(request).await().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException("Couldn't save the price: ${errorText(response.code, body)}"))
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        }
+    }
+
     /** Set once Sparky turns out not to have the v2 food search (older servers); then the original search is used. */
     @Volatile private var v2SearchMissing = false
 

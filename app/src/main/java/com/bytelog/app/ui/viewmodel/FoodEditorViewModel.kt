@@ -116,10 +116,54 @@ data class FoodEditorState(
 /** Loads a food from Sparky, edits it and saves it back (or as the user's own copy). */
 class FoodEditorViewModel(
     private val foodRepository: FoodRepository,
-    private val foodId: String
+    private val foodId: String,
+    /** Where store and price are kept; null hides that section. */
+    private val prices: com.bytelog.app.data.repository.PriceRepository? = null
 ) : ViewModel() {
     private val _state = MutableStateFlow(FoodEditorState())
     val state: StateFlow<FoodEditorState> = _state.asStateFlow()
+
+    /** Store and price, edited and saved on their own (they don't change the food's nutrition). */
+    data class PriceState(
+        val draft: com.bytelog.app.ui.components.PriceDraft = com.bytelog.app.ui.components.PriceDraft(),
+        val saved: com.bytelog.app.ui.components.PriceDraft = com.bytelog.app.ui.components.PriceDraft(),
+        val saving: Boolean = false,
+        val status: String? = null
+    ) { val dirty get() = draft != saved }
+
+    private val _price = MutableStateFlow(PriceState())
+    val price: StateFlow<PriceState> = _price.asStateFlow()
+    val hasPrices: Boolean get() = prices != null
+
+    fun editPrice(d: com.bytelog.app.ui.components.PriceDraft) = _price.update { it.copy(draft = d, status = null) }
+
+    private fun priceTarget(): Triple<String?, String, String?>? {
+        val f = _state.value.food ?: return null
+        val sp = f.sparky
+        return if (sp != null) Triple(sp.id, sp.name, sp.brand) else f.local?.let { Triple(it.id, it.name, it.brand) }
+    }
+
+    private fun loadPrice() {
+        val repo = prices ?: return
+        val (id, name, brand) = priceTarget() ?: return
+        viewModelScope.launch {
+            val p = runCatching { repo.load(id, name, brand) }.getOrNull()
+            val d = com.bytelog.app.ui.components.PriceDraft.from(p?.let { com.bytelog.app.data.repository.SparkyPrice(it.store, it.price, it.quantity, it.unit) })
+            _price.update { it.copy(draft = d, saved = d) }
+        }
+    }
+
+    fun savePrice() {
+        val repo = prices ?: return
+        val (id, name, brand) = priceTarget() ?: return
+        val d = _price.value.draft
+        if (d.problem != null) return
+        _price.update { it.copy(saving = true, status = null) }
+        viewModelScope.launch {
+            val r = repo.save(id?.takeIf { com.bytelog.app.data.repository.PriceRepository.isSparkyId(it) }, name, brand, d.toPrice())
+            _price.update { it.copy(saving = false, saved = d, status = r.problem ?: if (r.price == null) "Price cleared" else "Saved to Sparky") }
+        }
+    }
 
     init { load() }
 
@@ -130,6 +174,7 @@ class FoodEditorViewModel(
                 .onSuccess { f ->
                     val form = f.sparky?.let { FoodForm.from(it) } ?: f.local?.let { FoodForm.from(it) } ?: FoodForm()
                     _state.update { it.copy(loading = false, food = f, form = form, original = form) }
+                    loadPrice()
                 }
                 .onFailure { e ->
                     _state.update { it.copy(loading = false, loadError = e.message ?: "Couldn't reach Sparky") }

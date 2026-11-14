@@ -371,6 +371,12 @@ class DiaryViewModel(
         viewModelScope.launch { plans?.eat(planned) }
     }
 
+    /** Copies a day's planned food onto other days. */
+    fun copyPlanned(planned: List<com.bytelog.app.data.local.model.PlannedEntry>, dates: Set<String>, done: (Int) -> Unit = {}) {
+        val repo = plans ?: return
+        viewModelScope.launch { done(repo.copyTo(planned, dates).size) }
+    }
+
     fun removePlanned(planned: List<com.bytelog.app.data.local.model.PlannedEntry>) {
         viewModelScope.launch { plans?.remove(planned) }
     }
