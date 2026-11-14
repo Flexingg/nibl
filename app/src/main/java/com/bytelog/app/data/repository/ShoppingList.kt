@@ -1,6 +1,8 @@
 package com.bytelog.app.data.repository
 
+import com.bytelog.app.data.local.model.FoodItem
 import com.bytelog.app.data.local.model.FoodPrice
+import com.bytelog.app.ui.logging.Portions
 import com.bytelog.app.data.local.model.PlannedEntry
 import com.bytelog.app.recipes.IngredientDensities
 import com.bytelog.app.recipes.UnitConverter
@@ -41,6 +43,8 @@ data class ShoppingItem(
     val brand: String?,
     val foodId: String?,
     val amounts: List<ShoppingAmount>,
+    /** Units a price for this food can be given in: the food's own (its serving, household measures, what they convert to). */
+    val units: List<String>,
     val days: List<String>,
     val price: FoodPrice?,
     /** Packages to buy, when the price says what one holds and the units convert. */
@@ -51,11 +55,12 @@ data class ShoppingItem(
     val store: String? get() = price?.store?.takeIf { it.isNotBlank() }
     val amountLabel: String get() = amounts.joinToString(" + ") { it.label }
 
-    /** "Buy 2 × 32 oz", or "Buy 4" for things priced one at a time. */
+    /** "Buy 2 × 32 oz", "Buy 2 tubs (32 oz)", or "Buy 4" for things priced one at a time. */
     val buyLabel: String? get() {
         val n = packages ?: return null
         val q = price?.quantity ?: return null
         val u = price.unit.orEmpty()
+        price.packageName?.let { pkg -> return "Buy $n ${ShoppingAmount.plural(pkg, n.toDouble())} (${ShoppingAmount(q.toDouble(), u).label} each)" }
         return if (q == 1f && ShoppingList.normalUnit(u) == "each") "Buy $n" else "Buy $n × ${ShoppingAmount(q.toDouble(), u).label}"
     }
 }
@@ -125,15 +130,31 @@ object ShoppingList {
         amounts += a
     }
 
+    /** Whether [unit] is one of [food]'s units (so its serving maths applies). */
+    fun isFoodUnit(food: FoodItem, unit: String): Boolean {
+        val c = UnitConverter.canonical(unit) ?: normalUnit(unit)
+        return Portions.unitOptions(food).any { (UnitConverter.canonical(it) ?: normalUnit(it)) == c }
+    }
+
+    /** The units a price can use for a food: its own, or for a food the phone doesn't have, those of what's planned. */
+    fun unitsFor(food: FoodItem?, name: String, plannedUnits: List<String>): List<String> {
+        if (food != null) return Portions.unitOptions(food)
+        val base = plannedUnits.firstOrNull { UnitConverter.canonical(it) != null } ?: plannedUnits.firstOrNull() ?: "serving"
+        val out = Portions.unitOptions(FoodItem(id = "", name = name, servingSize = 1f, servingUnit = base)).toMutableList()
+        plannedUnits.forEach { u -> if (out.none { normalUnit(it) == normalUnit(u) }) out += u }
+        return out
+    }
+
     /**
-     * Builds the list. [priceOf] finds a food's saved price by its key; [servingOf] gives a food's serving size and
-     * unit, so "2 servings" can be bought by weight.
+     * Builds the list. [priceOf] finds a food's saved price by its key; [foodOf] the saved food by its id, so its
+     * servings and household measures ("2 servings", "1 medium") convert to what a price is given in.
      */
     fun build(
         planned: List<PlannedEntry>,
         priceOf: (String) -> FoodPrice? = { null },
-        servingOf: (String) -> Pair<Float, String>? = { null }
+        foodOf: (String) -> FoodItem? = { null }
     ): ShoppingListResult {
+        val servingOf: (String) -> Pair<Float, String>? = { id -> foodOf(id)?.let { it.servingSize to it.servingUnit } }
         val groups = LinkedHashMap<String, MutableList<PlannedEntry>>()
         // The same food planned under another id (re-saved, from the chat) merges by name
         val byName = HashMap<String, String>()
@@ -153,10 +174,31 @@ object ShoppingList {
                 add(amounts, a, e.foodName)
             }
             val price = priceOf(key) ?: priceOf(keyOf(null, first.foodName, first.brandName))
-            val (packages, cost) = costOf(amounts, price, first.foodName)
-            ShoppingItem(key, first.foodName, first.brandName, first.foodId, amounts, entries.map { it.entryDate }.distinct().sorted(), price, packages, cost)
+            val food = entries.firstNotNullOfOrNull { e -> e.foodId?.let(foodOf) }
+            val raw = entries.map { ShoppingAmount(it.quantity.toDouble(), it.unit) }
+            val (packages, cost) = food?.let { f -> costByServings(f, raw, price) } ?: costOf(amounts, price, first.foodName)
+            ShoppingItem(
+                key, first.foodName, first.brandName, first.foodId, amounts, unitsFor(food, first.foodName, entries.map { it.unit }),
+                entries.map { it.entryDate }.distinct().sorted(), price, packages, cost
+            )
         }
         return ShoppingListResult(items.sortedBy { it.name.lowercase() })
+    }
+
+    /**
+     * Packages and cost through the food's own servings, so any of its units convert ("3 medium" against a price for
+     * "2 lb"). Null when the price or an amount isn't in one of the food's units.
+     */
+    fun costByServings(food: FoodItem, amounts: List<ShoppingAmount>, price: FoodPrice?): Pair<Int?, Double?>? {
+        val p = price?.price ?: return null
+        val q = price.quantity ?: return null
+        val unit = price.unit ?: return null
+        if (q <= 0f || !isFoodUnit(food, unit) || amounts.any { !isFoodUnit(food, it.unit) }) return null
+        val per = food.servingRatio(q, unit).toDouble()
+        if (per <= 0.0) return null
+        val needed = amounts.sumOf { food.servingRatio(it.quantity.toFloat(), it.unit).toDouble() }
+        val packages = ceil(needed / per - 1e-6).toInt().coerceAtLeast(1)
+        return packages to packages * p.toDouble()
     }
 
     /** Packages to buy and their cost: whole packages, since that's what you pay for. */

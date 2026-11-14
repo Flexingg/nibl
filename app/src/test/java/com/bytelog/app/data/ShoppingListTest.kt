@@ -54,7 +54,7 @@ class ShoppingListTest {
     }
 
     @Test fun servingsBecomeWeightsWhenTheFoodsServingIsKnown() {
-        val items = ShoppingList.build(listOf(p("Rice", 2f, "serving", id = "f-rice"), p("Rice", 50f, "g", id = "f-rice")), servingOf = { if (it == "f-rice") 75f to "g" else null }).items
+        val items = ShoppingList.build(listOf(p("Rice", 2f, "serving", id = "f-rice"), p("Rice", 50f, "g", id = "f-rice")), foodOf = { if (it == "f-rice") com.bytelog.app.data.local.model.FoodItem("f-rice", "Rice", servingSize = 75f, servingUnit = "g") else null }).items
         assertEquals(200.0, items.single().amounts.single().quantity, 0.0)
         // Without a known serving it stays in servings, separate from grams
         val other = ShoppingList.build(listOf(p("Soup", 2f, "serving", id = "x"), p("Soup", 100f, "g", id = "x"))).items.single()

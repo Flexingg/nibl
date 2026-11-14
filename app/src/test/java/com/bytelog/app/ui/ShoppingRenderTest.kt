@@ -17,6 +17,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onFirst
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.unit.dp
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -125,11 +127,42 @@ class ShoppingRenderTest {
             ByteLogTheme(darkTheme = false, dynamicColor = false) {
                 var d by remember { mutableStateOf(PriceDraft(store = "Costco", price = "6.49", quantity = "48", unit = "oz")) }
                 Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
-                    PriceForm(d, { d = it }, hint = "Optional. Used for the shopping list's costs, and saved on this food in Sparky.")
+                    PriceForm(d, { d = it }, listOf("serving", "cup", "g", "oz"), hint = "Optional. Used for the shopping list's costs, and saved on this food in Sparky.")
                 }
             }
         }
         waitFor { compose.onAllNodes(hasText("Costco"), true).fetchSemanticsNodes().isNotEmpty() }
         shot("32-price-form")
+    }
+
+    @Test fun mealPlanner() {
+        val vm = com.bytelog.app.ui.viewmodel.MealPlannerViewModel(plans, foods, null)
+        compose.setContent {
+            ByteLogTheme(darkTheme = false, dynamicColor = false) {
+                com.bytelog.app.ui.screens.MealPlannerScreen(vm, onBack = {}, onAddFood = { _, _, _ -> }, onShoppingList = {})
+            }
+        }
+        waitFor { compose.onAllNodes(hasText("Tomorrow"), true).fetchSemanticsNodes().isNotEmpty() }
+        waitFor { compose.onAllNodes(hasText("Greek Yogurt", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("33-planner")
+        compose.onAllNodes(hasText("Greek Yogurt · Fage"), true).onFirst().performClick()
+        waitFor { compose.onAllNodes(hasText("Unit"), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("34-planner-edit")
+    }
+
+    @Test fun homeCards() {
+        val days = (0..6).map { com.bytelog.app.ui.diary.PlanDaySummary(LocalDate.now().plusDays(it.toLong()), if (it in 1..4) 1800f + it * 100 else 0f, if (it in 1..4) 5 else 0) }
+        compose.setContent {
+            ByteLogTheme(darkTheme = false, dynamicColor = false) {
+                val vm = remember { ShoppingListViewModel(plans, prices, foods) }
+                val st by vm.state.collectAsState()
+                Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                    com.bytelog.app.ui.diary.MealPlanHomeCard(days, 2400f, onOpen = {})
+                    com.bytelog.app.ui.diary.ShoppingHomeCard(st.list, st.checked, onOpen = {})
+                }
+            }
+        }
+        waitFor { compose.onAllNodes(hasText("to get", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        shot("35-home-plan-cards")
     }
 }

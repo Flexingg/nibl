@@ -7,6 +7,8 @@ enum class HomeSection(val key: String, val title: String, val description: Stri
     FAMILY("family", "Family", "What everyone has eaten today"),
     PLANNED("planned", "Planned", "Food planned for the day, ticked off as you eat it"),
     MEALS("meals", "Meals", "The day's logged meals", hideable = false),
+    MEAL_PLAN("meal_plan", "Meal plan", "The days ahead at a glance; opens the planner"),
+    SHOPPING("shopping", "Shopping list", "What to buy for the planned week, with prices"),
     WHAT_FITS("what_fits", "What fits?", "Foods you eat that fit what's left today"),
     QUICK_LOG("quick_meals", "Log a meal", "Yesterday's and usual meals, templates"),
     TRENDS("weight_chart", "Weight & calories", "Weight trend against calories, and TDEE");

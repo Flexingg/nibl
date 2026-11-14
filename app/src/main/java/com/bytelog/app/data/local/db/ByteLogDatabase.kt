@@ -37,7 +37,7 @@ import java.util.UUID
         com.bytelog.app.data.local.model.FoodPrice::class,
         com.bytelog.app.data.local.model.ShoppingCheck::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class ByteLogDatabase : RoomDatabase() {
@@ -138,6 +138,13 @@ abstract class ByteLogDatabase : RoomDatabase() {
                         "`store` TEXT, `price` REAL, `quantity` REAL, `unit` TEXT, `updatedAt` INTEGER NOT NULL, `savedToSparky` INTEGER NOT NULL, PRIMARY KEY(`key`))"
                 )
                 db.execSQL("CREATE TABLE IF NOT EXISTS `shopping_checks` (`key` TEXT NOT NULL, `checkedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))")
+            }
+        }
+
+        /** A package name on prices ("tub" = 32 oz). Additive only. */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `food_prices` ADD COLUMN `packageName` TEXT")
             }
         }
 
@@ -259,7 +266,7 @@ abstract class ByteLogDatabase : RoomDatabase() {
                     ByteLogDatabase::class.java,
                     "bytelog_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     // Recipes and batches are user-authored local data: never wipe them on upgrade.
                     // Only downgrades (e.g. sideloading an older APK) fall back to a rebuild.
                     .fallbackToDestructiveMigrationOnDowngrade()

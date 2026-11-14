@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -66,7 +67,8 @@ class DiaryViewModel(
     private val weightRepository: WeightRepository,
     private val mealTemplateRepository: MealTemplateRepository,
     private val sparkyApiClient: SparkyApiClient? = null,
-    private val plans: com.bytelog.app.data.repository.PlanRepository? = null
+    private val plans: com.bytelog.app.data.repository.PlanRepository? = null,
+    private val prices: com.bytelog.app.data.repository.PriceRepository? = null
 ) : ViewModel() {
 
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
@@ -365,6 +367,32 @@ class DiaryViewModel(
     val plannedEntries: StateFlow<List<com.bytelog.app.data.local.model.PlannedEntry>> = selectedDate
         .flatMapLatest { d -> plans?.forDate(d) ?: kotlinx.coroutines.flow.flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Food planned over the next seven days, for the home screen's meal plan and shopping list cards. */
+    private val weekPlanned: kotlinx.coroutines.flow.Flow<List<com.bytelog.app.data.local.model.PlannedEntry>> =
+        plans?.let { p -> kotlinx.coroutines.flow.flow { emit(LocalDate.now()) }.flatMapLatest { t -> p.between(t.toString(), t.plusDays(6).toString()) } }
+            ?: kotlinx.coroutines.flow.flowOf(emptyList())
+
+    /** Each of the next seven days: its date, planned calories and how many foods. */
+    val weekPlan: StateFlow<List<com.bytelog.app.ui.diary.PlanDaySummary>> = weekPlanned.map { list ->
+        val byDate = list.groupBy { it.entryDate }
+        val t = LocalDate.now()
+        (0..6).map { i ->
+            val d = t.plusDays(i.toLong())
+            val items = byDate[d.toString()].orEmpty()
+            com.bytelog.app.ui.diary.PlanDaySummary(d, items.sumOf { it.calories.toDouble() }.toFloat(), items.size)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The shopping list for the next seven days, and which items are ticked. */
+    val weekShopping: StateFlow<Pair<com.bytelog.app.data.repository.ShoppingListResult, Set<String>>> = kotlinx.coroutines.flow.combine(
+        weekPlanned.mapLatest { list -> list to runCatching { foodRepository.foodsByIds(list.mapNotNull { it.foodId }.distinct()) }.getOrDefault(emptyList()).associateBy { it.id } },
+        prices?.prices ?: kotlinx.coroutines.flow.flowOf(emptyList()),
+        prices?.checks ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    ) { (list, foods), pr, ch ->
+        val byKey = pr.associateBy { it.key }
+        com.bytelog.app.data.repository.ShoppingList.build(list, priceOf = { byKey[it] }, foodOf = { foods[it] }) to ch.map { it.key }.toSet()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, com.bytelog.app.data.repository.ShoppingListResult(emptyList()) to emptySet())
 
     /** Ticks planned food off: logged on its day. */
     fun eatPlanned(planned: List<com.bytelog.app.data.local.model.PlannedEntry>) {

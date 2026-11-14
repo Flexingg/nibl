@@ -209,7 +209,7 @@ fun ByteLogNavHost(
         // 1. Daily Diary / Timeline
         page("diary") {
             val diaryViewModel: DiaryViewModel = viewModel {
-                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient, app.planRepository)
+                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient, app.planRepository, app.priceRepository)
             }
             DiaryScreen(
                 viewModel = diaryViewModel,
@@ -242,7 +242,21 @@ fun ByteLogNavHost(
                 onOpenFamilyMember = { id -> navController.navigate("family/${android.net.Uri.encode(id)}") { launchSingleTop = true } },
                 openShareFor = shareRequest,
                 onShareRequestHandled = { shareRequest = null },
-                onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } }
+                onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } },
+                onOpenPlanner = { navController.navigate("planner") { launchSingleTop = true } }
+            )
+        }
+
+        // 1d. The meal planner: the days ahead, everything planned editable
+        page("planner") {
+            val vm: com.bytelog.app.ui.viewmodel.MealPlannerViewModel = viewModel {
+                com.bytelog.app.ui.viewmodel.MealPlannerViewModel(app.planRepository, foodRepo, settingsRepo)
+            }
+            com.bytelog.app.ui.screens.MealPlannerScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onAddFood = { date, mealId, mealName -> navController.navigate("search/$mealId/$mealName/$date?plan=true") },
+                onShoppingList = { navController.navigate("shopping") { launchSingleTop = true } }
             )
         }
 
@@ -258,7 +272,7 @@ fun ByteLogNavHost(
         page(NavMotion.RECENT_MEALS) { entry ->
             val diaryEntry = remember(entry) { navController.getBackStackEntry("diary") }
             val diaryViewModel: DiaryViewModel = viewModel(diaryEntry) {
-                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient, app.planRepository)
+                DiaryViewModel(foodRepo, app.waterRepository, settingsRepo, app.weightRepository, app.mealTemplateRepository, app.sparkyApiClient, app.planRepository, app.priceRepository)
             }
             val targetDate by diaryViewModel.selectedDate.collectAsState()
             val recentMeals by diaryViewModel.recentMealsHistory.collectAsState()
@@ -280,10 +294,13 @@ fun ByteLogNavHost(
                 navArgument("mealTypeId") { type = NavType.StringType },
                 navArgument("mealName") { type = NavType.StringType },
                 navArgument("date") { type = NavType.StringType },
-                navArgument("photo") { type = NavType.BoolType; defaultValue = false }
+                navArgument("photo") { type = NavType.BoolType; defaultValue = false },
+                // From the meal planner: plan on the day (even today) instead of logging
+                navArgument("plan") { type = NavType.BoolType; defaultValue = false }
             )
         ) { backStackEntry ->
             val startWithPhoto = backStackEntry.arguments?.getBoolean("photo") ?: false
+            val planOnly = backStackEntry.arguments?.getBoolean("plan") ?: false
             val mealTypeId = backStackEntry.arguments?.getString("mealTypeId") ?: "breakfast"
             val mealName = backStackEntry.arguments?.getString("mealName") ?: "Breakfast"
             val date = backStackEntry.arguments?.getString("date") ?: ""
@@ -291,6 +308,7 @@ fun ByteLogNavHost(
             val fastSearchViewModel: FastSearchViewModel = viewModel {
                 FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository).apply {
                     initContext(mealTypeId, mealName, date)
+                    if (planOnly && date.isNotBlank()) setPlanDays(setOf(date))
                 }
             }
 
