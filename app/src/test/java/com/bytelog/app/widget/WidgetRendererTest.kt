@@ -50,6 +50,34 @@ class WidgetRendererTest {
         assertNotEquals(bottomMiddle(0f), bottomMiddle(40f))
     }
 
+    @Test fun aNumberHalfUnderWaterIsTwoTone() {
+        for (dark in listOf(false, true)) {
+            val c = colors(dark)
+            val (w, h) = px(WidgetKind.WATER)
+            // Water up to y=75 of the 170-unit tile, give or take the wave: across the number (baseline 94, ~30 tall)
+            val d = WidgetData.Sample.copy(waterOz = WidgetData.Sample.waterGoalOz * (95f / 170f))
+            val bmp = WidgetRenderer.render(WidgetKind.WATER, d, c, w, h)
+            fun count(color: Int, rows: IntRange) = rows.sumOf { y -> (55..115).count { x -> distance(color, bmp.getPixel(x * 3, y * 3)) < 40 } }
+            val above = 64..69; val below = 84..93
+            assertTrue("dark=$dark: glass-coloured ink above the water", count(c.onGlass, above) > 3)
+            assertTrue("dark=$dark: water-coloured ink below it", count(c.onWater, below) > 3)
+            assertEquals("dark=$dark: no glass-coloured ink under the water", 0, count(c.onGlass, below))
+        }
+    }
+
+    @Test fun theWaveMovesAndLoops() {
+        val c = colors(false)
+        val (w, h) = px(WidgetKind.WATER)
+        val d = WidgetData.Sample.copy(waterOz = WidgetData.Sample.waterGoalOz / 2f)
+        fun frame(phase: Float) = WidgetRenderer.render(WidgetKind.WATER, d, c, w, h, phase)
+        fun same(a: Bitmap, b: Bitmap) = a.sameAs(b)
+        assertTrue("frames differ", !same(frame(0f), frame((Math.PI / 2).toFloat())))
+        // A full turn is back where it started (nearly: 2π isn't exact in floats)
+        val start = frame(0f); val end = frame((2 * Math.PI).toFloat())
+        val off = (0 until 2000).count { val x = (it * 7919) % w; val y = (it * 104729) % h; distance(start.getPixel(x, y), end.getPixel(x, y)) > 30 }
+        assertTrue("loops seamlessly ($off pixels off)", off < 10)
+    }
+
     @Test fun theTodayWidgetsAddFoodButtonIsThePrimaryColour() {
         val c = colors(false)
         val (w, h) = px(WidgetKind.TODAY)
@@ -91,6 +119,13 @@ class WidgetRendererTest {
             val (w, h) = px(kind)
             val bmp = WidgetRenderer.render(kind, WidgetData.Sample, colors(dark), w, h)
             File(dir, "widget_${kind.name.lowercase()}${if (dark) "_dark" else ""}.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        // The water widget's wave loop, with the waterline across the number
+        val (w, h) = px(WidgetKind.WATER)
+        val half = WidgetData.Sample.copy(waterOz = 36f)
+        for (dark in listOf(false, true)) for (f in 0 until WidgetRenderer.WAVE_FRAMES) {
+            val bmp = WidgetRenderer.render(WidgetKind.WATER, half, colors(dark), w, h, (2 * Math.PI * f / WidgetRenderer.WAVE_FRAMES).toFloat())
+            File(dir, "water_wave${if (dark) "_dark" else ""}_$f.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
     }
 }

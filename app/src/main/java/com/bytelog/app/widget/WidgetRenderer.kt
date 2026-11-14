@@ -76,7 +76,14 @@ object WidgetRenderer {
     /** Just short of opaque, so the wallpaper tints the tile a little, like frosted glass. */
     private const val TILE_ALPHA = 0.94f
 
-    fun render(kind: WidgetKind, data: WidgetData, c: WidgetColors, widthPx: Int, heightPx: Int): Bitmap {
+    /** Frames in one loop of the water widget's wave; [render]'s phase steps 2π / this per frame. */
+    const val WAVE_FRAMES = 8
+
+    /**
+     * Draws a widget. [phase] (radians, 0 to 2π) is where the water widget's wave is in its loop; every part of the
+     * wave turns a whole number of times per loop, so the last frame runs smoothly back into the first.
+     */
+    fun render(kind: WidgetKind, data: WidgetData, c: WidgetColors, widthPx: Int, heightPx: Int, phase: Float = 0f): Bitmap {
         val w = max(1, widthPx); val h = max(1, heightPx)
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
@@ -91,18 +98,36 @@ object WidgetRenderer {
         canvas.save()
         canvas.clipPath(tile)
         backdrop(canvas, kind, c, w.toFloat(), h.toFloat())
-        if (kind == WidgetKind.WATER) drawWaterFill(canvas, data, c, w, h, sc)
-        canvas.save()
-        canvas.translate(dx, dy)
-        canvas.scale(sc, sc)
-        when (kind) {
-            WidgetKind.TODAY -> today(canvas, data, c)
-            WidgetKind.CALORIES -> calories(canvas, data, c)
-            WidgetKind.WATER -> water(canvas, data, c)
-            WidgetKind.QUICK_LOG -> quickLog(canvas, data, c)
-            WidgetKind.FAMILY -> family(canvas, data, c)
+        if (kind == WidgetKind.WATER) {
+            val waterline = waterPath(level(data), w, h, sc, phase)
+            if (waterline != null) drawWaterFill(canvas, waterline, c, h, sc)
+            // The text and button are drawn twice: in the glass colours above the water and the water's below, split
+            // along the wave so a number half under water reads in both halves
+            fun content(inWater: Boolean) {
+                canvas.save()
+                canvas.translate(dx, dy)
+                canvas.scale(sc, sc)
+                water(canvas, data, c, inWater)
+                canvas.restore()
+            }
+            if (waterline == null) content(inWater = false)
+            else {
+                canvas.save(); canvas.clipOutPath(waterline); content(inWater = false); canvas.restore()
+                canvas.save(); canvas.clipPath(waterline); content(inWater = true); canvas.restore()
+            }
+        } else {
+            canvas.save()
+            canvas.translate(dx, dy)
+            canvas.scale(sc, sc)
+            when (kind) {
+                WidgetKind.TODAY -> today(canvas, data, c)
+                WidgetKind.CALORIES -> calories(canvas, data, c)
+                WidgetKind.QUICK_LOG -> quickLog(canvas, data, c)
+                WidgetKind.FAMILY -> family(canvas, data, c)
+                WidgetKind.WATER -> Unit
+            }
+            canvas.restore()
         }
-        canvas.restore()
         canvas.restore()
         // The luminous edge, brighter at the top
         val e = sc.coerceAtLeast(1f)
@@ -223,42 +248,50 @@ object WidgetRenderer {
 
     private fun level(d: WidgetData) = if (d.waterGoalOz > 0f) (d.waterOz / d.waterGoalOz).coerceIn(0f, 1f) else 0f
 
-    /** Water rising from the bottom of the tile, drawn in device pixels so it fills any size of widget. */
-    private fun drawWaterFill(cv: Canvas, d: WidgetData, c: WidgetColors, w: Int, h: Int, sc: Float) {
-        val lv = level(d)
-        if (lv <= 0f) return
-        val top = h - lv * h
-        val surface = Path()
-        val p = Path().apply {
-            moveTo(0f, top)
-            var x = 0f
-            while (x <= w) {
-                val y = top + 3f * sc * sin(x / w * 2 * 2 * PI).toFloat()
-                lineTo(x, y); if (x == 0f) surface.moveTo(x, y) else surface.lineTo(x, y)
-                x += 3f
+    /**
+     * The water, rising from the bottom of the tile, in device pixels so it fills any size of widget: null when empty.
+     * Its surface is two waves rolling opposite ways over a gentle bob, all moved by [phase].
+     */
+    private fun waterPath(lv: Float, w: Int, h: Int, sc: Float, phase: Float): Path? {
+        if (lv <= 0f) return null
+        // When full, lifted past the top so the troughs don't show a strip of glass
+        val top = h - lv * h - (if (lv >= 1f) 8f * sc else 0f) + 1.2f * sc * sin(phase)
+        val tau = 2 * PI.toFloat()
+        return Path().apply {
+            moveTo(-6f, h + 6f)
+            var x = -6f
+            while (true) {
+                val t = x / w
+                val y = top + 3.2f * sc * sin(tau * 2f * t + phase) + 1.4f * sc * sin(tau * 3f * t - 2f * phase)
+                lineTo(x, y)
+                if (x >= w + 6f) break
+                x = (x + 3f).coerceAtMost(w + 6f)
             }
-            lineTo(w + 2f, top); lineTo(w + 2f, h + 2f); lineTo(0f, h + 2f); close()
+            lineTo(w + 6f, h + 6f); close()
         }
-        cv.drawPath(p, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(0f, top, 0f, h.toFloat(), c.waterLight, c.water, Shader.TileMode.CLAMP)
-        })
-        // A bright line of light along the surface
-        cv.drawPath(surface, stroke(ColorUtils.setAlphaComponent(Color.White.toArgb(), 120), 1.6f * sc))
     }
 
-    private fun water(cv: Canvas, d: WidgetData, c: WidgetColors) {
-        val lv = level(d)
-        val numberColor = if (lv > 0.5f) c.onWater else c.onGlass
-        val labelColor = if (lv > 0.9f) c.onWater else c.onGlass
-        cv.icon(DROP, 22f, 20f, 13f, labelColor, 2.2f)
-        cv.text("Water", 32f, 24.5f, 12f, 600, labelColor, Paint.Align.LEFT)
-        cv.text("${d.waterOz.toInt()}", 85f, 94f, 42f, 600, numberColor, Paint.Align.CENTER)
-        cv.text("of ${d.waterGoalOz.toInt()} oz", 85f, 113f, 11.5f, 500, numberColor, Paint.Align.CENTER)
-        // A frosted button floating on the water
+    private fun drawWaterFill(cv: Canvas, water: Path, c: WidgetColors, h: Int, sc: Float) {
+        val b = RectF().also { water.computeBounds(it, true) }
+        cv.drawPath(water, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(0f, b.top, 0f, h.toFloat(), c.waterLight, c.water, Shader.TileMode.CLAMP)
+        })
+        // A bright line of light along the surface (the path's edge; its sides and bottom are off the tile)
+        cv.drawPath(water, stroke(ColorUtils.setAlphaComponent(Color.White.toArgb(), 120), 1.6f * sc))
+    }
+
+    /** The water widget's text and button, in the colours for over the glass or, with [inWater], over the water. */
+    private fun water(cv: Canvas, d: WidgetData, c: WidgetColors, inWater: Boolean) {
+        val ink = if (inWater) c.onWater else c.onGlass
+        cv.icon(DROP, 22f, 20f, 13f, ink, 2.2f)
+        cv.text("Water", 32f, 24.5f, 12f, 600, ink, Paint.Align.LEFT)
+        cv.text("${d.waterOz.toInt()}", 85f, 94f, 42f, 600, ink, Paint.Align.CENTER)
+        cv.text("of ${d.waterGoalOz.toInt()} oz", 85f, 113f, 11.5f, 500, ink, Paint.Align.CENTER)
+        // The add button: a drop of water on the glass, frosted where it floats in the water
         val badge = RectF(118f, 118f, 158f, 158f)
-        if (lv > 0.2f) cv.glassPanel(badge, 20f, c, ColorUtils.setAlphaComponent(Color.White.toArgb(), if (c.dark) 60 else 150))
+        if (inWater) cv.glassPanel(badge, 20f, c, ColorUtils.setAlphaComponent(Color.White.toArgb(), if (c.dark) 60 else 150))
         else cv.accentPill(badge, 20f, c, c.waterLight, c.water)
-        cv.icon(PLUS, 138f, 138f, 20f, if (lv > 0.2f) c.onGlass else c.onWater, 2.8f)
+        cv.icon(PLUS, 138f, 138f, 20f, if (inWater) c.onGlass else c.onWater, 2.8f)
     }
 
     // ----- Quick log 4x1 -----
