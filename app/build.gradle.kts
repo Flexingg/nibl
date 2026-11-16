@@ -21,8 +21,8 @@ android {
         applicationId = "com.bytelog.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 53
-        versionName = "1.25.6"
+        versionCode = 54
+        versionName = "1.25.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
