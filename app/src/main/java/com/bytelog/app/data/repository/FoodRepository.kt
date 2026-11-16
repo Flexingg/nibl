@@ -265,7 +265,8 @@ class FoodRepository(
         )
         val found = CoLogging.suggest(history, seeds, alreadyIn)
         val saved = found.mapNotNull { it.entry.foodId }.distinct().chunked(500).flatMap { foodDao.getFoodsByIds(it) }.associateBy { it.id }
-        found.map { saved[it.entry.foodId] ?: FoodSearch.foodOf(it.entry) }
+        // Two names can point at one saved food (renamed, re-saved); lists key suggestions by id, so each id once
+        found.map { saved[it.entry.foodId] ?: FoodSearch.foodOf(it.entry) }.distinctBy { it.id }
     }
 
     /** Foods whose servings were asked of Sparky this session (each is asked once). */

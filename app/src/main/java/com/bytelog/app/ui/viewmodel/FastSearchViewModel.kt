@@ -101,10 +101,13 @@ class FastSearchViewModel(
         .distinctUntilChangedBy { seeds -> seeds.map { com.bytelog.app.data.repository.CoLogging.identity(it) } }
         .mapLatest { seeds ->
             if (seeds.isEmpty()) return@mapLatest null
-            // What's already in this meal today isn't suggested again
-            val already = if (targetDate.isBlank()) emptyList()
-            else foodRepository.getEntriesForDate(targetDate).first().filter { com.bytelog.app.data.repository.MealPatterns.sameMeal(it.mealName, targetMealName) }
-            val foods = foodRepository.foodsOftenWith(seeds, already)
+            // Only a suggestion: a failed lookup shows none rather than closing the screen
+            val foods = try {
+                // What's already in this meal today isn't suggested again
+                val already = if (targetDate.isBlank()) emptyList()
+                else foodRepository.getEntriesForDate(targetDate).first().filter { com.bytelog.app.data.repository.MealPatterns.sameMeal(it.mealName, targetMealName) }
+                foodRepository.foodsOftenWith(seeds, already)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyList() }
             if (foods.isEmpty()) null
             else Together(if (seeds.size == 1) "Often with ${seeds.first().foodName}" else "Often with what you've picked", foods)
         }
@@ -242,8 +245,10 @@ class FastSearchViewModel(
     fun foodFor(entryId: String): FoodItem? = stagedFoods[entryId]
 
     fun stageFood(food: FoodItem, portion: Portion? = null): FoodEntry {
-        // A server result becomes part of your foods once you use it
-        viewModelScope.launch { foodRepository.rememberFood(food) }
+        // A server result becomes part of your foods once you use it (best effort: the food is in the tray either way)
+        viewModelScope.launch {
+            try { foodRepository.rememberFood(food) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {}
+        }
         val p = portion ?: portionFor(food)
         val m = Portions.macros(food, p)
         val entry = FoodEntry(
