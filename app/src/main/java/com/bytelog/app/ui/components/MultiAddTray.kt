@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
@@ -62,8 +63,9 @@ import com.bytelog.app.ui.logging.formatQuantity
 import kotlin.math.roundToInt
 
 /**
- * The logging tray. The food you just added sits on top with its amount editor open, so adjusting the quantity or
- * unit is right there; earlier picks are chips below it (tap one to edit it). One button logs everything.
+ * The logging tray (a cart). The food you just picked sits on top with its amount editor open; "Add" keeps it in the
+ * tray and closes the editor so the next food is a tap away. Earlier picks are chips (tap one to edit it). "Log"
+ * logs everything in the tray: just the one food when that's all there is.
  */
 @Composable
 fun MultiAddTray(
@@ -93,7 +95,12 @@ fun MultiAddTray(
     /** Opens the picker for planning the tray on several days at once; null hides the button. */
     onPickDays: (() -> Unit)? = null,
     /** Days picked to plan on (0: just the day being added to). */
-    planDayCount: Int = 0
+    planDayCount: Int = 0,
+    /**
+     * Closes the amount editor, keeping the food in the tray. With it, no [activeEntryId] means no editor is open;
+     * without it the last food added is always the one being edited.
+     */
+    onAdd: (() -> Unit)? = null
 ) {
     if (stagedEntries.isEmpty()) {
         header?.let { Box(modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 10.dp)) { it() } }
@@ -101,8 +108,10 @@ fun MultiAddTray(
     }
     val cs = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
-    val active = stagedEntries.firstOrNull { it.id == activeEntryId } ?: stagedEntries.last()
-    val activeFood = if (compact) null else foodFor(active.id)
+    val active = stagedEntries.firstOrNull { it.id == activeEntryId } ?: if (onAdd == null) stagedEntries.last() else null
+    val activeFood = if (compact || active == null) null else foodFor(active.id)
+    // An amount being adjusted: the tray offers Add (keep picking) beside Log
+    val editing = activeFood != null && onAdd != null
     val totalCalories = stagedEntries.sumOf { it.calories.toDouble() }.roundToInt()
 
     Column(
@@ -119,7 +128,7 @@ fun MultiAddTray(
         suggestions?.invoke()
 
         // The item being adjusted
-        if (activeFood != null) {
+        if (activeFood != null && active != null) {
             AnimatedContent(
                 targetState = active.id,
                 transitionSpec = {
@@ -148,7 +157,7 @@ fun MultiAddTray(
         }
 
         // Everything else in the tray
-        val others = if (activeFood != null) stagedEntries.filter { it.id != active.id } else stagedEntries
+        val others = if (activeFood != null && active != null) stagedEntries.filter { it.id != active.id } else stagedEntries
         if (others.isNotEmpty()) {
             val rowState = rememberLazyListState()
             LaunchedEffect(others.size) { rowState.animateScrollToItem(others.lastIndex.coerceAtLeast(0)) }
@@ -175,6 +184,20 @@ fun MultiAddTray(
 
         // Log everything; the meal it goes to can be switched right beside it
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (editing && onAdd != null) {
+            MorphButton(
+                { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onAdd() },
+                Modifier.weight(1f).height(56.dp),
+                cs.secondaryContainer,
+                description = "Add ${active?.foodName.orEmpty()} to the tray and keep adding"
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = cs.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text("Add", color = cs.onSecondaryContainer, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            }
+        }
         MorphButton(
             { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLogAll() },
             Modifier.weight(1f).height(56.dp),
@@ -184,13 +207,17 @@ fun MultiAddTray(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Check, contentDescription = null, tint = cs.onPrimary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(8.dp))
-                Text(
+                // Beside Add there's only room for the verb; the meal shows once the editor is closed
+                if (editing) Text(
+                    if (stagedEntries.size == 1) verb else "$verb all ${stagedEntries.size}",
+                    color = cs.onPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+                ) else Text(
                     (if (stagedEntries.size == 1) "$verb to $targetMealName" else "$verb ${stagedEntries.size} to $targetMealName") +
                         (if (planDayCount > 1) " · $planDayCount days" else if (planDayCount == 1) " · 1 day" else ""),
                     color = cs.onPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                 )
-                Box(
+                if (!editing) Box(
                     Modifier.padding(start = 10.dp).clip(RoundedCornerShape(50)).background(cs.onPrimary.copy(alpha = 0.16f))
                         .padding(horizontal = 10.dp, vertical = 3.dp)
                 ) { Text("$totalCalories kcal", color = cs.onPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold) }

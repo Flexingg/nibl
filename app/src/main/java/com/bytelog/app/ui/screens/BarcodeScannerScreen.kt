@@ -157,7 +157,8 @@ fun BarcodeScannerScreen(
                         onAdd = { viewModel.tapFood(it) }
                     )
                 }) else null,
-                onPortionChange = viewModel::updateStagedPortion
+                onPortionChange = viewModel::updateStagedPortion,
+                onAdd = { viewModel.closeStagedEditor() }
             )
         }
     ) { paddingValues ->

@@ -249,6 +249,7 @@ fun FastSearchScreen(
                 verb = if (viewModel.isPlanning) "Plan" else "Log",
                 onPickDays = if (viewModel.canPlan) ({ focusManager.clearFocus(); showPlanDays = true }) else null,
                 planDayCount = planDays.size,
+                onAdd = { viewModel.closeStagedEditor() },
                 suggestions = if (searchQuery.isBlank() && togetherPicks.isNotEmpty()) ({
                     com.bytelog.app.ui.components.TogetherStrip(
                         label = together?.label.orEmpty(), picks = togetherPicks,

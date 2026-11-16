@@ -325,11 +325,15 @@ class FastSearchViewModel(
 
     fun selectStagedEntry(entryId: String) { _activeStagedId.value = entryId }
 
+    /** "Add": the food stays in the tray and its amount editor closes, so the next food is a tap away. */
+    fun closeStagedEditor() { _activeStagedId.value = null }
+
     fun removeStagedEntry(entry: FoodEntry) {
         stagedFoods.remove(entry.id)
         libraryBacked -= entry.id
         _stagedEntries.value = _stagedEntries.value.filter { it.id != entry.id }
-        if (_activeStagedId.value == entry.id) _activeStagedId.value = _stagedEntries.value.lastOrNull()?.id
+        // Removing the food being edited closes the editor rather than opening another
+        if (_activeStagedId.value == entry.id) _activeStagedId.value = null
     }
 
     /** New amount and/or unit for a staged entry; nutrition is recalculated from its food, converting units. */
