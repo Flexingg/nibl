@@ -200,7 +200,7 @@ fun FastSearchScreen(
     // Right after something is added (nothing typed yet): what you usually have with it, one tap each
     val trayFoodIds = remember(stagedEntries) { stagedEntries.mapNotNull { it.foodId }.toSet() }
     val togetherPicks = remember(together, lastPortions, trayFoodIds) {
-        together?.foods.orEmpty().filter { it.id !in trayFoodIds }.take(6).map { com.bytelog.app.ui.components.TogetherPick(it, viewModel.portionFor(it)) }
+        together?.foods.orEmpty().filter { it.id !in trayFoodIds }.distinctBy { it.id }.take(6).map { com.bytelog.app.ui.components.TogetherPick(it, viewModel.portionFor(it)) }
     }
     LaunchedEffect(together) { together?.foods?.let { viewModel.prefetchPortions(it) } }
 
@@ -441,11 +441,12 @@ fun FastSearchScreen(
             val timesLogged = remember(searchResults) { searchResults.logged.associate { it.food.id to it.timesLogged } }
             // While searching, foods you've logged form their own group above everything else
             val loggedCount = if (searching) searchResults.logged.size else 0
+            // List keys are food ids, so each food once
             val displayFoods = when {
                 searching -> searchFoods
-                selectedTabIndex == 0 -> suggestedFoods
-                selectedTabIndex == 1 -> recentFoods
-                else -> favoriteFoods
+                selectedTabIndex == 0 -> suggestedFoods.distinctBy { it.id }
+                selectedTabIndex == 1 -> recentFoods.distinctBy { it.id }
+                else -> favoriteFoods.distinctBy { it.id }
             }
 
             LaunchedEffect(displayFoods) { viewModel.prefetchPortions(displayFoods) }
