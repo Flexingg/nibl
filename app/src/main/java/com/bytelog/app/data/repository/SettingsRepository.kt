@@ -48,6 +48,10 @@ class SettingsRepository(
         val KEY_DEVICE_COLORS = androidx.datastore.preferences.core.booleanPreferencesKey("device_colors")
         val KEY_REDUCE_TRANSPARENCY = androidx.datastore.preferences.core.booleanPreferencesKey("reduce_transparency")
         val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
+        val KEY_FAB_MENU = stringPreferencesKey("fab_menu_layout")
+        val KEY_UPDATE_AUTO = androidx.datastore.preferences.core.booleanPreferencesKey("update_auto_check")
+        val KEY_UPDATE_LAST_CHECK = androidx.datastore.preferences.core.longPreferencesKey("update_last_check")
+        val KEY_UPDATE_DISMISSED = stringPreferencesKey("update_dismissed_version")
         val KEY_PLANNER = stringPreferencesKey("planner_config")
         val KEY_HEALTH_CONNECT_WRITE = androidx.datastore.preferences.core.booleanPreferencesKey("health_connect_write")
         val KEY_RESEARCH_PROVIDER = stringPreferencesKey("research_provider")
@@ -214,6 +218,34 @@ class SettingsRepository(
 
     suspend fun saveHomeLayout(layout: HomeLayout) {
         context.dataStore.edit { it[KEY_HOME_LAYOUT] = layout.encode() }
+    }
+
+    /** The order of the home screen's + menu, and which actions are hidden. */
+    val fabMenuLayout: Flow<FabMenuLayout> = context.dataStore.data.map { FabMenuLayout.parse(it[KEY_FAB_MENU]) }
+
+    suspend fun saveFabMenuLayout(layout: FabMenuLayout) {
+        context.dataStore.edit { it[KEY_FAB_MENU] = layout.encode() }
+    }
+
+    /** Look for a new version on GitHub by itself (at most every few hours). On by default. */
+    val autoCheckUpdates: Flow<Boolean> = context.dataStore.data.map { it[KEY_UPDATE_AUTO] ?: true }
+
+    suspend fun saveAutoCheckUpdates(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_UPDATE_AUTO] = enabled }
+    }
+
+    /** When the app last looked for an update (epoch millis, 0 = never). */
+    val lastUpdateCheck: Flow<Long> = context.dataStore.data.map { it[KEY_UPDATE_LAST_CHECK] ?: 0L }
+
+    suspend fun saveLastUpdateCheck(at: Long) {
+        context.dataStore.edit { it[KEY_UPDATE_LAST_CHECK] = at }
+    }
+
+    /** A version whose home-screen banner the user dismissed ("Later"); a newer one shows again. */
+    val dismissedUpdate: Flow<String?> = context.dataStore.data.map { it[KEY_UPDATE_DISMISSED] }
+
+    suspend fun saveDismissedUpdate(version: String) {
+        context.dataStore.edit { it[KEY_UPDATE_DISMISSED] = version }
     }
 
     suspend fun saveUseDeviceColors(enabled: Boolean) {

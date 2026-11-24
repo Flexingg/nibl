@@ -415,6 +415,10 @@ class DiaryViewModel(
         viewModelScope.launch { plans?.restore(planned) }
     }
 
+    /** The order of the home screen's + menu and what's in it. */
+    val fabMenuLayout: StateFlow<com.bytelog.app.data.repository.FabMenuLayout> = settingsRepository.fabMenuLayout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, com.bytelog.app.data.repository.FabMenuLayout.DEFAULT)
+
     /** The order of the home screen sections. */
     val homeLayout: StateFlow<com.bytelog.app.data.repository.HomeLayout> = settingsRepository.homeLayout
         .stateIn(viewModelScope, SharingStarted.Eagerly, com.bytelog.app.data.repository.HomeLayout.DEFAULT)

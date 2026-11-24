@@ -141,11 +141,14 @@ fun Modifier.popIn(key: Any, seen: MutableSet<Any>, delayMillis: Long = 0L): Mod
     }
 }
 
-/** Rows that scroll up under the header fade and shrink away instead of sliding beneath it. */
+/**
+ * Rows that scroll up under the header fade and shrink away instead of sliding beneath it. The fade only starts
+ * once [FADE_START] of the row has gone, so a row stays readable while most of it is still on screen.
+ */
 fun Modifier.hideWhenScrolledAway(state: LazyListState, key: Any): Modifier = graphicsLayer {
     val info = state.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }
     if (info != null && info.offset < 0 && info.size > 0) {
-        val p = (-info.offset / (info.size * 0.6f)).coerceIn(0f, 1f)
+        val p = scrolledAwayFade(-info.offset.toFloat() / info.size)
         alpha = 1f - p
         val s = 1f - 0.08f * p
         scaleX = s; scaleY = s
@@ -485,3 +488,12 @@ fun SplashingDrop(currentOz: Float, size: androidx.compose.ui.unit.Dp, iconSize:
 fun Modifier.homeItem(scope: androidx.compose.foundation.lazy.LazyItemScope, state: LazyListState, key: Any): Modifier =
     with(scope) { animateItem(fadeInSpec = null, fadeOutSpec = null, placementSpec = com.bytelog.app.ui.theme.FluidMotion.placement()) }
         .hideWhenScrolledAway(state, key)
+
+/** How much of a row must be gone before it starts to fade, and how much when it has fully faded. */
+internal const val FADE_START = 0.55f
+internal const val FADE_END = 0.95f
+
+/** 0 (fully shown) to 1 (faded) for a row with [goneFraction] of its height scrolled away. */
+internal fun scrolledAwayFade(goneFraction: Float): Float =
+    ((goneFraction - FADE_START) / (FADE_END - FADE_START)).coerceIn(0f, 1f)
+

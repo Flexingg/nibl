@@ -18,6 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -81,6 +82,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        checkForUpdate()
         // Health Connect is written while Nibl is open (on opening, and as the diary changes)
         (application as ByteLogApplication).apply { inForeground = true; requestHealthSync(delayMs = 500) }
     }
@@ -90,10 +92,28 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
+    /** Looks for a new version on GitHub when the user lets it, at most every few hours. */
+    private fun checkForUpdate() {
+        val app = application as ByteLogApplication
+        app.applicationScope.launch {
+            val settings = app.settingsRepository
+            if (!settings.autoCheckUpdates.first()) return@launch
+            if (app.appUpdater.checkIfDue(settings.lastUpdateCheck.first())) settings.saveLastUpdateCheck(System.currentTimeMillis())
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Android 12+ System Splash Screen hook
-        installSplashScreen()
+        // Android 12+ System Splash Screen hook. It stays up until the saved theme is known, so the app never
+        // draws a frame in the phone's light/dark mode when the user chose the other one.
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
+        val appearance = (application as ByteLogApplication).settingsRepository
+        if (lastAppearance == null) {
+            splash.setKeepOnScreenCondition { lastAppearance == null }
+            (application as ByteLogApplication).applicationScope.launch {
+                lastAppearance = Appearance(appearance.themeMode.first(), appearance.useDeviceColors.first(), appearance.reduceTransparency.first())
+            }
+        }
         enableEdgeToEdge()
 
         val app = application as ByteLogApplication
@@ -105,14 +125,23 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val themeMode by settingsRepo.themeMode.collectAsState(initial = com.bytelog.app.ui.theme.ThemeMode.SYSTEM)
-            val deviceColors by settingsRepo.useDeviceColors.collectAsState(initial = true)
-            val reduceTransparency by settingsRepo.reduceTransparency.collectAsState(initial = false)
+            // Start from the last known appearance (kept across activity re-creation), never from a guess: a
+            // screen rebuilt after rotation or a return from the background would otherwise flash, or stay, in
+            // the phone's light/dark mode instead of the one chosen in Settings.
+            val known = lastAppearance ?: Appearance()
+            val themeMode by settingsRepo.themeMode.collectAsState(initial = known.themeMode)
+            val deviceColors by settingsRepo.useDeviceColors.collectAsState(initial = known.deviceColors)
+            val reduceTransparency by settingsRepo.reduceTransparency.collectAsState(initial = known.reduceTransparency)
+            androidx.compose.runtime.SideEffect { lastAppearance = Appearance(themeMode, deviceColors, reduceTransparency) }
             val dark = when (themeMode) {
                 com.bytelog.app.ui.theme.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
                 com.bytelog.app.ui.theme.ThemeMode.LIGHT -> false
                 com.bytelog.app.ui.theme.ThemeMode.DARK -> true
             }
+            // The window behind the app follows too (its XML theme is light), so nothing light shows through
+            // the see-through pages or during transitions.
+            val windowColor = if (dark) android.graphics.Color.BLACK else android.graphics.Color.rgb(0xF2, 0xF3, 0xF5)
+            androidx.compose.runtime.SideEffect { window.decorView.setBackgroundColor(windowColor) }
             ByteLogTheme(darkTheme = dark, dynamicColor = deviceColors, reduceTransparency = reduceTransparency) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -254,7 +283,8 @@ fun ByteLogNavHost(
                 onOpenReports = { navController.navigate("reports") { launchSingleTop = true } },
                 onOpenProgressPhotos = { navController.navigate("progress_photos") { launchSingleTop = true } },
                 onOpenMealie = { navController.navigate("mealie") { launchSingleTop = true } },
-                onOpenHealthConnect = { navController.navigate("health_connect_detail") { launchSingleTop = true } }
+                onOpenHealthConnect = { navController.navigate("health_connect_detail") { launchSingleTop = true } },
+                updateBanner = { modifier -> com.bytelog.app.ui.components.UpdateBanner(app.appUpdater, settingsRepo, modifier) }
             )
         }
 
@@ -420,7 +450,8 @@ fun ByteLogNavHost(
                 onOpenReports = { navController.navigate("reports") { launchSingleTop = true } },
                 onOpenProgressPhotos = { navController.navigate("progress_photos") { launchSingleTop = true } },
                 onOpenFasting = { navController.navigate("fasting") { launchSingleTop = true } },
-                onOpenCaffeine = { navController.navigate("caffeine") { launchSingleTop = true } }
+                onOpenCaffeine = { navController.navigate("caffeine") { launchSingleTop = true } },
+                appUpdater = app.appUpdater
             )
         }
 
@@ -612,3 +643,13 @@ fun ByteLogNavHost(
         }
     }
 }
+
+/** The appearance settings that pick the theme. */
+private data class Appearance(
+    val themeMode: com.bytelog.app.ui.theme.ThemeMode = com.bytelog.app.ui.theme.ThemeMode.SYSTEM,
+    val deviceColors: Boolean = true,
+    val reduceTransparency: Boolean = false
+)
+
+/** The last appearance the app drew with, kept for as long as the process lives. */
+@Volatile private var lastAppearance: Appearance? = null
