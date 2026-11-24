@@ -324,6 +324,17 @@ class ReportsApi(private val api: SparkyApiClient) {
         }
     }
 
+    /** The exercises the user has logged, for Exercise Progress. */
+    suspend fun getLoggedExercises(): Result<List<LoggedExercise>> = withContext(Dispatchers.IO) {
+        getJson("${baseUrl()}/api/exercises/names").map { ExerciseProgress.parseExercises(it) }
+    }
+
+    /** Every logged session of one exercise between the dates, with its sets. */
+    suspend fun getExerciseProgress(exerciseId: String, startDate: String, endDate: String): Result<List<ExerciseSessionLog>> = withContext(Dispatchers.IO) {
+        getJson("${baseUrl()}/api/exercise-entries/progress/${enc(exerciseId)}?startDate=${enc(startDate)}&endDate=${enc(endDate)}")
+            .map { ExerciseProgress.parseSessions(it) }
+    }
+
     private fun baseUrl(): String = api.currentBaseUrl().trimEnd('/')
 
     private fun enc(v: String): String = URLEncoder.encode(v, "UTF-8")

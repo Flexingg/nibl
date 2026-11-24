@@ -210,6 +210,17 @@ fun ReportsScreen(
                                 ReportSectionId.CAFFEINE -> CaffeineReportCard(snap.caffeine)
                                 ReportSectionId.FASTING -> FastingReportCard(snap.fasting)
                                 ReportSectionId.WORKOUTS -> WorkoutsReportCard(snap.workouts, snap.weightTdee.weightUnit)
+                                ReportSectionId.EXERCISE_PROGRESS -> ExerciseProgressCard(
+                                    exercises = state.exercises,
+                                    selected = state.selectedExercise,
+                                    grouping = state.progressGrouping,
+                                    report = state.exerciseProgress,
+                                    loading = state.isProgressLoading,
+                                    error = state.progressError,
+                                    weightUnit = state.weightUnit,
+                                    onSelect = { viewModel.selectExercise(it) },
+                                    onGrouping = { viewModel.selectProgressGrouping(it) }
+                                )
                                 ReportSectionId.ACTIVITY_SLEEP -> ActivitySleepReportCard(snap.activitySleep)
                                 ReportSectionId.COMPARE -> MetricCompareCard(
                                     metricA = state.compareMetricA,
@@ -246,7 +257,7 @@ fun ReportsScreen(
 // ---------- Shared Card Shell & Primitives ----------
 
 @Composable
-private fun ReportCard(
+internal fun ReportCard(
     title: String,
     subtitle: String,
     icon: ImageVector,
@@ -281,7 +292,7 @@ private fun ReportCard(
 }
 
 @Composable
-private fun StatChip(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
+internal fun StatChip(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(FluidRadius.sm))
@@ -294,7 +305,7 @@ private fun StatChip(label: String, value: String, accent: Color, modifier: Modi
 }
 
 @Composable
-private fun BarChartCanvas(
+internal fun BarChartCanvas(
     values: List<Double>,
     barColor: Color,
     goalValue: Double? = null,

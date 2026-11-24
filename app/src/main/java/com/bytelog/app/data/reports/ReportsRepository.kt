@@ -200,6 +200,20 @@ class ReportsRepository(
         }
     }
 
+    /** The exercises the user has logged on Sparky, for the Exercise Progress picker. */
+    suspend fun loggedExercises(): Result<List<LoggedExercise>> = reportsApi.getLoggedExercises()
+
+    /** One exercise's progress over [range], grouped by day, week or month. */
+    suspend fun loadExerciseProgress(exercise: LoggedExercise, range: ReportRange, grouping: ProgressGrouping): Result<ExerciseProgressReport> =
+        withContext(Dispatchers.IO) {
+            val today = LocalDate.now()
+            val start = today.minusDays((range.days - 1).toLong())
+            reportsApi.getExerciseProgress(exercise.id, start.format(DATE_FMT), today.format(DATE_FMT))
+                .map { ExerciseProgress.report(exercise, it, grouping) }
+        }
+
+    suspend fun weightUnit(): String = settingsRepository.weightUnit.first()
+
     suspend fun loadReport(range: ReportRange): ReportsSnapshot = withContext(Dispatchers.IO) {
         val today = LocalDate.now()
         val start = today.minusDays((range.days - 1).toLong())

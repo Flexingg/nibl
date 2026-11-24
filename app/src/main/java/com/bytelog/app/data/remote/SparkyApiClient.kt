@@ -96,6 +96,13 @@ class SparkyApiClient(
             chain.proceed(builder.build())
         }
         .build()
+
+    /**
+     * For requests that create something. OkHttp normally resends a request by itself when the connection drops
+     * after it was sent; for a new diary entry or food that makes a second copy on Sparky, so these don't retry
+     * on their own (the sync tries again later and checks Sparky first).
+     */
+    private val createClient: OkHttpClient by lazy { client.newBuilder().retryOnConnectionFailure(false).build() }
  
     /**
      * Dedicated OkHttpClient for AI interactions (LLM multi-step tool calls, multimodal vision),
@@ -667,7 +674,8 @@ class SparkyApiClient(
                         val cleanMealName = rawMealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
                         FoodEntry(
-                            id = obj["id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(),
+                            // Without an id, one made from the entry itself, so the same entry gets the same id every sync
+                            id = obj["id"]?.jsonPrimitive?.content ?: stableEntryId(normalizedDate, obj),
                             foodId = obj["food_id"]?.jsonPrimitive?.content,
                             foodName = obj["food_name"]?.jsonPrimitive?.content ?: "Food Item",
                             brandName = obj["brand_name"]?.jsonPrimitive?.content,
@@ -755,17 +763,15 @@ class SparkyApiClient(
                 .post(body)
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            createClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val content = response.body?.string().orEmpty()
-                    val serverId = try {
-                        json.parseToJsonElement(content).jsonObject["id"]?.jsonPrimitive?.content
-                    } catch (_: Exception) { null }
+                    val serverId = try { createdEntryId(json.parseToJsonElement(content)) } catch (_: Exception) { null }
                     Result.success(serverId ?: entry.id)
                 } else {
                     val errBody = response.body?.string().orEmpty()
                     android.util.Log.e("ByteLog", "Failed to create food entry on Sparky: HTTP ${response.code} $errBody")
-                    Result.failure(IOException("Create food entry failed: HTTP ${response.code} - $errBody"))
+                    Result.failure(SparkyHttpException(response.code, "Create food entry failed: HTTP ${response.code} - $errBody"))
                 }
             }
         } catch (e: Exception) {
@@ -1472,7 +1478,7 @@ class SparkyApiClient(
                 .post(body)
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            createClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val content = response.body?.string().orEmpty()
                     val obj = json.parseToJsonElement(content).jsonObject
@@ -1626,7 +1632,7 @@ class SparkyApiClient(
                 )
             )
             val request = Request.Builder().url("$baseUrl/api/foods").post(jsonBody(payload)).build()
-            client.newCall(request).execute().use { response ->
+            createClient.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) return@use Result.failure(IOException("Couldn't save your copy: ${errorText(response.code, body)}"))
                 val parsed = runCatching { SparkyFood.parse(json.parseToJsonElement(body).jsonObject) }.getOrNull()
@@ -2592,3 +2598,25 @@ private suspend fun okhttp3.Call.await(): okhttp3.Response = kotlinx.coroutines.
         }
     })
 }
+
+/** Sparky answered, and refused (as opposed to the request never getting an answer). */
+class SparkyHttpException(val code: Int, message: String) : IOException(message)
+
+/**
+ * The id of a diary entry Sparky just created, wherever its answer puts it: the entry itself, wrapped in
+ * `data`/`entry`/`foodEntry`, or a one-item list.
+ */
+internal fun createdEntryId(element: kotlinx.serialization.json.JsonElement?): String? = when (element) {
+    is kotlinx.serialization.json.JsonObject -> (element["id"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+        ?: listOf("data", "entry", "foodEntry", "food_entry", "result").firstNotNullOfOrNull { createdEntryId(element[it]) }
+    is kotlinx.serialization.json.JsonArray -> element.firstNotNullOfOrNull { createdEntryId(it) }
+    else -> null
+}
+
+/** A repeatable id for a downloaded entry that came without one. */
+internal fun stableEntryId(date: String, obj: kotlinx.serialization.json.JsonObject): String {
+    val key = listOf("food_id", "variant_id", "food_name", "meal_type", "quantity", "unit", "created_at")
+        .joinToString("|") { (obj[it] as? JsonPrimitive)?.contentOrNull.orEmpty() }
+    return "sparky-" + UUID.nameUUIDFromBytes("$date|$key".toByteArray()).toString()
+}
+

@@ -131,15 +131,44 @@ class FoodRepository(
     /** The Sparky food and serving [entry] belongs to (food id, variant id), creating the food on Sparky if needed. */
     suspend fun sparkyLinkFor(entry: FoodEntry): Result<Pair<String, String>> = linkToSparkyFood(entry)
 
-    /** Sends one new entry; on success it carries Sparky's id and is marked uploaded. */
+    /**
+     * Sends one new entry; on success it carries Sparky's id and is marked uploaded.
+     *
+     * If an earlier upload of it got no answer, Sparky may have saved it anyway: it's looked for there first and
+     * adopted if found, rather than sent again as a second copy.
+     */
     private suspend fun pushCreate(entry: FoodEntry): Boolean {
+        val unansweredAt = runCatching { settingsRepository.unansweredCreates()[entry.id] }.getOrNull()
+        if (unansweredAt != null) {
+            // Can't tell whether it got there: try again later rather than risk a second copy
+            val server = sparkyApiClient.fetchEntriesForDate(entry.entryDate.take(10)).getOrElse { e ->
+                lastPushError = e.message; return false
+            }
+            val known = foodEntryDao.getEntriesForDateOnce(entry.entryDate.take(10)).map { it.id }.toSet()
+            val copy = EntryMatching.findUnanswered(entry, unansweredAt, server.filter { it.id !in known })
+            if (copy != null) {
+                rekeyEntry(entry, copy.id)
+                settingsRepository.clearUnansweredCreate(entry.id)
+                return true
+            }
+        }
         val link = linkToSparkyFood(entry).getOrElse { e ->
             lastPushError = "Couldn't add ${entry.foodName} to Sparky's food library: ${e.message}"
             return false
         }
         val linked = entry.copy(foodId = link.first)
+        val attemptAt = System.currentTimeMillis()
         val res = sparkyApiClient.createFoodEntry(linked, link.first, link.second)
-        if (res.isFailure) { lastPushError = res.exceptionOrNull()?.message; return false }
+        if (res.isFailure) {
+            val e = res.exceptionOrNull()
+            lastPushError = e?.message
+            // No answer at all (timeout, dropped connection): Sparky may have saved it
+            if (e !is com.bytelog.app.data.remote.SparkyHttpException && unansweredAt == null) {
+                runCatching { settingsRepository.markUnansweredCreate(entry.id, attemptAt) }
+            }
+            return false
+        }
+        runCatching { settingsRepository.clearUnansweredCreate(entry.id) }
         val serverId = res.getOrNull()
         if (!serverId.isNullOrBlank() && serverId != entry.id) rekeyEntry(linked, serverId)
         else {
@@ -817,9 +846,18 @@ class FoodRepository(
      *  - an entry that was downloaded before and is now gone from Sparky was deleted there, so it goes here too;
      *  - entries uploaded from the phone but not (yet) in Sparky's list, and unsent changes, are always kept.
      */
-    private suspend fun mergeServerEntries(date: String, serverEntries: List<FoodEntry>) {
+    private suspend fun mergeServerEntries(date: String, serverEntries: List<FoodEntry>): Unit = pushLock.withLock {
         val local = foodEntryDao.getEntriesForDateOnce(date)
         val serverIds = serverEntries.map { it.id }.toSet()
+        // Uploaded entries Sparky lists under another id (it didn't tell the phone the new one): the phone's copy
+        // goes and Sparky's takes its place below, so the food isn't there twice
+        val localIds = local.map { it.id }.toSet()
+        val strays = local.filter { it.syncStatus == FoodEntry.SYNC_STATUS_UPLOADED && it.id !in serverIds }
+        val adopted = EntryMatching.pair(strays, serverEntries.filter { it.id !in localIds })
+        if (adopted.isNotEmpty()) {
+            foodEntryDao.deleteEntriesByIds(adopted.keys.toList())
+            adopted.forEach { (phoneId, sparkyId) -> prepBatchDao?.remapEntryId(phoneId, sparkyId) }
+        }
         val keepLocal = local.filter {
             it.syncStatus == FoodEntry.SYNC_STATUS_PENDING_INSERT ||
                 it.syncStatus == FoodEntry.SYNC_STATUS_PENDING_UPDATE ||
@@ -863,7 +901,9 @@ class FoodRepository(
         val sDate = if (sourceDate.contains("T")) sourceDate.substringBefore("T") else sourceDate
         val tDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
 
-        // Optimistically copy locally in Room so UI updates instantly
+        // Shown straight away as placeholders that never upload: Sparky makes the real copies below, and the sync
+        // after it brings them in (and drops these). If Sparky can't copy, the placeholders upload instead.
+        var placeholders: List<FoodEntry> = emptyList()
         try {
             val srcEntries = foodEntryDao.getEntriesForDateOnce(sDate)
                 .filter { it.mealName.equals(sourceMealType, ignoreCase = true) }
@@ -877,17 +917,22 @@ class FoodRepository(
                         entryDate = tDate,
                         mealName = targetMealType,
                         mealTypeId = targetTypeId,
-                        syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT,
+                        syncStatus = FoodEntry.SYNC_STATUS_SYNCED,
                         createdAt = System.currentTimeMillis()
                     )
                 }
-                commitMultiAdd(copied)
+                foodEntryDao.insertEntries(copied)
+                placeholders = copied
             }
         } catch (_: Exception) {}
 
         val result = sparkyApiClient.copyMeal(sDate, sourceMealType, tDate, targetMealType)
         if (result.isSuccess) {
+            if (placeholders.isNotEmpty()) foodEntryDao.deleteEntriesByIds(placeholders.map { it.id })
             syncDateWithServer(tDate)
+        } else if (placeholders.isNotEmpty()) {
+            // Sparky couldn't copy: the phone's copies go up as new entries instead
+            commitMultiAdd(placeholders)
         }
         result
     }

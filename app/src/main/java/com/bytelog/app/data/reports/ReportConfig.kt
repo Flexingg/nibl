@@ -18,6 +18,7 @@ enum class ReportSectionId(val title: String, val description: String) {
     CAFFEINE("Caffeine", "Daily caffeine intake, average, and peak day"),
     FASTING("Fasting", "Completed fasts, average duration, and daily fasting hours"),
     WORKOUTS("Lifting & Workouts", "Sessions, lifting volume, reps, muscle sets, top PRs, and daily workout chart"),
+    EXERCISE_PROGRESS("Exercise Progress", "One exercise over time: estimated 1RM, heaviest weight, volume, reps vs weight and PRs"),
     ACTIVITY_SLEEP("Activity & Sleep", "Health Connect steps, active calories, sleep duration, and resting HR"),
     COMPARE("Metric Compare", "Overlay any two metrics and compute their correlation")
 }
@@ -102,10 +103,10 @@ data class ReportCustomization(
             if (raw.isNullOrBlank()) return DEFAULT
             val parsed = runCatching { codec.decodeFromString<ReportCustomization>(raw) }.getOrNull()
                 ?: return DEFAULT
-            // Ensure any newly added ReportSectionId values are appended in their default order
+            // Newly added ReportSectionId values go in at their default spot
             val normalizedOrder = parsed.order.distinct().toMutableList()
-            ReportSectionId.entries.forEach { id ->
-                if (id !in normalizedOrder) normalizedOrder.add(id)
+            ReportSectionId.entries.forEachIndexed { i, id ->
+                if (id !in normalizedOrder) normalizedOrder.add(i.coerceAtMost(normalizedOrder.size), id)
             }
             val validPinned = parsed.pinnedMicronutrients.filter { MicronutrientCatalog.byKey(it) != null }.toSet()
                 .ifEmpty { MicronutrientCatalog.DEFAULT_PINNED }

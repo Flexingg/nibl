@@ -60,6 +60,11 @@ class SyncKeepsPhoneDataTest {
         /** Library foods by id: name, barcode, variant id, quick-food flag, serving size. */
         val foods = ConcurrentHashMap<String, Map<String, Any?>>()
         val foodCreates = AtomicInteger(0)
+        /** How Sparky answers a new entry: "plain" (the entry), "wrapped" ({"data":{...}}), or "noId" (no id at all). */
+        @Volatile var createAnswer = "plain"
+        /** Save the next new entries, then drop the connection before answering. */
+        val dropAnswers = AtomicInteger(0)
+        val entryCreates = AtomicInteger(0)
     }
     private val sparky = FakeSparky()
     private lateinit var server: MockWebServer
@@ -112,13 +117,22 @@ class SyncKeepsPhoneDataTest {
                                 .setBody("{\"error\":\"new row violates row-level security policy for table \\\"food_entries\\\"\"}")
                         }
                         val id = "srv-${sparky.ids.incrementAndGet()}"
+                        sparky.entryCreates.incrementAndGet()
                         sparky.entries[id] = mapOf(
                             "food_id" to foodId,
                             "food_name" to o["food_name"]!!.jsonPrimitive.content, "meal_type" to o["meal_type"]!!.jsonPrimitive.content,
                             "entry_date" to o["entry_date"]!!.jsonPrimitive.content, "quantity" to o["quantity"]!!.jsonPrimitive.content,
                             "calories" to o["calories"]!!.jsonPrimitive.content
                         )
-                        MockResponse().setResponseCode(201).setBody(entryJson(id, sparky.entries[id]!!))
+                        if (sparky.dropAnswers.getAndUpdate { (it - 1).coerceAtLeast(0) } > 0) {
+                            return MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST)
+                        }
+                        val body = entryJson(id, sparky.entries[id]!!)
+                        MockResponse().setResponseCode(201).setBody(when (sparky.createAnswer) {
+                            "wrapped" -> "{\"data\":$body}"
+                            "noId" -> "{\"message\":\"created\"}"
+                            else -> body
+                        })
                     }
                     request.method == "PUT" && path.startsWith("/api/food-entries/") -> {
                         val id = path.removePrefix("/api/food-entries/")
@@ -318,4 +332,62 @@ class SyncKeepsPhoneDataTest {
         assertEquals(0, sparky.foodCreates.get())
         assertEquals(existing, sparky.entries.values.single()["food_id"])
     }
+
+    // --- Foods must never end up in the diary twice ---
+
+    @Test fun anAnswerWithoutTheNewIdDoesNotDoubleTheFood() = runBlocking {
+        sparky.createAnswer = "noId"
+        food.commitMultiAdd(listOf(entry("local-1", "Banana")))
+        until { sparky.entries.isNotEmpty() }
+        settle()
+        food.syncDateWithServer(today)
+        food.syncDateWithServer(today)
+        assertEquals(listOf("Banana"), names())
+        assertEquals("Sparky's copy took its place", sparky.entries.keys.toList(), db.foodEntryDao().getEntriesForDateOnce(today).map { it.id })
+        assertEquals(1, sparky.entries.size)
+    }
+
+    @Test fun aWrappedAnswerStillGivesTheNewId() = runBlocking {
+        sparky.createAnswer = "wrapped"
+        food.commitMultiAdd(listOf(entry("local-1", "Apple")))
+        until { food.countPendingSync() == 0 }
+        settle()
+        assertEquals(sparky.entries.keys.toList(), db.foodEntryDao().getEntriesForDateOnce(today).map { it.id })
+        food.syncDateWithServer(today)
+        assertEquals(listOf("Apple"), names())
+    }
+
+    @Test fun anUploadWhoseAnswerWasLostIsNotSentAgain() = runBlocking {
+        sparky.online = false
+        food.commitMultiAdd(listOf(entry("local-1", "Yogurt")))
+        settle()
+        sparky.online = true
+        sparky.dropAnswers.set(1)
+        food.pushPendingEntries()                  // Sparky saved it, the answer never came
+        food.syncDateWithServer(today)             // the retry finds it on Sparky instead of sending it again
+        food.syncDateWithServer(today)
+        assertEquals("one copy on Sparky (creates: ${sparky.entryCreates.get()}, ${sparky.entries.values.map { it["food_name"] }})", 1, sparky.entries.size)
+        assertEquals(listOf("Yogurt"), names())
+        assertEquals(0, food.countPendingSync())
+    }
+
+    @Test fun twoOfTheSameFoodLoggedOnPurposeStayTwo() = runBlocking {
+        sparky.createAnswer = "noId"
+        food.commitMultiAdd(listOf(entry("local-1", "Coffee"), entry("local-2", "Coffee")))
+        until { sparky.entries.size == 2 }
+        settle()
+        food.syncDateWithServer(today)
+        assertEquals(listOf("Coffee", "Coffee"), names())
+        assertEquals(2, sparky.entries.size)
+    }
+
+    @Test fun repeatedSyncsNeverMultiplyTheDiary() = runBlocking {
+        sparky.entries["srv-a"] = mapOf("food_name" to "Toast", "meal_type" to "Breakfast", "entry_date" to today, "quantity" to "1", "calories" to "120")
+        food.commitMultiAdd(listOf(entry("local-1", "Soup")))
+        until { food.countPendingSync() == 0 }
+        repeat(4) { food.syncDateWithServer(today) }
+        assertEquals(listOf("Soup", "Toast"), names())
+        assertEquals(2, sparky.entries.size)
+    }
 }
+
