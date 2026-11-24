@@ -549,16 +549,18 @@ fun DiaryScreen(
                             if (caffeineRepository != null) {
                                 item(key = "caffeine") {
                                     val caffeineStatus by caffeineRepository.status.collectAsState()
+                                    val latestCaffeine by caffeineRepository.latestItem.collectAsState()
                                     LaunchedEffect(selectedDate) { caffeineRepository.refresh(selectedDate) }
                                     Box(Modifier.homeItem(this, listState, "caffeine")) {
                                         com.bytelog.app.ui.caffeine.CaffeineCard(
                                             status = caffeineStatus,
-                                            onQuickLogCoffee = {
+                                            latestItem = latestCaffeine,
+                                            onQuickLogItem = { itemName, itemMg ->
                                                 val nowHHmm = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
                                                 val mealId = mealTypes.firstOrNull()?.id.orEmpty()
                                                 scope.launch {
-                                                    caffeineRepository.logCaffeine("Drip Coffee", 95f, nowHHmm, selectedDate, mealId)
-                                                    snackbarHostState.showSnackbar("Logged Drip Coffee (95 mg caffeine)")
+                                                    caffeineRepository.logCaffeine(itemName, itemMg, nowHHmm, selectedDate, mealId)
+                                                    snackbarHostState.showSnackbar("Logged $itemName (${itemMg.roundToInt()} mg caffeine)")
                                                 }
                                             },
                                             onOpenDetail = onOpenCaffeine

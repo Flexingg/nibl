@@ -49,7 +49,8 @@ import kotlin.math.roundToInt
 @Composable
 fun CaffeineCard(
     status: CaffeineStatus?,
-    onQuickLogCoffee: () -> Unit,
+    latestItem: com.bytelog.app.data.caffeine.CaffeineRepository.LastCaffeineItem? = null,
+    onQuickLogItem: (name: String, mg: Float) -> Unit,
     onOpenDetail: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,6 +64,12 @@ fun CaffeineCard(
     val atBedtimeMg = status?.atBedtimeMg?.roundToInt() ?: 0
     val thresholdMg = (status?.thresholdMg ?: 100f).coerceAtLeast(1f)
     val bedtimeLabel = status?.targetBedtime?.take(5) ?: "22:30"
+
+    val resolvedLatest = status?.doses
+        ?.filter { it.mg > 0f && it.name.isNotBlank() }
+        ?.maxByOrNull { com.bytelog.app.data.caffeine.CaffeineMath.parseDoseEpochMs(it.at) ?: 0L }
+        ?.let { com.bytelog.app.data.caffeine.CaffeineRepository.LastCaffeineItem(it.name, it.mg) }
+        ?: latestItem
 
     val rawProgress = ((status?.atBedtimeMg ?: 0f) / thresholdMg).coerceIn(0f, 1f)
     val animatedProgress by animateFloatAsState(targetValue = rawProgress, label = "caffeine_bedtime_progress")
@@ -194,13 +201,17 @@ fun CaffeineCard(
         ) {
             Box(
                 modifier = Modifier
-                    .weight(1.25f)
+                    .weight(1.35f)
                     .clip(RoundedCornerShape(16.dp))
                     .background(ByteSurfaceVariantDark)
                     .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onQuickLogCoffee()
+                        if (resolvedLatest != null) {
+                            onQuickLogItem(resolvedLatest.name, resolvedLatest.mg)
+                        } else {
+                            onOpenDetail()
+                        }
                     }
                     .padding(vertical = 8.dp, horizontal = 10.dp),
                 contentAlignment = Alignment.Center
@@ -215,17 +226,31 @@ fun CaffeineCard(
                         tint = accent,
                         modifier = Modifier.size(15.dp)
                     )
-                    Text(
-                        text = "+ Coffee",
-                        color = ByteCream,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "95 mg",
-                        color = ByteCreamMuted,
-                        fontSize = 11.sp
-                    )
+                    if (resolvedLatest != null) {
+                        Text(
+                            text = resolvedLatest.name,
+                            color = ByteCream,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Text(
+                            text = "${resolvedLatest.mg.roundToInt()} mg",
+                            color = ByteCreamMuted,
+                            fontSize = 11.sp,
+                            maxLines = 1
+                        )
+                    } else {
+                        Text(
+                            text = "Log caffeine",
+                            color = ByteCream,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 

@@ -41,8 +41,13 @@ class CaffeineRepository(
     private val cacheLock = Any()
     private val doseCacheSerializer = MapSerializer(String.serializer(), ListSerializer(CaffeineDose.serializer()))
 
+    data class LastCaffeineItem(val name: String, val mg: Float)
+
     private val _status = MutableStateFlow<CaffeineStatus?>(null)
     val status: StateFlow<CaffeineStatus?> = _status.asStateFlow()
+
+    private val _latestItem = MutableStateFlow<LastCaffeineItem?>(null)
+    val latestItem: StateFlow<LastCaffeineItem?> = _latestItem.asStateFlow()
 
     private val _settings = MutableStateFlow(CaffeineSettings())
     val settings: StateFlow<CaffeineSettings> = _settings.asStateFlow()
@@ -70,7 +75,11 @@ class CaffeineRepository(
 
         val localSettings = readSettingsFromStore()
         _settings.value = localSettings
+        if (_latestItem.value == null) {
+            _latestItem.value = readLastItemFromStore()
+        }
         val localDoses = readDosesForDate(cleanDate)
+        updateLatestItemFromDoses(localDoses, cleanDate)
 
         // Emit immediate local estimate so UI renders instantly even before network returns
         if (_status.value == null || lastLoadedDate == cleanDate) {
@@ -100,6 +109,7 @@ class CaffeineRepository(
                 _settings.value = mergedSettings
                 saveSettingsToStore(mergedSettings)
                 saveDosesForDate(cleanDate, remoteStatus.doses)
+                updateLatestItemFromDoses(remoteStatus.doses, cleanDate)
                 _status.value = remoteStatus
             },
             onFailure = { err ->
@@ -154,6 +164,9 @@ class CaffeineRepository(
             CaffeineMath.parseDoseEpochMs(it.at, localDate) ?: 0L
         }
         saveDosesForDate(cleanDate, updatedDoses)
+        val loggedItem = LastCaffeineItem(newDose.name, newDose.mg)
+        _latestItem.value = loggedItem
+        saveLastItemToStore(loggedItem)
         val currentSettings = readSettingsFromStore()
         _settings.value = currentSettings
         _status.value = CaffeineMath.buildLocalStatus(
@@ -259,9 +272,36 @@ class CaffeineRepository(
         }
     }
 
+    private suspend fun updateLatestItemFromDoses(doses: List<CaffeineDose>, date: String) {
+        val localDate = runCatching { LocalDate.parse(date) }.getOrDefault(LocalDate.now())
+        val latest = doses
+            .filter { it.mg > 0f && it.name.isNotBlank() }
+            .maxByOrNull { CaffeineMath.parseDoseEpochMs(it.at, localDate) ?: 0L }
+            ?: return
+        val item = LastCaffeineItem(latest.name.trim(), latest.mg)
+        _latestItem.value = item
+        saveLastItemToStore(item)
+    }
+
+    private suspend fun readLastItemFromStore(): LastCaffeineItem? {
+        val prefs = context.dataStore.data.first()
+        val name = prefs[KEY_LAST_CAFFEINE_NAME]?.trim().orEmpty()
+        val mg = prefs[KEY_LAST_CAFFEINE_MG] ?: 0f
+        return if (name.isNotBlank() && mg > 0f) LastCaffeineItem(name, mg) else null
+    }
+
+    private suspend fun saveLastItemToStore(item: LastCaffeineItem) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAST_CAFFEINE_NAME] = item.name
+            prefs[KEY_LAST_CAFFEINE_MG] = item.mg
+        }
+    }
+
     companion object {
         private val KEY_CAFFEINE_HALF_LIFE = floatPreferencesKey("caffeine_half_life_hours")
         private val KEY_CAFFEINE_BEDTIME = stringPreferencesKey("caffeine_target_bedtime")
+        private val KEY_LAST_CAFFEINE_NAME = stringPreferencesKey("caffeine_last_item_name")
+        private val KEY_LAST_CAFFEINE_MG = floatPreferencesKey("caffeine_last_item_mg")
         private const val CACHE_FILE_NAME = "caffeine_doses_cache.json"
     }
 }

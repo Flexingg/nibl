@@ -68,6 +68,39 @@ data class CompareReportData(
     val correlation: Double? = null
 )
 
+data class WorkoutPrItem(
+    val exerciseName: String,
+    val maxWeight: Double,
+    val maxReps: Int,
+    val estimated1Rm: Double
+)
+
+data class MuscleGroupStat(
+    val muscle: String,
+    val sets: Int,
+    val volume: Double
+)
+
+data class DailyWorkoutPoint(
+    val date: String,
+    val sessions: Int,
+    val volume: Double,
+    val durationMinutes: Int,
+    val caloriesBurned: Double
+)
+
+data class ExerciseDashboardRemote(
+    val totalWorkouts: Int = 0,
+    val totalVolume: Double = 0.0,
+    val totalReps: Int = 0,
+    val totalSets: Int = 0,
+    val totalDurationMinutes: Int = 0,
+    val totalCaloriesBurned: Double = 0.0,
+    val muscleGroups: List<MuscleGroupStat> = emptyList(),
+    val topPrs: List<WorkoutPrItem> = emptyList(),
+    val dailyPoints: List<DailyWorkoutPoint> = emptyList()
+)
+
 /**
  * SparkyFitness reporting endpoints for Nibl's Detailed Reports module.
  */
@@ -186,6 +219,107 @@ class ReportsApi(private val api: SparkyApiClient) {
                 metricB = metricB,
                 points = points,
                 correlation = corr
+            )
+        }
+    }
+
+    suspend fun getExerciseDashboard(
+        startDate: String,
+        endDate: String
+    ): Result<ExerciseDashboardRemote> = withContext(Dispatchers.IO) {
+        val url = "${baseUrl()}/api/reports/exercise-dashboard?startDate=${enc(startDate)}&endDate=${enc(endDate)}"
+        getJson(url).map { root ->
+            val obj = root as? JsonObject ?: return@map ExerciseDashboardRemote()
+            val keyStats = obj["keyStats"] as? JsonObject
+
+            // Muscle group sets & volume maps
+            val muscleSetsObj = obj["muscleGroupSets"] as? JsonObject
+            val muscleVolObj = obj["muscleGroupVolume"] as? JsonObject
+            val allMuscles = ((muscleSetsObj?.keys ?: emptySet()) + (muscleVolObj?.keys ?: emptySet())).toSet()
+            val muscleStats = allMuscles.mapNotNull { m ->
+                val sets = (muscleSetsObj?.get(m)?.jsonPrimitive?.doubleOrNull ?: 0.0).toInt()
+                val vol = muscleVolObj?.get(m)?.jsonPrimitive?.doubleOrNull ?: 0.0
+                if (sets > 0 || vol > 0.0) MuscleGroupStat(muscle = m, sets = sets, volume = vol) else null
+            }.sortedWith(compareByDescending<MuscleGroupStat> { it.sets }.thenByDescending { it.volume })
+
+            // Top PRs from prData map (exerciseName -> { maxWeight, maxReps, estimated1RM / oneRepMax })
+            val prObj = obj["prData"] as? JsonObject
+            val prs = prObj?.entries?.mapNotNull { (exName, el) ->
+                val p = el as? JsonObject ?: return@mapNotNull null
+                val maxWeight = p.dbl("maxWeight", "max_weight", "weight")
+                val maxReps = p.dbl("maxReps", "max_reps", "reps").toInt()
+                val est1Rm = p.dbl("estimated1RM", "estimated_1rm", "oneRepMax", "max1RM")
+                    .takeIf { it > 0.0 }
+                    ?: if (maxWeight > 0.0 && maxReps > 0) maxWeight * (1.0 + maxReps / 30.0) else maxWeight
+                if (maxWeight > 0.0 || maxReps > 0) {
+                    WorkoutPrItem(exName, maxWeight, maxReps, est1Rm)
+                } else null
+            }?.sortedByDescending { it.estimated1Rm }?.take(8).orEmpty()
+
+            // Parse exerciseEntries for daily volume, sessions, duration, sets & calories
+            val entriesArr = obj["exerciseEntries"] as? JsonArray ?: JsonArray(emptyList())
+            val sessionsByDay = mutableMapOf<String, Int>()
+            val volumeByDay = mutableMapOf<String, Double>()
+            val durationByDay = mutableMapOf<String, Int>()
+            val caloriesByDay = mutableMapOf<String, Double>()
+            var totalSets = 0
+            var totalDuration = 0
+            var totalCals = 0.0
+
+            entriesArr.forEach { el ->
+                val e = el as? JsonObject ?: return@forEach
+                val name = e.str("exercise_name", "name").orEmpty()
+                if (name.equals("Active Calories", ignoreCase = true)) return@forEach
+                val date = e.str("entry_date", "date", "created_at")?.take(10) ?: return@forEach
+
+                val dur = e.dbl("duration_minutes", "duration").toInt()
+                val cals = e.dbl("calories_burned", "calories")
+                val setsArr = e["sets"] as? JsonArray
+                var entryVol = 0.0
+                if (setsArr != null) {
+                    totalSets += setsArr.size
+                    setsArr.forEach { sEl ->
+                        val s = sEl as? JsonObject ?: return@forEach
+                        val w = s.dbl("weight", "weight_kg", "weight_lbs")
+                        val r = s.dbl("reps")
+                        if (w > 0.0 && r > 0.0) entryVol += w * r
+                    }
+                }
+                totalDuration += dur
+                totalCals += cals
+                sessionsByDay[date] = (sessionsByDay[date] ?: 0) + 1
+                volumeByDay[date] = (volumeByDay[date] ?: 0.0) + entryVol
+                durationByDay[date] = (durationByDay[date] ?: 0) + dur
+                caloriesByDay[date] = (caloriesByDay[date] ?: 0.0) + cals
+            }
+
+            val allDates = (sessionsByDay.keys + volumeByDay.keys).sorted()
+            val dailyPoints = allDates.map { d ->
+                DailyWorkoutPoint(
+                    date = d,
+                    sessions = sessionsByDay[d] ?: 0,
+                    volume = volumeByDay[d] ?: 0.0,
+                    durationMinutes = durationByDay[d] ?: 0,
+                    caloriesBurned = caloriesByDay[d] ?: 0.0
+                )
+            }
+
+            val totalWorkouts = keyStats?.dbl("totalWorkouts", "total_workouts")?.toInt()
+                ?: sessionsByDay.size
+            val totalVolume = keyStats?.dbl("totalVolume", "total_volume")
+                ?: volumeByDay.values.sum()
+            val totalReps = keyStats?.dbl("totalReps", "total_reps")?.toInt() ?: 0
+
+            ExerciseDashboardRemote(
+                totalWorkouts = totalWorkouts,
+                totalVolume = totalVolume,
+                totalReps = totalReps,
+                totalSets = totalSets.takeIf { it > 0 } ?: muscleStats.sumOf { it.sets },
+                totalDurationMinutes = totalDuration,
+                totalCaloriesBurned = totalCals,
+                muscleGroups = muscleStats,
+                topPrs = prs,
+                dailyPoints = dailyPoints
             )
         }
     }

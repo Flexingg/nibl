@@ -25,6 +25,7 @@ enum class CompareMetric(val apiKey: String, val label: String, val unit: String
     WEIGHT("weight", "Weight", ""),
     WATER("water", "Water", "ml"),
     CAFFEINE("caffeine", "Caffeine", "mg"),
+    WORKOUT_VOLUME("workout_volume", "Lifting Vol", ""),
     STEPS("steps", "Steps", "steps"),
     SLEEP("sleep", "Sleep", "hrs")
 }
@@ -94,6 +95,19 @@ data class FastingReportData(
     val avgDurationHours: Double
 )
 
+data class WorkoutsReportData(
+    val totalWorkouts: Int = 0,
+    val totalVolume: Double = 0.0,
+    val totalReps: Int = 0,
+    val totalSets: Int = 0,
+    val totalDurationMinutes: Int = 0,
+    val totalCaloriesBurned: Double = 0.0,
+    val dailyVolume: List<Pair<String, Double>> = emptyList(),
+    val dailySessions: List<Pair<String, Int>> = emptyList(),
+    val muscleGroups: List<MuscleGroupStat> = emptyList(),
+    val topPrs: List<WorkoutPrItem> = emptyList()
+)
+
 data class ActivitySleepReportData(
     val dailySnapshots: List<DailyHealthSnapshot>,
     val avgSteps: Long,
@@ -113,6 +127,7 @@ data class ReportsSnapshot(
     val weightTdee: WeightTdeeReportData,
     val caffeine: CaffeineReportData,
     val fasting: FastingReportData,
+    val workouts: WorkoutsReportData,
     val activitySleep: ActivitySleepReportData
 )
 
@@ -198,6 +213,7 @@ class ReportsRepository(
             val remoteNutritionDeferred = async { reportsApi.getMiniNutritionTrends(startDate, endDate).getOrNull() }
             val remoteHydrationDeferred = async { reportsApi.getHydrationNutritionRange(startDate, endDate).getOrNull() }
             val remoteFastingDeferred = async { reportsApi.getFastingRange(startDate, endDate).getOrNull() }
+            val remoteWorkoutsDeferred = async { reportsApi.getExerciseDashboard(startDate, endDate).getOrNull() }
 
             val localEntriesDeferred = async { foodEntryDao.getEntriesInRange(startDate, endDate).first() }
             val allLocalEntriesDeferred = async { foodEntryDao.getAllEntries().first() }
@@ -218,12 +234,13 @@ class ReportsRepository(
             val remoteNutrition = remoteNutritionDeferred.await()
             val remoteHydration = remoteHydrationDeferred.await()
             val remoteFasting = remoteFastingDeferred.await()
+            val remoteWorkouts = remoteWorkoutsDeferred.await()
             val localEntries = localEntriesDeferred.await()
             val allLocalEntries = allLocalEntriesDeferred.await()
             val allWeights = allWeightsDeferred.await()
             val localWaterByDate = localWaterByDateDeferred.await()
 
-            val isOfflineFallback = remoteNutrition == null && remoteHydration == null && remoteFasting == null
+            val isOfflineFallback = remoteNutrition == null && remoteHydration == null && remoteFasting == null && remoteWorkouts == null
 
             // 1. Nutrition & Macros (merge remote + local Room)
             val remoteNutByDate = remoteNutrition.orEmpty().associateBy { it.date }
@@ -399,6 +416,21 @@ class ReportsRepository(
                 avgDurationHours = avgFastHrs
             )
 
+            // 6b. Lifting & Workouts
+            val workoutsByDate = remoteWorkouts?.dailyPoints.orEmpty().associateBy { it.date }
+            val workoutsData = WorkoutsReportData(
+                totalWorkouts = remoteWorkouts?.totalWorkouts ?: 0,
+                totalVolume = remoteWorkouts?.totalVolume ?: 0.0,
+                totalReps = remoteWorkouts?.totalReps ?: 0,
+                totalSets = remoteWorkouts?.totalSets ?: 0,
+                totalDurationMinutes = remoteWorkouts?.totalDurationMinutes ?: 0,
+                totalCaloriesBurned = remoteWorkouts?.totalCaloriesBurned ?: 0.0,
+                dailyVolume = dateStrings.map { ds -> ds to (workoutsByDate[ds]?.volume ?: 0.0) },
+                dailySessions = dateStrings.map { ds -> ds to (workoutsByDate[ds]?.sessions ?: 0) },
+                muscleGroups = remoteWorkouts?.muscleGroups.orEmpty(),
+                topPrs = remoteWorkouts?.topPrs.orEmpty()
+            )
+
             // 7. Activity & Sleep (Health Connect local snapshot cache)
             val dailyHc = dateStrings.map { ds -> hcMap[ds] ?: DailyHealthSnapshot(date = ds) }
             val stepDays = dailyHc.filter { it.steps > 0L }
@@ -425,6 +457,7 @@ class ReportsRepository(
                 weightTdee = weightTdeeData,
                 caffeine = caffeineData,
                 fasting = fastingData,
+                workouts = workoutsData,
                 activitySleep = activitySleepData
             )
         }
@@ -437,10 +470,12 @@ class ReportsRepository(
         cachedSnapshot: ReportsSnapshot?
     ): CompareResult = withContext(Dispatchers.IO) {
         val snapshot = cachedSnapshot ?: loadReport(range)
-        val usesHealthConnectOnly = metricA == CompareMetric.STEPS || metricA == CompareMetric.SLEEP ||
-            metricB == CompareMetric.STEPS || metricB == CompareMetric.SLEEP
+        val usesLocalOnly = metricA == CompareMetric.STEPS || metricA == CompareMetric.SLEEP ||
+            metricA == CompareMetric.WORKOUT_VOLUME ||
+            metricB == CompareMetric.STEPS || metricB == CompareMetric.SLEEP ||
+            metricB == CompareMetric.WORKOUT_VOLUME
 
-        if (!usesHealthConnectOnly) {
+        if (!usesLocalOnly) {
             val remote = reportsApi.getCompareReport(
                 metricA = metricA.apiKey,
                 metricB = metricB.apiKey,
@@ -494,6 +529,7 @@ class ReportsRepository(
         CompareMetric.WEIGHT -> s.weightTdee.points.associate { it.date to (it.actualWeight ?: it.smoothedWeight)?.toDouble() }
         CompareMetric.WATER -> s.hydration.dailyWaterMl.associate { (d, v) -> d to v.takeIf { it > 0.0 } }
         CompareMetric.CAFFEINE -> s.caffeine.dailyCaffeineMg.associate { (d, v) -> d to v.takeIf { it > 0.0 } }
+        CompareMetric.WORKOUT_VOLUME -> s.workouts.dailyVolume.associate { (d, v) -> d to v.takeIf { it > 0.0 } }
         CompareMetric.STEPS -> s.activitySleep.dailySnapshots.associate { it.date to it.steps.takeIf { v -> v > 0L }?.toDouble() }
         CompareMetric.SLEEP -> s.activitySleep.dailySnapshots.associate { it.date to it.sleepMinutes.takeIf { v -> v > 0 }?.div(60.0) }
     }

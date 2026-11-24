@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Coffee
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Refresh
@@ -77,6 +78,7 @@ import com.bytelog.app.data.reports.MicronutrientCatalog
 import com.bytelog.app.data.reports.MicronutrientTrend
 import com.bytelog.app.data.reports.NutritionReportData
 import com.bytelog.app.data.reports.ReportRange
+import com.bytelog.app.data.reports.WorkoutsReportData
 import com.bytelog.app.data.reports.ReportSectionId
 import com.bytelog.app.data.reports.WeightTdeeReportData
 import com.bytelog.app.ui.components.ScreenHeader
@@ -207,6 +209,7 @@ fun ReportsScreen(
                                 ReportSectionId.WEIGHT_TDEE -> WeightTdeeReportCard(snap.weightTdee)
                                 ReportSectionId.CAFFEINE -> CaffeineReportCard(snap.caffeine)
                                 ReportSectionId.FASTING -> FastingReportCard(snap.fasting)
+                                ReportSectionId.WORKOUTS -> WorkoutsReportCard(snap.workouts, snap.weightTdee.weightUnit)
                                 ReportSectionId.ACTIVITY_SLEEP -> ActivitySleepReportCard(snap.activitySleep)
                                 ReportSectionId.COMPARE -> MetricCompareCard(
                                     metricA = state.compareMetricA,
@@ -608,6 +611,143 @@ private fun FastingReportCard(data: FastingReportData) {
             )
         } else {
             Text("No fasting sessions recorded in this range.", color = ByteTextSecondary, fontSize = 12.sp)
+        }
+    }
+}
+
+// ---------- 6b. Lifting & Workouts ----------
+
+@Composable
+private fun WorkoutsReportCard(data: WorkoutsReportData, weightUnit: String) {
+    val numFmt = remember { NumberFormat.getIntegerInstance(Locale.US) }
+    val unitLabel = if (weightUnit.equals("kg", ignoreCase = true)) "kg" else "lbs"
+    val volumeLabel = when {
+        data.totalVolume >= 1_000_000.0 -> String.format(Locale.US, "%.2fM %s", data.totalVolume / 1_000_000.0, unitLabel)
+        data.totalVolume >= 1_000.0 -> String.format(Locale.US, "%.1fk %s", data.totalVolume / 1_000.0, unitLabel)
+        data.totalVolume > 0.0 -> "${data.totalVolume.roundToInt()} $unitLabel"
+        else -> "—"
+    }
+
+    ReportCard(
+        title = "Lifting & Workouts",
+        subtitle = if (data.totalWorkouts > 0) "${data.totalWorkouts} workout days logged" else "Volume, muscle sets & PRs",
+        icon = androidx.compose.material.icons.Icons.Default.FitnessCenter,
+        accent = ByteTomato
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatChip("Workouts", "${data.totalWorkouts}", ByteTomato, Modifier.weight(1f))
+            StatChip("Volume", volumeLabel, MacroProtein, Modifier.weight(1f))
+            StatChip("Sets / Reps", "${data.totalSets} / ${numFmt.format(data.totalReps)}", ByteCream, Modifier.weight(1f))
+        }
+
+        if (data.totalDurationMinutes > 0 || data.totalCaloriesBurned > 0.0) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatChip(
+                    "Duration",
+                    if (data.totalDurationMinutes >= 60) "${data.totalDurationMinutes / 60}h ${data.totalDurationMinutes % 60}m"
+                    else "${data.totalDurationMinutes}m",
+                    MacroCarbs,
+                    Modifier.weight(1f)
+                )
+                StatChip(
+                    "Burned",
+                    "${numFmt.format(data.totalCaloriesBurned.roundToInt())} kcal",
+                    MacroFat,
+                    Modifier.weight(1f)
+                )
+            }
+        }
+
+        val hasDailyVolume = data.dailyVolume.any { it.second > 0.0 }
+        val hasDailySessions = data.dailySessions.any { it.second > 0 }
+        if (hasDailyVolume) {
+            Text("Daily lifting volume ($unitLabel)", color = ByteTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            BarChartCanvas(
+                values = data.dailyVolume.map { it.second },
+                barColor = ByteTomato,
+                goalValue = null
+            )
+        } else if (hasDailySessions) {
+            Text("Daily workout sessions", color = ByteTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            BarChartCanvas(
+                values = data.dailySessions.map { it.second.toDouble() },
+                barColor = ByteTomato,
+                goalValue = null
+            )
+        } else {
+            Text("No workouts logged in this range.", color = ByteTextSecondary, fontSize = 12.sp)
+        }
+
+        if (data.muscleGroups.isNotEmpty()) {
+            val topMuscles = data.muscleGroups.take(6)
+            val maxSets = topMuscles.maxOf { it.sets }.coerceAtLeast(1)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Sets by muscle group", color = ByteTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                topMuscles.forEach { mg ->
+                    val frac = (mg.sets.toFloat() / maxSets.toFloat()).coerceIn(0.05f, 1f)
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(
+                                text = mg.muscle.replaceFirstChar { it.uppercase() },
+                                color = ByteCream,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "${mg.sets} sets",
+                                color = ByteTextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(ByteSurfaceVariantDark)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(frac)
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(MacroProtein)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (data.topPrs.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Top personal records", color = ByteTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                data.topPrs.take(5).forEach { pr ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ByteSurfaceVariantDark)
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = pr.exerciseName,
+                            color = ByteCream,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "${pr.maxWeight.roundToInt()} $unitLabel × ${pr.maxReps}  (1RM ~${pr.estimated1Rm.roundToInt()})",
+                            color = ByteTomato,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
     }
 }

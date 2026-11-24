@@ -17,6 +17,7 @@ enum class ReportSectionId(val title: String, val description: String) {
     WEIGHT_TDEE("Weight & TDEE", "Smoothed weight trend, weekly rate, body fat, and adaptive TDEE"),
     CAFFEINE("Caffeine", "Daily caffeine intake, average, and peak day"),
     FASTING("Fasting", "Completed fasts, average duration, and daily fasting hours"),
+    WORKOUTS("Lifting & Workouts", "Sessions, lifting volume, reps, muscle sets, top PRs, and daily workout chart"),
     ACTIVITY_SLEEP("Activity & Sleep", "Health Connect steps, active calories, sleep duration, and resting HR"),
     COMPARE("Metric Compare", "Overlay any two metrics and compute their correlation")
 }
