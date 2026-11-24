@@ -12,6 +12,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -176,6 +177,41 @@ class HomeLayoutUiTest {
         compose.onNodeWithText("Customize home").performClick()
         waitFor { compose.onAllNodesWithText("Drag to reorder", substring = true).fetchSemanticsNodes().isNotEmpty() }
         shot("home_layout_4_sheet")
+    }
+
+    @Test
+    fun theHomeScreenHasASmallDateAndTheMenuHoldsSettingsInTheSavedOrder() {
+        // Search moved to the top of the menu, Ask Sparky hidden
+        val menu = com.bytelog.app.data.repository.FabMenuLayout.DEFAULT
+            .move(com.bytelog.app.data.repository.FabAction.entries.indexOf(com.bytelog.app.data.repository.FabAction.SEARCH), 0)
+            .toggle(com.bytelog.app.data.repository.FabAction.ASK, visible = false)
+        runBlocking { settings.saveFabMenuLayout(menu); settings.fabMenuLayout.first { it == menu } }
+        var opened = ""
+        compose.setContent {
+            ByteLogTheme(darkTheme = true) {
+                DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> opened = "search" }, onNavigateToBarcode = { _, _, _ -> },
+                    onNavigateToChat = { opened = "chat" }, onNavigateToSettings = { opened = "settings" }, onOpenRecentMeals = {})
+            }
+        }
+        waitFor { diaryVm.fabMenuLayout.value == menu }
+        waitFor { compose.onAllNodesWithText("HYDRATION").fetchSemanticsNodes().isNotEmpty() }
+        // No top bar buttons: sync, Sparky and settings moved out
+        listOf("Sync with Sparky", "Sparky AI Coach", "Settings").forEach { d ->
+            assertTrue("$d is gone from the top", compose.onAllNodesWithContentDescription(d).fetchSemanticsNodes().isEmpty())
+        }
+        assertTrue(compose.onAllNodesWithText("Today").fetchSemanticsNodes().isNotEmpty())
+        // The calorie card starts near the top now
+        assertTrue("cards start high: ${top("HYDRATION")}", top("HYDRATION") < compose.onRoot().fetchSemanticsNode().size.height * 0.5f)
+        shot("home_compact_top")
+
+        compose.onNodeWithContentDescription("Add food").performClick()
+        waitFor { compose.onAllNodesWithText("Settings").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue("hidden action left out", compose.onAllNodesWithText("Ask Sparky").fetchSemanticsNodes().isEmpty())
+        assertTrue("search first, at the top", top("Search food") < top("Settings"))
+        shot("home_fab_menu")
+        compose.onNodeWithText("Settings").performClick()
+        compose.waitForIdle()
+        assertEquals("settings", opened)
     }
 
     @Test

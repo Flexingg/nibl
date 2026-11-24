@@ -21,6 +21,11 @@ class ByteLogApplication : Application() {
     val sparkyApiClient by lazy { SparkyApiClient() }
     val settingsRepository by lazy { SettingsRepository(this) }
 
+    /** Updates the app from its GitHub releases. */
+    val appUpdater by lazy {
+        com.bytelog.app.data.update.AppUpdater(this, BuildConfig.VERSION_NAME, debugBuild = BuildConfig.DEBUG)
+    }
+
     val foodRepository by lazy {
         FoodRepository(
             foodDao = database.foodDao(),

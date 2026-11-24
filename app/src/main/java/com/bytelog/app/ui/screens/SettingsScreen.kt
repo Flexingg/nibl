@@ -124,7 +124,8 @@ fun SettingsScreen(
     onOpenReports: (() -> Unit)? = null,
     onOpenProgressPhotos: (() -> Unit)? = null,
     onOpenFasting: (() -> Unit)? = null,
-    onOpenCaffeine: (() -> Unit)? = null
+    onOpenCaffeine: (() -> Unit)? = null,
+    appUpdater: com.bytelog.app.data.update.AppUpdater? = null
 ) {
     val serverUrlPref by settingsRepository.serverUrl.collectAsState(initial = "http://10.0.2.2:3010")
     val authTokenPref by settingsRepository.authToken.collectAsState(initial = null)
@@ -253,6 +254,13 @@ fun SettingsScreen(
                 reduceTransparency = reduceTransparency,
                 onReduceTransparency = { scope.launch { settingsRepository.saveReduceTransparency(it) } }
             )
+
+            // The home screen's + menu: its order and what's in it
+            val fabLayout by settingsRepository.fabMenuLayout.collectAsState(initial = com.bytelog.app.data.repository.FabMenuLayout.DEFAULT)
+            com.bytelog.app.ui.components.FabMenuOrderCard(fabLayout, onChange = { scope.launch { settingsRepository.saveFabMenuLayout(it) } })
+
+            // Updates from the app's GitHub releases
+            if (appUpdater != null) com.bytelog.app.ui.components.AppUpdateCard(appUpdater, settingsRepository)
 
             // Health Connect: food and water out to the phone's health data
             com.bytelog.app.ui.components.HealthConnectCard(settingsRepository)

@@ -104,6 +104,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -848,14 +849,60 @@ fun DiaryFabMenu(expanded: Boolean, onExpandedChange: (Boolean) -> Unit, items: 
     }
 }
 
-/** Default menu entries for the Diary. */
-fun diaryMenuItems(onSearch: () -> Unit, onScan: () -> Unit, onImport: () -> Unit, onAsk: () -> Unit, onPhoto: (() -> Unit)? = null) = listOfNotNull(
-    FabMenuItem("Ask Sparky", Icons.Default.AutoAwesome, onAsk),
-    FabMenuItem("Import recipe", Icons.AutoMirrored.Filled.MenuBook, onImport),
-    onPhoto?.let { FabMenuItem("Log from photo", Icons.Default.PhotoCamera, it) },
-    FabMenuItem("Scan barcode", Icons.Default.QrCodeScanner, onScan),
-    FabMenuItem("Search food", Icons.Default.Search, onSearch)
-)
+/** The icon for each + menu action, shared with the menu's settings. */
+fun fabActionIcon(action: com.bytelog.app.data.repository.FabAction): ImageVector = when (action) {
+    com.bytelog.app.data.repository.FabAction.SETTINGS -> Icons.Default.Settings
+    com.bytelog.app.data.repository.FabAction.FAMILY -> Icons.Default.Groups
+    com.bytelog.app.data.repository.FabAction.ASK -> Icons.Default.AutoAwesome
+    com.bytelog.app.data.repository.FabAction.IMPORT -> Icons.AutoMirrored.Filled.MenuBook
+    com.bytelog.app.data.repository.FabAction.PHOTO -> Icons.Default.PhotoCamera
+    com.bytelog.app.data.repository.FabAction.SCAN -> Icons.Default.QrCodeScanner
+    com.bytelog.app.data.repository.FabAction.SEARCH -> Icons.Default.Search
+}
+
+/**
+ * The Diary's + menu in the user's order (Settings → Add menu), leaving out hidden actions and any the app can't
+ * do right now ([handlers] has no entry for them, e.g. Family when it isn't set up).
+ */
+fun diaryMenuItems(
+    layout: com.bytelog.app.data.repository.FabMenuLayout,
+    handlers: Map<com.bytelog.app.data.repository.FabAction, () -> Unit>
+): List<FabMenuItem> = layout.visible.mapNotNull { action ->
+    handlers[action]?.let { FabMenuItem(action.label, fabActionIcon(action), it) }
+}
+
+/**
+ * The day, small, at the top of the home screen ("Today · Tue, Nov 24"), with the fasting timer beside it when a
+ * fast is on. It slides with the day when it changes.
+ */
+@Composable
+fun CompactDayLine(date: String, title: String, subtitle: String, badge: (@Composable () -> Unit)? = null, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    val reduce = LocalReduceMotion.current
+    Row(modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        AnimatedContent(
+            targetState = Triple(date, title, subtitle),
+            transitionSpec = {
+                if (reduce) EnterTransition.None togetherWith ExitTransition.None
+                else {
+                    val dir = if (targetState.first > initialState.first) 1 else -1
+                    val s = spring(dampingRatio = 0.8f, stiffness = 380f, visibilityThreshold = IntOffset.VisibilityThreshold)
+                    (slideInVertically(s) { dir * it } + fadeIn()) togetherWith (slideOutVertically(s) { -dir * it } + fadeOut()) using SizeTransform(clip = false)
+                }
+            },
+            label = "day_line",
+            modifier = Modifier.weight(1f, fill = false)
+        ) { (_, t, sub) ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+                Text(t, color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                if (sub.isNotBlank() && sub != t) {
+                    Text("  ·  $sub", color = cs.onSurfaceVariant, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        if (badge != null) { Spacer(Modifier.width(8.dp)); badge() }
+    }
+}
 
 // ======================================================================
 // Swiping between days

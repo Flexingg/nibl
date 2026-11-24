@@ -156,6 +156,8 @@ fun DiaryScreen(
     fastingRepository: com.bytelog.app.data.fasting.FastingRepository? = null,
     caffeineRepository: com.bytelog.app.data.caffeine.CaffeineRepository? = null,
     entryPhotos: com.bytelog.app.data.remote.SparkyEntryPhotos? = null,
+    /** Shown at the top when a new version of the app is available. */
+    updateBanner: (@Composable (Modifier) -> Unit)? = null,
     onOpenFasting: () -> Unit = {},
     onOpenCaffeine: () -> Unit = {},
     onOpenReports: () -> Unit = {},
@@ -246,6 +248,7 @@ fun DiaryScreen(
     val weekShopping by viewModel.weekShopping.collectAsState()
     val plannedEntries by viewModel.plannedEntries.collectAsState()
     val homeLayout by viewModel.homeLayout.collectAsState()
+    val fabMenuLayout by viewModel.fabMenuLayout.collectAsState()
 
     // Fasting timer: time since food was last eaten, shown on today's diary once it's over an hour
     val lastMealAt by viewModel.lastMealAt.collectAsState()
@@ -391,24 +394,17 @@ fun DiaryScreen(
                 .then(Modifier.blurSource(haze))
                 .padding(horizontal = 16.dp)
         ) {
-            // Large title that shrinks as the header folds
+            // The day, small, so the cards start near the top. Settings, Family and Sparky are in the + menu.
             Box(scrollsList) {
-                com.bytelog.app.ui.diary.ExpressiveTopBar(
-                    fraction = headerFraction,
+                com.bytelog.app.ui.diary.CompactDayLine(
                     date = selectedDate,
                     title = describeDay(selectedDate),
-                    subtitle = dayDate.format(DateTimeFormatter.ofPattern(if (fastText != null) "EEE, MMM d" else "EEEE, MMMM d")),
-                    syncing = isSyncing,
-                    onSync = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        viewModel.manualSync()
-                    },
-                    onChat = onNavigateToChat,
-                    onSettings = onNavigateToSettings,
-                    onFamily = if (familyViewModel != null) onOpenFamily else null,
+                    subtitle = dayDate.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
                     badge = fastText?.let { t -> { com.bytelog.app.ui.diary.FastingPill(t) } }
                 )
             }
+            updateBanner?.invoke(Modifier.padding(top = 6.dp))
+            Spacer(Modifier.height(8.dp))
 
           // Header and list: swipe sideways here to change day
           Column(
@@ -697,7 +693,7 @@ fun DiaryScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Choose a meal below to start logging, or tap the sync icon above to fetch entries from Sparky Fitness.",
+                                        text = "Choose a meal below to start logging. Entries from Sparky Fitness sync automatically.",
                                         color = ByteCreamMuted,
                                         fontSize = 13.sp,
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1118,19 +1114,16 @@ fun DiaryScreen(
                 fabMenuOpen = it
             },
             items = com.bytelog.app.ui.diary.diaryMenuItems(
-                onSearch = {
-                    val meal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
-                    onNavigateToSearch(meal.id, meal.name, selectedDate)
-                },
-                onScan = {
-                    val meal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
-                    onNavigateToBarcode(meal.id, meal.name, selectedDate)
-                },
-                onImport = onImportRecipe,
-                onAsk = onNavigateToChat,
-                onPhoto = {
-                    val meal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
-                    onNavigateToPhoto(meal.id, meal.name, selectedDate)
+                layout = fabMenuLayout,
+                handlers = buildMap {
+                    val meal = { quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first() }
+                    put(com.bytelog.app.data.repository.FabAction.SEARCH) { meal().let { onNavigateToSearch(it.id, it.name, selectedDate) } }
+                    put(com.bytelog.app.data.repository.FabAction.SCAN) { meal().let { onNavigateToBarcode(it.id, it.name, selectedDate) } }
+                    put(com.bytelog.app.data.repository.FabAction.PHOTO) { meal().let { onNavigateToPhoto(it.id, it.name, selectedDate) } }
+                    put(com.bytelog.app.data.repository.FabAction.IMPORT, onImportRecipe)
+                    put(com.bytelog.app.data.repository.FabAction.ASK, onNavigateToChat)
+                    put(com.bytelog.app.data.repository.FabAction.SETTINGS, onNavigateToSettings)
+                    if (familyViewModel != null) put(com.bytelog.app.data.repository.FabAction.FAMILY, onOpenFamily)
                 }
             )
         )
