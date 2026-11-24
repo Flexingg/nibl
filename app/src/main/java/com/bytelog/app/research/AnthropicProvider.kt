@@ -8,6 +8,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Claude through the Messages API (raw HTTPS, the user's own key).
@@ -73,7 +74,14 @@ class AnthropicProvider(
         // Same for the effort setting, which only some models accept.
         private var useEffort = supportsEffort(model)
 
-        override suspend fun next(toolResults: List<ToolResult>): LlmTurn {
+        // If the account rejects automatic caching of the conversation, drop it for the rest of the conversation.
+        private var useAutoCache = true
+        // Tool calls whose streamed input wasn't valid JSON (by tool_use id), from the latest response.
+        private var badInputs: Set<String> = emptySet()
+
+        override suspend fun next(toolResults: List<ToolResult>): LlmTurn = next(toolResults) {}
+
+        override suspend fun next(toolResults: List<ToolResult>, onText: (String) -> Unit): LlmTurn {
             if (toolResults.isNotEmpty()) {
                 // All results of one assistant turn go back in a single user message.
                 messages += buildJsonObject {
@@ -96,7 +104,7 @@ class AnthropicProvider(
             val queries = mutableListOf<String>()
             var continuations = 0
             while (true) {
-                val response = request()
+                val response = request(onText)
                 val content = response["content"]?.jsonArray ?: JsonArray(emptyList())
                 collect(content, text, sources, queries)
                 val stop = response.str("stop_reason")
@@ -116,7 +124,11 @@ class AnthropicProvider(
                     "tool_use" -> {
                         val calls = content.mapNotNull { it as? JsonObject }
                             .filter { it.str("type") == "tool_use" }
-                            .map { ToolCall(it.str("id").orEmpty(), it.str("name").orEmpty(), (it["input"] as? JsonObject) ?: JsonObject(emptyMap())) }
+                            .map {
+                                val id = it.str("id").orEmpty()
+                                ToolCall(id, it.str("name").orEmpty(), (it["input"] as? JsonObject) ?: JsonObject(emptyMap()),
+                                    parseError = if (id in badInputs) "The arguments were not valid JSON." else null)
+                            }
                         return LlmTurn(text.toString().trim(), calls, sources.values.toList(), queries)
                     }
                     "refusal" -> {
@@ -131,20 +143,35 @@ class AnthropicProvider(
             }
         }
 
-        private suspend fun request(): JsonObject {
+        /** One request, streamed: [onText] gets the answer's text as it arrives. Returns the whole response. */
+        private suspend fun request(onText: (String) -> Unit): JsonObject {
             while (true) {
                 val body = buildJsonObject {
                     put("model", JsonPrimitive(model))
-                    put("max_tokens", JsonPrimitive(16000))
+                    put("max_tokens", JsonPrimitive(32000))
                     put("system", JsonPrimitive(system))
                     put("messages", JsonArray(messages))
                     put("tools", tools)
+                    put("stream", JsonPrimitive(true))
+                    // Each step of a question re-sends the whole conversation so far. Automatic caching moves a cache
+                    // point to the end of it on every request, so the next step reads all of this one from the cache.
+                    if (useAutoCache) put("cache_control", buildJsonObject { put("type", JsonPrimitive("ephemeral")) })
                     if (useFallbacks) put("fallbacks", JsonPrimitive("default"))
                     // Multi-step tool use doesn't need the default depth of thinking: "medium" keeps answers quick and cheap.
                     if (useEffort) put("output_config", buildJsonObject { put("effort", JsonPrimitive("medium")) })
                 }
-                val r = http.postJson("$baseUrl/v1/messages", headers(useFallbacks), body)
-                if (r.code == 200 && r.body != null) return r.body
+                val stream = StreamedMessage(onText)
+                val r = http.postStream("$baseUrl/v1/messages", headers(useFallbacks), body, stream::accept)
+                if (r.code == 200 && r.streamed) {
+                    val rebuilt = stream.result()
+                    badInputs = stream.badInputs
+                    return rebuilt
+                }
+                if (r.code == 200 && r.body != null) { badInputs = emptySet(); return r.body }
+                if (useAutoCache && r.code == 400 && r.raw.contains("cache_control", ignoreCase = true)) {
+                    useAutoCache = false
+                    continue
+                }
                 if (useFallbacks && r.code == 400 && r.raw.contains("fallback", ignoreCase = true)) {
                     useFallbacks = false
                     continue
@@ -155,6 +182,133 @@ class AnthropicProvider(
                 }
                 throw ProviderException(ProviderHttp.errorMessage("Claude", r), r.code)
             }
+        }
+    }
+
+    /**
+     * Rebuilds a message from its stream of events, block by block, exactly as the API would have returned it whole:
+     * thinking blocks keep their signatures, tool calls get their full input, text keeps its citations. The rebuilt
+     * turn is echoed back on the next request, so it must match what the model wrote.
+     */
+    private class StreamedMessage(private val onText: (String) -> Unit) {
+        private val blocks = sortedMapOf<Int, MutableMap<String, JsonElement>>()
+        private val text = HashMap<Int, StringBuilder>()
+        private val thinking = HashMap<Int, StringBuilder>()
+        private val inputJson = HashMap<Int, StringBuilder>()
+        private val citations = HashMap<Int, MutableList<JsonElement>>()
+        private var stopReason: String? = null
+        private var stopDetails: JsonElement? = null
+        var badInputs: Set<String> = emptySet(); private set
+
+        fun accept(event: JsonObject) {
+            val index = event["index"]?.let { runCatching { it.jsonPrimitive.content.toInt() }.getOrNull() }
+            when (event.str("type")) {
+                "content_block_start" -> {
+                    val i = index ?: return
+                    val block = (event["content_block"] as? JsonObject)?.toMutableMap() ?: return
+                    blocks[i] = block
+                    when (block.str("type")) {
+                        "text" -> text[i] = StringBuilder(block.str("text").orEmpty())
+                        "thinking" -> thinking[i] = StringBuilder(block.str("thinking").orEmpty())
+                    }
+                    (block["citations"] as? JsonArray)?.let { citations[i] = it.toMutableList() }
+                }
+                "content_block_delta" -> {
+                    val i = index ?: return
+                    val delta = event["delta"] as? JsonObject ?: return
+                    when (delta.str("type")) {
+                        "text_delta" -> delta.str("text")?.let { text.getOrPut(i) { StringBuilder() }.append(it); onText(it) }
+                        "thinking_delta" -> delta.str("thinking")?.let { thinking.getOrPut(i) { StringBuilder() }.append(it) }
+                        "signature_delta" -> delta["signature"]?.let { sig -> blocks[i]?.put("signature", sig) }
+                        "input_json_delta" -> delta.str("partial_json")?.let { inputJson.getOrPut(i) { StringBuilder() }.append(it) }
+                        "citations_delta" -> delta["citation"]?.let { citations.getOrPut(i) { mutableListOf() }.add(it) }
+                    }
+                }
+                "message_delta" -> (event["delta"] as? JsonObject)?.let { d ->
+                    d.str("stop_reason")?.let { stopReason = it }
+                    d["stop_details"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.let { stopDetails = it }
+                }
+                "error" -> {
+                    val msg = (event["error"] as? JsonObject)?.str("message") ?: "the answer stopped part way"
+                    throw ProviderException("Claude had a problem: $msg")
+                }
+            }
+        }
+
+        fun result(): JsonObject {
+            val bad = mutableSetOf<String>()
+            val content = blocks.map { (i, block) ->
+                text[i]?.let { block["text"] = JsonPrimitive(it.toString()) }
+                thinking[i]?.let { block["thinking"] = JsonPrimitive(it.toString()) }
+                citations[i]?.let { block["citations"] = JsonArray(it) }
+                inputJson[i]?.let { raw ->
+                    val parsed = if (raw.isBlank()) JsonObject(emptyMap())
+                    else runCatching { kotlinx.serialization.json.Json.parseToJsonElement(raw.toString()) as? JsonObject }.getOrNull()
+                    if (parsed != null) block["input"] = parsed else block.str("id")?.let { bad += it }
+                }
+                JsonObject(block)
+            }
+            badInputs = bad
+            return buildJsonObject {
+                put("content", JsonArray(content))
+                stopReason?.let { put("stop_reason", JsonPrimitive(it)) }
+                stopDetails?.let { put("stop_details", it) }
+            }
+        }
+
+        private fun Map<String, JsonElement>.str(key: String): String? = this[key]?.let { runCatching { it.jsonPrimitive.content }.getOrNull() }
+    }
+
+    override val readsImages = true
+
+    override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject): String {
+        var structured = true
+        var effort = supportsEffort(model)
+        while (true) {
+            val body = buildJsonObject {
+                put("model", JsonPrimitive(model))
+                put("max_tokens", JsonPrimitive(8000))
+                put("system", JsonPrimitive(instructions))
+                put("messages", buildJsonArray {
+                    add(buildJsonObject {
+                        put("role", JsonPrimitive("user"))
+                        put("content", buildJsonArray {
+                            images.forEach { (data, mediaType) ->
+                                add(buildJsonObject {
+                                    put("type", JsonPrimitive("image"))
+                                    put("source", buildJsonObject {
+                                        put("type", JsonPrimitive("base64"))
+                                        put("media_type", JsonPrimitive(mediaType))
+                                        put("data", JsonPrimitive(data))
+                                    })
+                                })
+                            }
+                            add(buildJsonObject {
+                                put("type", JsonPrimitive("text"))
+                                put("text", JsonPrimitive(if (structured) "Estimate this meal." else "Estimate this meal. Reply with only the JSON object, no other text."))
+                            })
+                        })
+                    })
+                })
+                if (structured || effort) put("output_config", buildJsonObject {
+                    if (effort) put("effort", JsonPrimitive("medium"))
+                    if (structured) put("format", buildJsonObject {
+                        put("type", JsonPrimitive("json_schema"))
+                        put("schema", schema)
+                    })
+                })
+            }
+            val r = http.postJson("$baseUrl/v1/messages", headers(false), body)
+            val response = r.body
+            if (r.code == 200 && response != null) {
+                if (response.str("stop_reason") == "refusal") throw ProviderException("Claude declined to estimate this photo.")
+                val out = response["content"]?.jsonArray.orEmpty().mapNotNull { (it as? JsonObject)?.takeIf { b -> b.str("type") == "text" }?.str("text") }.joinToString("")
+                if (out.isBlank()) throw ProviderException("Claude didn't return an estimate.")
+                return out
+            }
+            if (r.code == 400 && structured && (r.raw.contains("format", ignoreCase = true) || r.raw.contains("schema", ignoreCase = true))) { structured = false; continue }
+            if (r.code == 400 && effort && r.raw.contains("effort", ignoreCase = true)) { effort = false; continue }
+            throw ProviderException(ProviderHttp.errorMessage("Claude", r), r.code)
         }
     }
 

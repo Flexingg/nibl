@@ -32,7 +32,10 @@ class FoodRepository(
     private val sparkyApiClient: SparkyApiClient,
     private val settingsRepository: SettingsRepository,
     private val appScope: CoroutineScope,
-    private val prepBatchDao: com.bytelog.app.data.local.db.PrepBatchDao? = null
+    private val prepBatchDao: com.bytelog.app.data.local.db.PrepBatchDao? = null,
+    /** Replaces the AI providers' web address for photo estimates (tests). */
+    private val providerBaseUrl: String? = null,
+    private val providerHttp: com.bytelog.app.research.ProviderHttp = com.bytelog.app.research.ProviderHttp()
 ) {
 
     /**
@@ -494,8 +497,22 @@ class FoodRepository(
     )
 
     /** Sparky's AI estimate of a photographed meal, food by food. */
-    suspend fun estimateMealPhoto(images: List<Pair<String, String>>, note: String?) =
-        sparkyApiClient.estimateMealPhoto(images, note)
+    /**
+     * Estimates a meal photo. When the user has their own model set up for photos (Settings → Web research assistant),
+     * it estimates with a couple of guesses per food; if that fails, Sparky's AI estimates instead and the estimate
+     * says so. Otherwise Sparky's AI estimates.
+     */
+    suspend fun estimateMealPhoto(images: List<Pair<String, String>>, note: String?): Result<com.bytelog.app.data.remote.PhotoMealEstimate> {
+        val cfg = runCatching { settingsRepository.researchConfig.first() }.getOrNull()
+        val provider = cfg?.takeIf { it.estimatesPhotos }?.let { com.bytelog.app.research.ResearchFactory.provider(it, providerHttp, providerBaseUrl) }
+        if (provider == null || !provider.readsImages) return sparkyApiClient.estimateMealPhoto(images, note)
+        val own = com.bytelog.app.research.MealPhotoGuesser(provider).estimate(images, note)
+        if (own.isSuccess) return own
+        val why = own.exceptionOrNull()?.message?.trimEnd('.') ?: "it failed"
+        return sparkyApiClient.estimateMealPhoto(images, note)
+            .map { it.copy(fallbackNote = "${provider.id.shortName} couldn't estimate this ($why), so Sparky's AI did.") }
+            .let { sparky -> if (sparky.isSuccess) sparky else own }
+    }
 
     /** True once anything has ever been logged on this phone. */
     suspend fun hasAnyEntries(): Boolean = withContext(Dispatchers.IO) { foodEntryDao.hasAnyEntries() }

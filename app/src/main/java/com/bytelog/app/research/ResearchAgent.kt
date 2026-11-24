@@ -1,11 +1,22 @@
 package com.bytelog.app.research
 
 import kotlinx.serialization.json.JsonObject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.net.URI
 import java.time.LocalDate
 
-/** A change to the user's data that the assistant wants to make, shown for approval. */
-data class PendingAction(val toolName: String, val summary: String, val argsPreview: String, val note: String? = null)
+/**
+ * A change (or several) to the user's data that the assistant wants to make, shown for approval.
+ * [summary] is the headline, [argsPreview] readable details, and [items] one line per change when there are several.
+ */
+data class PendingAction(
+    val toolName: String,
+    val summary: String,
+    val argsPreview: String,
+    val note: String? = null,
+    val items: List<String> = emptyList()
+)
 
 data class ResearchResult(
     val text: String,
@@ -20,7 +31,16 @@ data class ResearchResult(
     /** A meal plan the assistant wrote (`plan_meals`), for the user to add to their Planned list. */
     val mealPlan: com.bytelog.app.data.repository.MealPlanDraft? = null,
     /** Changes to the plan the assistant proposed (`edit_plan`), for the user to apply. */
-    val planEdit: com.bytelog.app.data.repository.PlanEditDraft? = null
+    val planEdit: com.bytelog.app.data.repository.PlanEditDraft? = null,
+    /** Diary days the changes touched, so the app can refresh them (today when a change named no day). */
+    val touchedDates: Set<LocalDate> = emptySet(),
+    /**
+     * What the assistant did with the user's data in this answer (tools, key arguments, ids from the results), for
+     * the next question's history. The user doesn't see it; the model does, so "make that 2 servings" can find the entry.
+     */
+    val actionNote: String? = null,
+    /** True when the model failed part way; [text] then says what was already done. */
+    val stoppedEarly: Boolean = false
 )
 
 /**
@@ -30,6 +50,9 @@ data class ResearchResult(
  * user's data from text on the web:
  *  - search results and pages are wrapped as untrusted and the model is told never to follow instructions in them;
  *  - any Sparky call that isn't clearly a read goes through [confirm] first (unless the user turned that off).
+ *    All the changes the model asks for in one step are shown together, so a meal of four foods is one approval.
+ *
+ * Reads asked for in the same step run at the same time; changes run one after another, in the order asked.
  */
 class ResearchAgent(
     private val provider: LlmProvider,
@@ -49,7 +72,14 @@ class ResearchAgent(
      */
     private val sparkyAi: SparkyAiBackend? = null,
     /** What's planned, for `get_planned_meals`; null leaves the plan tools out. */
-    private val planReader: (suspend () -> List<com.bytelog.app.data.local.model.PlannedEntry>)? = null
+    private val planReader: (suspend () -> List<com.bytelog.app.data.local.model.PlannedEntry>)? = null,
+    /**
+     * About the user right now (local time, goals, what's left today), added to the instructions so the model
+     * doesn't spend a step looking it up. Null or failing leaves it out.
+     */
+    private val userContext: (suspend () -> String?)? = null,
+    /** The text of the step being written, as it arrives (empty when a new step starts). */
+    private val onText: (String) -> Unit = {}
 ) {
     // One agent runs one question, so this state belongs to that run.
     private val sparkyThread = mutableListOf<ChatTurn>()
@@ -57,9 +87,15 @@ class ResearchAgent(
     private var wroteData = false
     private var mealPlan: com.bytelog.app.data.repository.MealPlanDraft? = null
     private var planEdit: com.bytelog.app.data.repository.PlanEditDraft? = null
+    private val touched = linkedSetOf<LocalDate>()
+    /** What was done this run, one line each, for [ResearchResult.actionNote]. */
+    private val actionLog = mutableListOf<String>()
+    /** Readable lines for changes that went through, for the partial-failure message. */
+    private val doneChanges = mutableListOf<String>()
 
     suspend fun run(history: List<ChatTurn>, userText: String): Result<ResearchResult> {
         sparkyThread.clear(); delegated.clear(); wroteData = false; mealPlan = null; planEdit = null
+        touched.clear(); actionLog.clear(); doneChanges.clear()
         var notice: String? = null
         val sparkyTools = sparky.listTools().getOrElse { e ->
             notice = "Your Sparky tools weren't available (${e.message}), so I could only use the web."
@@ -75,17 +111,27 @@ class ResearchAgent(
         if (planReader != null) { clientTools += GET_PLAN_TOOL; clientTools += EDIT_PLAN_TOOL }
         val tools = sparkyTools + clientTools
 
-        val session = provider.newSession(systemPrompt(sparkyTools.isNotEmpty(), sparkyAi != null), history, userText, tools)
+        val context = userContext?.let { runCatching { it() }.getOrNull() }?.trim()?.takeIf { it.isNotEmpty() }
+        val session = provider.newSession(systemPrompt(sparkyTools.isNotEmpty(), sparkyAi != null, context), history, userText, tools)
         val sources = linkedMapOf<String, WebSource>()
         val sparkyRun = mutableListOf<String>()
         val text = StringBuilder()
         var results: List<ToolResult> = emptyList()
 
+        fun result(answer: String, note: String?, stoppedEarly: Boolean = false) = ResearchResult(
+            answer, sources.values.toList(), sparkyRun.toList(), wroteData, note, delegated.distinct(), mealPlan, planEdit,
+            touched.toSet(), actionNote(), stoppedEarly
+        )
+
         for (step in 1..maxSteps) {
+            val streamed = StringBuilder()
+            onText("")
             val turn = try {
-                session.next(results)
+                session.next(results) { piece -> streamed.append(piece); onText(streamed.toString()) }
             } catch (e: ProviderException) {
-                return Result.failure(e)
+                // Nothing changed yet: a plain failure. Otherwise say what already happened, so it isn't lost or redone.
+                if (!wroteData && mealPlan == null && planEdit == null) return Result.failure(e)
+                return Result.success(result(partialFailureText(e.message), "The assistant stopped part way: ${e.message}", stoppedEarly = true))
             }
             turn.sources.forEach { sources.putIfAbsent(it.url, it) }
             turn.searchQueries.forEach { onProgress("Searching the web: $it") }
@@ -93,27 +139,121 @@ class ResearchAgent(
             turn.notice?.let { notice = it }
 
             if (turn.toolCalls.isEmpty()) {
-                return Result.success(ResearchResult(text.toString().trim().ifBlank { notice ?: "I couldn't come up with an answer." },
-                    sources.values.toList(), sparkyRun, wroteData, notice, delegated.distinct(), mealPlan, planEdit))
+                return Result.success(result(text.toString().trim().ifBlank { notice ?: "I couldn't come up with an answer." }, notice))
             }
-            // The model's visible text so far belongs to this step; a final answer comes after the tools.
-            results = turn.toolCalls.map { call ->
-                val r = execute(call, sparkyNames, sources)
-                if (call.name in sparkyNames && !r.isError && r.ran) {
-                    sparkyRun += call.name
-                    if (r.wrote) wroteData = true
-                }
-                r.result
-            }
+            onText("")
+            results = runStep(turn.toolCalls, sparkyNames, sources, sparkyRun)
             // Only the last step's text is the answer; earlier narration was shown as progress.
             text.setLength(0)
         }
-        return Result.success(ResearchResult(text.toString().trim().ifBlank { "I ran out of steps before finishing." }, sources.values.toList(), sparkyRun, wroteData,
-            "Stopped after $maxSteps steps. Ask me to continue if you want more.", delegated.distinct(), mealPlan, planEdit))
+        return Result.success(result(text.toString().trim().ifBlank { "I ran out of steps before finishing." },
+            "Stopped after $maxSteps steps. Ask me to continue if you want more."))
+    }
+
+    /** What to tell the user when the model fails after changing their data. */
+    private fun partialFailureText(error: String?): String = buildString {
+        append("I hit a problem before I could finish")
+        if (!error.isNullOrBlank()) append(" (").append(error.trimEnd('.')).append(")")
+        append(".")
+        if (doneChanges.isNotEmpty()) {
+            append("\n\nThese changes were already made:\n")
+            doneChanges.forEach { append("• ").append(it).append('\n') }
+        }
+        if (mealPlan != null || planEdit != null) append("\nThe plan I'd written so far is below.")
+        append("\n\nAsk me to carry on if you want the rest.")
+    }.trim()
+
+    private fun actionNote(): String? {
+        if (actionLog.isEmpty()) return null
+        val out = StringBuilder()
+        for (line in actionLog) {
+            if (out.length + line.length > MAX_ACTION_NOTE) { out.append("…\n"); break }
+            out.append(line).append('\n')
+        }
+        return out.toString().trim()
     }
 
     private class Executed(val result: ToolResult, val ran: Boolean = false, val wrote: Boolean = false) {
         val isError get() = result.isError
+    }
+
+    private fun isChange(call: ToolCall, sparkyNames: Set<String>): Boolean =
+        call.parseError == null && ((call.name in sparkyNames && !SparkyToolCatalog.isRead(call.name, call.args)) ||
+            (call.name == ASK_SPARKY_TOOL.name && sparkyAi != null && !call.args.str("message").isNullOrBlank()))
+
+    /** Reads that only fetch, so they can run side by side. Everything else runs in order. */
+    private fun isParallelRead(call: ToolCall, sparkyNames: Set<String>): Boolean = call.parseError == null && when (call.name) {
+        WEB_SEARCH_TOOL.name, FETCH_URL_TOOL.name -> true
+        GET_PLAN_TOOL.name -> planReader != null
+        in sparkyNames -> SparkyToolCatalog.isRead(call.name, call.args)
+        else -> false
+    }
+
+    /** Runs one step's tool calls and returns their results in the order the model asked for them. */
+    private suspend fun runStep(calls: List<ToolCall>, sparkyNames: Set<String>, sources: MutableMap<String, WebSource>, sparkyRun: MutableList<String>): List<ToolResult> {
+        val out = arrayOfNulls<Executed>(calls.size)
+
+        // Reads at the same time, before anything needs approval
+        val reads = calls.indices.filter { isParallelRead(calls[it], sparkyNames) }
+        if (reads.isNotEmpty()) coroutineScope {
+            reads.map { i -> i to async { execute(calls[i], sparkyNames, sources) } }.forEach { (i, job) -> out[i] = job.await() }
+        }
+
+        // One approval for every change in this step.
+        val changes = calls.indices.filter { isChange(calls[it], sparkyNames) }
+        val approved = if (changes.isEmpty() || !askBeforeWriting) true else confirm(approvalFor(changes.map { calls[it] }))
+        if (!approved) {
+            changes.forEach { i ->
+                val c = calls[i]
+                actionLog += "- Declined by the user: ${headline(c)}"
+                out[i] = Executed(ToolResult(c.id, c.name,
+                    if (changes.size == 1) "The user declined this change. Don't retry it; tell them what you would have done and ask how they'd like to proceed."
+                    else "The user declined this group of ${changes.size} changes, so none of them ran. Don't retry them; tell them what you would have done and ask how they'd like to proceed.",
+                    isError = true))
+            }
+        }
+
+        // The rest, changes included, in order
+        calls.indices.filter { out[it] == null }.forEach { i -> out[i] = execute(calls[i], sparkyNames, sources) }
+
+        return calls.indices.map { i ->
+            val call = calls[i]; val r = out[i]!!
+            if (call.name in sparkyNames && !r.isError && r.ran) {
+                sparkyRun += call.name
+                if (r.wrote) {
+                    wroteData = true
+                    touched += datesIn(call.args).ifEmpty { setOf(today()) }
+                    doneChanges += headline(call)
+                }
+            }
+            r.result
+        }
+    }
+
+    private fun headline(call: ToolCall): String =
+        if (call.name == ASK_SPARKY_TOOL.name) "Ask Sparky AI: ${call.args.str("message").orEmpty().take(160)}"
+        else SparkyToolCatalog.humanize(call.name, call.args, today()).first
+
+    /** The approval shown for [calls]: one change, or a list of them. */
+    private fun approvalFor(calls: List<ToolCall>): PendingAction {
+        if (calls.size == 1) {
+            val c = calls.single()
+            if (c.name == ASK_SPARKY_TOOL.name) {
+                return PendingAction(c.name, "Send to Sparky AI", c.args.str("message").orEmpty().take(MAX_PREVIEW),
+                    "Sparky AI will carry this out with its own tools, which can log, edit or delete your data.")
+            }
+            val (headline, details) = SparkyToolCatalog.humanize(c.name, c.args, today())
+            return PendingAction(c.name, headline, details.joinToString("\n"))
+        }
+        val lines = calls.map { c ->
+            if (c.name == ASK_SPARKY_TOOL.name) "Ask Sparky AI: ${c.args.str("message").orEmpty().take(300)}"
+            else SparkyToolCatalog.humanize(c.name, c.args, today()).let { (h, d) -> if (d.isEmpty()) h else "$h (${d.joinToString(", ")})" }
+        }
+        val delegates = calls.any { it.name == ASK_SPARKY_TOOL.name }
+        return PendingAction(
+            calls.joinToString(",") { it.name }, "Make these ${calls.size} changes?", "", items = lines,
+            note = if (delegates) "Sparky AI will carry out its part with its own tools, which can log, edit or delete your data." else null
+        )
     }
 
     private suspend fun execute(call: ToolCall, sparkyNames: Set<String>, sources: MutableMap<String, WebSource>): Executed {
@@ -127,7 +267,7 @@ class ResearchAgent(
                 onProgress("Searching the web: $query")
                 search.search(query).fold(
                     onSuccess = { r ->
-                        r.sources.forEach { sources.putIfAbsent(it.url, it) }
+                        synchronized(sources) { r.sources.forEach { sources.putIfAbsent(it.url, it) } }
                         Executed(ToolResult(call.id, call.name, untrusted("search results for \"$query\"", r.text)))
                     },
                     onFailure = { error("Search failed: ${it.message}") }
@@ -139,7 +279,7 @@ class ResearchAgent(
                 onProgress("Reading ${hostOf(url)}")
                 fetcher.fetch(url).fold(
                     onSuccess = { page ->
-                        sources.putIfAbsent(url, WebSource(hostOf(url), url))
+                        synchronized(sources) { sources.putIfAbsent(url, WebSource(hostOf(url), url)) }
                         Executed(ToolResult(call.id, call.name, untrusted(url, page)))
                     },
                     onFailure = { error("Couldn't read that page: ${it.message}") }
@@ -153,6 +293,7 @@ class ResearchAgent(
                 val kept = mealPlan?.items.orEmpty().filter { (it.date to it.meal.lowercase()) !in replaced }
                 mealPlan = com.bytelog.app.data.repository.MealPlanDraft(kept + plan.items)
                 onProgress("Writing the meal plan")
+                actionLog += "- Wrote a meal plan for the user to add (not saved yet): ${com.bytelog.app.data.repository.MealPlan.summary(plan)}"
                 Executed(ToolResult(call.id, call.name,
                     "Got it: ${com.bytelog.app.data.repository.MealPlan.summary(plan)}. The app shows the plan with an \"Add to Planned\" button; " +
                         "nothing is saved until the user taps it. In your answer, describe the plan briefly and tell them to tap the button."))
@@ -172,6 +313,7 @@ class ResearchAgent(
                     ?: return error("edit_plan needs changes: remove {ref}, update {ref, and what changes}, or add {date, meal, food, calories…}. Get refs from get_planned_meals.")
                 planEdit = com.bytelog.app.data.repository.PlanEditDraft(planEdit?.changes.orEmpty() + edit.changes)
                 onProgress("Writing the plan changes")
+                actionLog += "- Proposed ${edit.changes.size} plan change(s) for the user to apply (not applied yet): ${preview(call.args)}"
                 Executed(ToolResult(call.id, call.name,
                     "Got ${edit.changes.size} change${if (edit.changes.size == 1) "" else "s"}. The app shows them with an \"Apply\" button; nothing changes until the user taps it. Describe the changes briefly in your answer."))
             }
@@ -181,19 +323,18 @@ class ResearchAgent(
         }
     }
 
+    /** Runs a Sparky tool. Approval, if needed, was already given for the whole step. */
     private suspend fun callSparky(call: ToolCall): Executed {
         val read = SparkyToolCatalog.isRead(call.name, call.args)
         val summary = SparkyToolCatalog.describe(call.name, call.args)
-        if (!read && askBeforeWriting) {
-            val approved = confirm(PendingAction(call.name, summary, preview(call.args)))
-            if (!approved) {
-                return Executed(ToolResult(call.id, call.name,
-                    "The user declined this change. Don't retry it; tell them what you would have done and ask how they'd like to proceed.", isError = true))
-            }
-        }
         onProgress(if (read) "Checking your data ($summary)" else "Updating your data ($summary)")
         return sparky.call(call.name, call.args).fold(
-            onSuccess = { out -> Executed(ToolResult(call.id, call.name, out.text.take(MAX_TOOL_OUTPUT), out.isError), ran = true, wrote = !read) },
+            onSuccess = { out ->
+                // Ids and names in the result are what a follow-up ("make that 2 servings") needs to find this again.
+                val excerpt = out.text.replace(Regex("\\s+"), " ").take(if (read) 300 else 500)
+                actionLog += "- ${if (read) "Read" else if (out.isError) "Tried" else "Did"} ${call.name} ${preview(call.args)}${if (out.isError) " (failed)" else ""} → $excerpt"
+                Executed(ToolResult(call.id, call.name, out.text.take(MAX_TOOL_OUTPUT), out.isError), ran = true, wrote = !read)
+            },
             onFailure = { Executed(ToolResult(call.id, call.name, "Sparky couldn't run this: ${it.message}", isError = true)) }
         )
     }
@@ -203,13 +344,6 @@ class ResearchAgent(
         fun error(msg: String) = Executed(ToolResult(call.id, call.name, msg, isError = true))
         val message = call.args.str("message")?.trim().orEmpty()
         if (message.isBlank()) return error("ask_sparky needs a message.")
-        if (askBeforeWriting) {
-            val approved = confirm(PendingAction(call.name, "Send to Sparky AI", message.take(MAX_PREVIEW),
-                "Sparky AI will carry this out with its own tools, which can log, edit or delete your data."))
-            if (!approved) {
-                return error("The user declined this. Don't send it again; tell them what you would have asked Sparky AI to do and ask how they'd like to proceed.")
-            }
-        }
         onProgress("Asking Sparky AI: ${message.take(60)}${if (message.length > 60) "…" else ""}")
         val framed = "(From the user's web research assistant. It researched this for them and they approved sending it. Today is ${today()}.)\n" +
             "$message\n\n" +
@@ -220,7 +354,13 @@ class ResearchAgent(
                 sparkyThread += ChatTurn(true, framed)
                 sparkyThread += ChatTurn(false, reply.text)
                 delegated += reply.executedTools
-                if (reply.executedTools.isNotEmpty()) wroteData = true
+                if (reply.executedTools.isNotEmpty()) {
+                    wroteData = true
+                    touched += datesIn(message).ifEmpty { setOf(today()) }
+                    doneChanges += "Sparky AI: ${reply.text.lineSequence().firstOrNull { it.isNotBlank() }?.take(160) ?: message.take(160)}"
+                }
+                actionLog += "- Asked Sparky AI: ${message.take(300)} → it said: ${reply.text.replace(Regex("\\s+"), " ").take(400)}" +
+                    (if (reply.executedTools.isNotEmpty()) " [used ${reply.executedTools.joinToString(", ")}]" else "")
                 val out = buildString {
                     append(reply.text.ifBlank { "(Sparky AI replied with no text.)" })
                     if (reply.executedTools.isNotEmpty()) append("\n\n[Sparky AI used: ${reply.executedTools.joinToString(", ")}]")
@@ -236,8 +376,11 @@ class ResearchAgent(
         )
     }
 
-    private fun systemPrompt(hasSparkyTools: Boolean, canAskSparky: Boolean): String = buildString {
-        append("You are Sparky's research assistant inside the Nibl nutrition app. Today is ${today()}.\n")
+    private fun systemPrompt(hasSparkyTools: Boolean, canAskSparky: Boolean, context: String?): String = buildString {
+        append("You are Sparky's research assistant inside the Nibl nutrition app. Today is ${today()} (${today().dayOfWeek.name.lowercase().replaceFirstChar { it.titlecase() }}).\n")
+        if (context != null) {
+            append("\nAbout the user right now (from the app; use it instead of looking these up):\n").append(context).append("\n")
+        }
         if (hasSparkyTools) {
             append("You can use the user's own Sparky data with your tools: their food library, diary history, goals and more. ")
             append("You can also search the web and read web pages for things that aren't in their data: restaurant and packaged-food nutrition, recipes, product facts.\n")
@@ -254,7 +397,9 @@ class ResearchAgent(
         if (hasSparkyTools) {
             append("- To log food: first search the user's library for it (search_food) and reuse a match. Otherwise create it (create_food) with the nutrition per ONE serving and the serving size and unit, then log it.\n")
             append("  Log by servings of that food. If the user ate a different amount, convert it to servings of the food's own serving size (for example 200 g of a food whose serving is 100 g is quantity 2).\n")
-            append("  Say the meal and date when you log, default to today, and afterwards tell the user exactly what was logged: food, amount, meal, calories and macros.\n")
+            append("  Say the meal and date when you log. Default to today, and to the meal that fits the user's local time when they don't say. Afterwards tell the user exactly what was logged: food, amount, meal, calories and macros.\n")
+            append("  When logging several foods, send all the log calls together in one step: the user approves them in one go.\n")
+            append("- Earlier answers may end with a note of what you did then (tools, ids). Use those ids for follow-ups such as \"make that 2 servings\" or \"delete it\" instead of searching again.\n")
             append("- Only change the user's data when they asked for it. Never delete or edit anything you weren't asked to.\n")
         }
         if (planReader != null) append("- To change the user's existing plan (swap, remove, move, more or less of something), read it with get_planned_meals and propose the changes with edit_plan.\n")
@@ -279,6 +424,20 @@ class ResearchAgent(
         const val MAX_STEPS = 14
         const val MAX_TOOL_OUTPUT = 30_000
         const val MAX_PREVIEW = 1500
+        const val MAX_ACTION_NOTE = 3000
+
+        private val DATE = Regex("""\b(\d{4}-\d{2}-\d{2})""")
+
+        /** Every YYYY-MM-DD day mentioned anywhere in [args]. */
+        fun datesIn(args: kotlinx.serialization.json.JsonElement): Set<LocalDate> = when (args) {
+            is JsonObject -> args.values.flatMap { datesIn(it) }.toSet()
+            is kotlinx.serialization.json.JsonArray -> args.flatMap { datesIn(it) }.toSet()
+            is kotlinx.serialization.json.JsonPrimitive -> if (args.isString) datesIn(args.content) else emptySet()
+            else -> emptySet()
+        }
+
+        fun datesIn(text: String): Set<LocalDate> =
+            DATE.findAll(text).mapNotNull { runCatching { LocalDate.parse(it.groupValues[1]) }.getOrNull() }.toSet()
 
         val ASK_SPARKY_TOOL = ToolSpec(
             "ask_sparky",

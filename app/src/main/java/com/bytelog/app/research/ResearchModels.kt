@@ -3,10 +3,10 @@ package com.bytelog.app.research
 import kotlinx.serialization.json.JsonObject
 
 /** The LLM providers the web research assistant can use. The API key is the user's own and stays on the phone. */
-enum class ProviderId(val label: String, val defaultModel: String, val keyHint: String) {
-    ANTHROPIC("Claude (Anthropic)", "claude-sonnet-5-5", "sk-ant-…"),
-    GEMINI("Gemini (Google)", "gemini-3.8-flash", "AIza…"),
-    DEEPSEEK("DeepSeek", "deepseek-flash", "sk-…");
+enum class ProviderId(val label: String, val defaultModel: String, val keyHint: String, val readsImages: Boolean, val shortName: String) {
+    ANTHROPIC("Claude (Anthropic)", "claude-sonnet-5-5", "sk-ant-…", readsImages = true, shortName = "Claude"),
+    GEMINI("Gemini (Google)", "gemini-3.8-flash", "AIza…", readsImages = true, shortName = "Gemini"),
+    DEEPSEEK("DeepSeek", "deepseek-flash", "sk-…", readsImages = false, shortName = "DeepSeek");
 
     companion object {
         fun fromName(name: String?): ProviderId = entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: ANTHROPIC
@@ -38,6 +38,12 @@ data class LlmTurn(
 interface LlmSession {
     /** First call: pass an empty list. After running tools: pass their results. */
     suspend fun next(toolResults: List<ToolResult> = emptyList()): LlmTurn
+
+    /**
+     * Same as [next], and [onText] gets the answer's text as it arrives, piece by piece. Providers that can't stream
+     * answer all at once and never call [onText]; the returned turn is complete either way.
+     */
+    suspend fun next(toolResults: List<ToolResult>, onText: (String) -> Unit): LlmTurn = next(toolResults)
 }
 
 /** A previous plain-text message, used to seed a new session with the visible chat. */
@@ -53,6 +59,16 @@ interface LlmProvider {
 
     /** Model ids this key can use (also validates the key). */
     suspend fun listModels(): Result<List<String>>
+
+    /** True when [lookAt] works: the model can read photos. */
+    val readsImages: Boolean get() = false
+
+    /**
+     * One question about one or more photos ([images] are base64 data with their media type), answered as JSON that
+     * matches [schema]. Returns the model's JSON text. Only called when [readsImages] is true.
+     */
+    suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject): String =
+        throw ProviderException("${id.label} can't read photos.")
 }
 
 /** Thrown for provider errors with a message that is safe to show (never contains the API key). */

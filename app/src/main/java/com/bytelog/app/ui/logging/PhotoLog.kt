@@ -8,6 +8,13 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -199,52 +206,109 @@ private fun ReadyEstimate(
     onReestimate: (String) -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
+    // Each food's guesses, best first; the one shown is [choice], possibly edited into [current]
+    val guesses = remember(estimate) { estimate.items.map { item -> listOf(item.copy(alternatives = emptyList())) + item.alternatives } }
+    val choice = remember(estimate) { mutableStateListOf(*Array(estimate.items.size) { 0 }) }
+    val current = remember(estimate) { mutableStateListOf(*guesses.map { it.first() }.toTypedArray()) }
+    val edited = remember(estimate) { mutableStateListOf<Int>() }
     var picked by remember(estimate) { mutableStateOf(estimate.items.indices.toSet()) }
     var note by remember(estimate) { mutableStateOf("") }
+    var editing by remember(estimate) { mutableStateOf<Int?>(null) }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(estimate.summary, color = cs.onSurface, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         ConfidenceChip(estimate.confidence)
     }
     estimate.confidenceReason?.let { Text(it, color = cs.onSurfaceVariant, fontSize = 12.5.sp) }
+    estimate.fallbackNote?.let { Text(it, color = cs.tertiary, fontSize = 12.sp) }
+    if (guesses.any { it.size > 1 }) {
+        Text(
+            "${estimate.estimatedBy ?: "Sparky"} gave a few guesses for some foods. Tap the closest one, or the pencil to fix it.",
+            color = cs.onSurfaceVariant, fontSize = 12.5.sp
+        )
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        estimate.items.forEachIndexed { i, item ->
+        current.forEachIndexed { i, item ->
             val on = i in picked
-            val first = i == 0; val last = i == estimate.items.lastIndex
-            Row(
+            val first = i == 0; val last = i == current.lastIndex
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(topStart = if (first) 20.dp else 6.dp, topEnd = if (first) 20.dp else 6.dp, bottomStart = if (last) 20.dp else 6.dp, bottomEnd = if (last) 20.dp else 6.dp))
                     .background(if (on) cs.surfaceContainerHigh else cs.surfaceContainer)
-                    .clickable { picked = if (on) picked - i else picked + i }
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                    .semantics { contentDescription = "${item.name}, ${if (on) "included" else "left out"}" },
-                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    if (on) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, contentDescription = null,
-                    tint = if (on) cs.primary else cs.onSurfaceVariant, modifier = Modifier.size(22.dp)
-                )
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.name.replaceFirstChar { it.titlecase() }, color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { picked = if (on) picked - i else picked + i }
+                        .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
+                        .semantics { contentDescription = "${item.name}, ${if (on) "included" else "left out"}" },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        if (on) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, contentDescription = null,
+                        tint = if (on) cs.primary else cs.onSurfaceVariant, modifier = Modifier.size(22.dp)
                     )
-                    val amount = listOfNotNull(item.grams.takeIf { it > 0f }?.let { "${it.roundToInt()} g" }, item.portion).joinToString(" · ")
-                    Text(
-                        listOf(amount, "P ${item.protein.roundToInt()} · C ${item.carbs.roundToInt()} · F ${item.fat.roundToInt()}").filter { it.isNotBlank() }.joinToString("  ·  "),
-                        color = cs.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            item.name.replaceFirstChar { it.titlecase() }, color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            listOf(amountText(item), "P ${item.protein.roundToInt()} · C ${item.carbs.roundToInt()} · F ${item.fat.roundToInt()}").filter { it.isNotBlank() }.joinToString("  ·  "),
+                            color = cs.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        val why = if (i in edited) "Edited by you" else item.reason
+                        if (!why.isNullOrBlank()) Text(why, color = cs.onSurfaceVariant, fontSize = 11.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (i !in edited && item.confidence.equals("low", ignoreCase = true)) {
+                        Text("unsure", color = cs.tertiary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 6.dp))
+                    }
+                    Text("${item.calories.roundToInt()}", color = cs.primary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Text(" kcal", color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = { editing = i }, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit ${item.name}", tint = cs.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
                 }
-                if (item.confidence.equals("low", ignoreCase = true)) {
-                    Text("unsure", color = cs.tertiary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 6.dp))
+                val options = guesses[i]
+                if (options.size > 1) {
+                    // The guesses differ in what the food is or in how much; label each by what differs
+                    val sameName = options.map { it.name.lowercase() }.distinct().size == 1
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 44.dp, end = 12.dp, bottom = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        options.forEachIndexed { g, guess ->
+                            val selected = choice[i] == g && i !in edited
+                            val label = (if (sameName) amountText(guess).ifBlank { guess.name } else guess.name) + " · ${guess.calories.roundToInt()} kcal"
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (selected) cs.primary else cs.surfaceContainerHighest)
+                                    .clickable {
+                                        choice[i] = g; current[i] = guess; edited.remove(i)
+                                        picked = picked + i
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .semantics { contentDescription = "Guess ${g + 1}: $label${if (selected) ", chosen" else ""}" }
+                            ) {
+                                Text(label, color = if (selected) cs.onPrimary else cs.onSurface, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
+                        }
+                    }
                 }
-                Text("${item.calories.roundToInt()}", color = cs.primary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Text(" kcal", color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
+    }
+
+    editing?.let { i ->
+        EditGuessDialog(
+            item = current[i],
+            onSave = { changed -> current[i] = changed; if (i !in edited) edited.add(i); picked = picked + i; editing = null },
+            onDismiss = { editing = null }
+        )
     }
 
     // What would make it more accurate, and a place to say it
@@ -265,7 +329,7 @@ private fun ReadyEstimate(
         }
     }
 
-    val chosen = estimate.items.filterIndexed { i, _ -> i in picked }
+    val chosen = current.filterIndexed { i, _ -> i in picked }
     val kcal = chosen.sumOf { it.calories.toDouble() }.roundToInt()
     MorphButton(
         { if (chosen.isNotEmpty()) onAdd(chosen) },
@@ -283,6 +347,82 @@ private fun ReadyEstimate(
         }
     }
     PhotoActions(onRetake, onGallery, retry = null)
+}
+
+/** [item] at [grams], its nutrition scaled with the weight. Null when either weight is unknown. */
+internal fun scaleToGrams(item: PhotoMealItem, grams: Float): PhotoMealItem? {
+    if (item.grams <= 0f || grams <= 0f) return null
+    val k = grams / item.grams
+    return item.copy(grams = grams, calories = item.calories * k, protein = item.protein * k, carbs = item.carbs * k, fat = item.fat * k, fiber = item.fiber * k)
+}
+
+internal fun amountText(item: PhotoMealItem): String =
+    listOfNotNull(item.grams.takeIf { it > 0f }?.let { "${it.roundToInt()} g" }, item.portion?.takeIf { it.isNotBlank() }).joinToString(" · ")
+
+/**
+ * Fix a guess: its name, weight and nutrition. Changing the weight scales the nutrition with it; the numbers can
+ * still be typed over afterwards.
+ */
+@Composable
+private fun EditGuessDialog(item: PhotoMealItem, onSave: (PhotoMealItem) -> Unit, onDismiss: () -> Unit) {
+    fun fmt(v: Float) = if (v == kotlin.math.floor(v)) v.toInt().toString() else "%.1f".format(java.util.Locale.US, v)
+    var name by remember(item) { mutableStateOf(item.name) }
+    var grams by remember(item) { mutableStateOf(if (item.grams > 0f) fmt(item.grams) else "") }
+    var kcal by remember(item) { mutableStateOf(fmt(item.calories)) }
+    var protein by remember(item) { mutableStateOf(fmt(item.protein)) }
+    var carbs by remember(item) { mutableStateOf(fmt(item.carbs)) }
+    var fat by remember(item) { mutableStateOf(fmt(item.fat)) }
+
+    fun onGrams(text: String) {
+        grams = text
+        val scaled = scaleToGrams(item, text.toFloatOrNull() ?: return) ?: return
+        kcal = fmt(scaled.calories); protein = fmt(scaled.protein); carbs = fmt(scaled.carbs); fat = fmt(scaled.fat)
+    }
+
+    val valid = name.isNotBlank() && kcal.toFloatOrNull() != null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit food") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                NumberField("Weight (g)", grams, ::onGrams, Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField("kcal", kcal, { kcal = it }, Modifier.weight(1f))
+                    NumberField("Protein", protein, { protein = it }, Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField("Carbs", carbs, { carbs = it }, Modifier.weight(1f))
+                    NumberField("Fat", fat, { fat = it }, Modifier.weight(1f))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = valid, onClick = {
+                onSave(item.copy(
+                    name = name.trim(),
+                    grams = grams.toFloatOrNull()?.coerceAtLeast(0f) ?: 0f,
+                    // The household amount no longer matches a typed weight
+                    portion = if (grams.toFloatOrNull() == item.grams || grams.isBlank()) item.portion else null,
+                    calories = kcal.toFloatOrNull()?.coerceAtLeast(0f) ?: item.calories,
+                    protein = protein.toFloatOrNull()?.coerceAtLeast(0f) ?: item.protein,
+                    carbs = carbs.toFloatOrNull()?.coerceAtLeast(0f) ?: item.carbs,
+                    fat = fat.toFloatOrNull()?.coerceAtLeast(0f) ?: item.fat,
+                    confidence = "high", alternatives = emptyList()
+                ))
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun NumberField(label: String, value: String, onChange: (String) -> Unit, modifier: Modifier) {
+    OutlinedTextField(
+        value, { v -> onChange(v.filter { it.isDigit() || it == '.' }) },
+        label = { Text(label) }, singleLine = true, modifier = modifier,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+    )
 }
 
 @Composable

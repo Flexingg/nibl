@@ -26,6 +26,8 @@ class SparkyChatViewModel(
 
     val researchStatus: StateFlow<String?> = chatRepository.researchStatus
     val pendingAction: StateFlow<com.bytelog.app.research.PendingAction?> = chatRepository.pendingAction
+    /** The web assistant's answer as it's being written. */
+    val streamingText: StateFlow<String?> = chatRepository.streamingText
     val researchConfig = chatRepository.researchConfig
 
     fun resolvePendingAction(approved: Boolean) = chatRepository.resolvePendingAction(approved)

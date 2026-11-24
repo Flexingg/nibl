@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -130,6 +131,7 @@ fun SparkyChatScreen(
     var webMode by rememberSaveable { mutableStateOf(false) }
     val researchStatus by viewModel.researchStatus.collectAsState()
     val pendingAction by viewModel.pendingAction.collectAsState()
+    val streamingText by viewModel.streamingText.collectAsState()
     val researchConfig by viewModel.researchConfig.collectAsState(initial = com.bytelog.app.research.ResearchConfig())
 
     val listState = rememberLazyListState()
@@ -156,6 +158,12 @@ fun SparkyChatScreen(
     }
 
     // Auto-scroll to the newest message
+    // Keep the answer in view while it's being written
+    LaunchedEffect(streamingText?.length?.div(120)) {
+        val last = listState.layoutInfo.totalItemsCount - 1
+        if (!streamingText.isNullOrEmpty() && last >= 0) listState.scrollToItem(last, scrollOffset = Int.MAX_VALUE / 2)
+    }
+
     LaunchedEffect(messages.size, isLoading) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
@@ -167,17 +175,33 @@ fun SparkyChatScreen(
         AlertDialog(
             onDismissRequest = { viewModel.resolvePendingAction(false) },
             containerColor = ByteSurfaceDark,
-            title = { Text("Allow this change?", color = ByteCream, fontWeight = FontWeight.Bold) },
+            title = { Text(if (action.items.size > 1) "Allow these changes?" else "Allow this change?", color = ByteCream, fontWeight = FontWeight.Bold) },
             text = {
-                Column {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                     Text(action.summary, color = ByteCream, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(8.dp))
-                    Text(action.argsPreview, color = ByteCreamMuted, fontSize = 12.sp)
+                    if (action.items.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        action.items.forEach { line ->
+                            Row(Modifier.padding(vertical = 3.dp)) {
+                                Text("•", color = ByteTomato, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(8.dp))
+                                Text(line, color = ByteCream, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                    if (action.argsPreview.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(action.argsPreview, color = ByteCreamMuted, fontSize = 12.sp)
+                    }
                     Spacer(Modifier.height(8.dp))
                     Text(action.note ?: "The assistant wants to change your Sparky data.", color = ByteCreamMuted, fontSize = 12.sp)
                 }
             },
-            confirmButton = { TextButton(onClick = { viewModel.resolvePendingAction(true) }) { Text("Allow", color = ByteTomato, fontWeight = FontWeight.Bold) } },
+            confirmButton = {
+                TextButton(onClick = { viewModel.resolvePendingAction(true) }) {
+                    Text(if (action.items.size > 1) "Allow all ${action.items.size}" else "Allow", color = ByteTomato, fontWeight = FontWeight.Bold)
+                }
+            },
             dismissButton = { TextButton(onClick = { viewModel.resolvePendingAction(false) }) { Text("Don't allow", color = ByteCreamMuted) } }
         )
     }
@@ -628,7 +652,7 @@ fun SparkyChatScreen(
 
             if (isLoading) {
                 item {
-                    SparkyThinkingIndicator(status = researchStatus)
+                    SparkyThinkingIndicator(status = researchStatus, partialAnswer = streamingText)
                 }
             }
         }
@@ -914,7 +938,30 @@ fun ChatMessageBubble(
 }
 
 @Composable
-fun SparkyThinkingIndicator(status: String? = null) {
+fun SparkyThinkingIndicator(status: String? = null, partialAnswer: String? = null) {
+    // The answer as it's written, with the spinner under it; the status line alone until text arrives
+    if (!partialAnswer.isNullOrBlank()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Top) {
+            Box(
+                modifier = Modifier.size(28.dp).clip(CircleShape).background(ByteTomato.copy(alpha = 0.2f)).border(1.dp, ByteTomato, CircleShape),
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = ByteTomato, modifier = Modifier.size(16.dp)) }
+            Spacer(Modifier.width(8.dp))
+            Column(
+                Modifier
+                    .weight(1f, fill = false)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(ByteSurfaceDark)
+                    .border(1.dp, ByteSurfaceVariantDark, RoundedCornerShape(24.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Text(partialAnswer, color = ByteCream, fontSize = 14.sp)
+                Spacer(Modifier.height(6.dp))
+                com.bytelog.app.ui.diary.LoadingSpinner(modifier = Modifier.size(12.dp), color = ByteTomato, strokeWidth = 2.dp)
+            }
+        }
+        return
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,

@@ -113,6 +113,46 @@ class GeminiProvider(
         }
     }
 
+    override val readsImages = true
+
+    override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject): String {
+        val body = buildJsonObject {
+            put("systemInstruction", buildJsonObject { put("parts", buildJsonArray { add(buildJsonObject { put("text", JsonPrimitive(instructions)) }) }) })
+            put("contents", buildJsonArray {
+                add(buildJsonObject {
+                    put("role", JsonPrimitive("user"))
+                    put("parts", buildJsonArray {
+                        images.forEach { (data, mediaType) ->
+                            add(buildJsonObject {
+                                put("inline_data", buildJsonObject {
+                                    put("mime_type", JsonPrimitive(mediaType))
+                                    put("data", JsonPrimitive(data))
+                                })
+                            })
+                        }
+                        add(buildJsonObject { put("text", JsonPrimitive("Estimate this meal. Reply with only the JSON object.")) })
+                    })
+                })
+            })
+            // The shape is spelled out in the instructions; JSON mode keeps the reply to the object alone.
+            put("generationConfig", buildJsonObject { put("responseMimeType", JsonPrimitive("application/json")) })
+        }
+        val r = http.postJson("$baseUrl/v1beta/models/$model:generateContent", headers(), body)
+        val response = r.body
+        if (r.code != 200 || response == null) throw ProviderException(ProviderHttp.errorMessage("Gemini", r), r.code)
+        val parts = response["candidates"]?.jsonArray?.firstOrNull()?.jsonObject?.get("content").obj()?.get("parts") as? JsonArray
+        val out = parts.orEmpty().mapNotNull { p ->
+            val part = p as? JsonObject ?: return@mapNotNull null
+            val isThought = part["thought"]?.let { runCatching { it.jsonPrimitive.booleanOrNull }.getOrNull() } == true
+            part.str("text")?.takeUnless { isThought }
+        }.joinToString("")
+        if (out.isBlank()) {
+            val blocked = response["promptFeedback"].obj()?.str("blockReason")
+            throw ProviderException(if (blocked != null) "Gemini blocked this photo ($blocked)." else "Gemini didn't return an estimate.")
+        }
+        return out
+    }
+
     override suspend fun listModels(): Result<List<String>> = runCatching {
         val r = http.get("$baseUrl/v1beta/models?pageSize=200", headers())
         if (r.code != 200) throw ProviderException(ProviderHttp.errorMessage("Gemini", r), r.code)

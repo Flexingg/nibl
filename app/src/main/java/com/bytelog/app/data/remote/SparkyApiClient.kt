@@ -2442,7 +2442,11 @@ data class PhotoMealEstimate(
     val confidence: String,
     val confidenceReason: String?,
     val items: List<PhotoMealItem>,
-    val questions: List<String> = emptyList()
+    val questions: List<String> = emptyList(),
+    /** Who made the estimate, e.g. "Claude", when it wasn't Sparky's AI. */
+    val estimatedBy: String? = null,
+    /** Set when the user's own model failed and Sparky's AI estimated instead. */
+    val fallbackNote: String? = null
 )
 
 data class PhotoMealItem(
@@ -2455,7 +2459,11 @@ data class PhotoMealItem(
     val carbs: Float,
     val fat: Float,
     val fiber: Float = 0f,
-    val confidence: String = "medium"
+    val confidence: String = "medium",
+    /** The model's other guesses for this food (a different food, or a different portion), best first. */
+    val alternatives: List<PhotoMealItem> = emptyList(),
+    /** A few words on why the model thinks so ("looks like brown rice"). */
+    val reason: String? = null
 )
 
 @kotlinx.serialization.Serializable
@@ -2506,7 +2514,9 @@ data class ChatMessageOutput(
     /** Those changes as they read, against the plan when the answer came. */
     val planEditLines: List<com.bytelog.app.data.repository.PlanChangeLine> = emptyList(),
     /** Set once the changes have been applied (and cleared again by an undo). */
-    val planEditApplied: Boolean = false
+    val planEditApplied: Boolean = false,
+    /** The web assistant's note of what it did with the user's data, sent back as history (not shown). */
+    val actionNote: String? = null
 )
 
 @kotlinx.serialization.Serializable

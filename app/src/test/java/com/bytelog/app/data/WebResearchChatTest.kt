@@ -377,7 +377,7 @@ class WebResearchChatTest {
         val sending = scope.async { chat.sendMessage("log 2 rice", webResearch = true) }
         val pending = waitForPending()
         assertEquals("sparky_manage_food", pending.toolName)
-        assertTrue(pending.argsPreview.contains("log_food"))
+        assertEquals("Log food: 2 Rice", pending.summary)
         assertEquals("the read already ran, the write waits", 1, mcpCalls.size)
         chat.resolvePendingAction(true)
         sending.await()
@@ -387,4 +387,28 @@ class WebResearchChatTest {
         assertEquals("Logged 2 servings of rice.", chat.messages.value.last().content)
         assertTrue(chat.messages.value.last().executedTools.contains("sparky_manage_food"))
     }
+
+    @Test fun aFollowUpSeesWhatTheAssistantDidAndTheUsersDay() = runBlocking {
+        settings.saveAskBeforeWriting(false)
+        reply("""{"content":[{"type":"tool_use","id":"t1","name":"sparky_manage_food","input":{"action":"log_food","food_name":"Rice","entry_date":"2026-11-12"}}],"stop_reason":"tool_use"}""")
+        reply("""{"content":[{"type":"text","text":"Logged rice."}],"stop_reason":"end_turn"}""")
+        chat.sendMessage("log rice for wednesday", webResearch = true)
+        val first = chat.messages.value.last()
+        assertEquals("the note isn't shown", "Logged rice.", first.content)
+        assertTrue(first.actionNote!!.contains("log_food"))
+
+        reply("""{"content":[{"type":"text","text":"Done."}],"stop_reason":"end_turn"}""")
+        chat.sendMessage("make that 2 servings", webResearch = true)
+        val request = obj(modelRequests.toList().last())
+        val history = request["messages"]!!.jsonArray.map { it.jsonObject["content"].toString() }
+        val earlierAnswer = history.first { it.contains("Logged rice.") }
+        assertTrue(earlierAnswer, earlierAnswer.contains("Note for the assistant"))
+        assertTrue("the ids and results it saw come along", earlierAnswer.contains("Rice") && earlierAnswer.contains("2026-11-12"))
+        // The user's day is in the instructions
+        val system = request["system"]!!.jsonPrimitive.content
+        assertTrue(system, system.contains("Local time:"))
+        assertTrue(system.contains("Daily goals:"))
+        assertTrue(system.contains("Nothing logged yet today") || system.contains("Logged today"))
+    }
 }
+
