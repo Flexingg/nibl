@@ -7,11 +7,16 @@ data class ResearchConfig(
     val models: Map<ProviderId, String> = emptyMap(),
     /** Optional Tavily key, used for web search when the provider has none (DeepSeek). */
     val tavilyKey: String? = null,
-    val askBeforeWriting: Boolean = true
+    val askBeforeWriting: Boolean = true,
+    /** Estimate meal photos with this model (when it can read photos) instead of Sparky's AI. */
+    val photosWithOwnModel: Boolean = true
 ) {
     fun keyFor(p: ProviderId): String? = apiKeys[p]?.trim()?.takeIf { it.isNotEmpty() }
     fun modelFor(p: ProviderId): String = models[p]?.trim()?.takeIf { it.isNotEmpty() } ?: p.defaultModel
     val isConfigured: Boolean get() = keyFor(provider) != null
+
+    /** True when meal photos go to this model: it's set up, can read photos, and the user wants it. */
+    val estimatesPhotos: Boolean get() = photosWithOwnModel && isConfigured && provider.readsImages
 }
 
 object ResearchFactory {

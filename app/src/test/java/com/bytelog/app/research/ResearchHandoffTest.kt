@@ -142,7 +142,7 @@ class ResearchHandoffTest {
         val r = agent(model, ai, mcp, confirm = { shown += it; true }).run(emptyList(), "log rice").getOrThrow()
         assertEquals(listOf("sparky_manage_food"), mcp.calls.map { it.first })
         assertEquals(1, shown.size)                       // the exact call is shown for approval
-        assertTrue(shown[0].argsPreview.contains("log_food"))
+        assertEquals("Log food: rice", shown[0].summary)
         assertTrue(ai.asked.isEmpty())                    // Sparky's AI wasn't needed
         assertTrue(r.wroteData)
     }

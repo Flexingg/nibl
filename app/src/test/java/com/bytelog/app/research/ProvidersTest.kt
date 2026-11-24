@@ -176,6 +176,94 @@ class AnthropicProviderTest {
         assertTrue(first.json().containsKey("output_config")); assertFalse(retry.json().containsKey("output_config"))
     }
 
+    private fun sse(vararg events: String) = server.enqueue(MockResponse().setResponseCode(200).setHeader("content-type", "text/event-stream")
+        .setBody(events.joinToString("") { e -> "event: x\ndata: $e\n\n" }))
+
+    @Test fun answersStreamAndTheTurnIsRebuiltExactly() = runBlocking {
+        sse(
+            """{"type":"message_start","message":{"id":"m1","content":[]}}""",
+            """{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}""",
+            """{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-xyz"}}""",
+            """{"type":"content_block_stop","index":0}""",
+            """{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}""",
+            """{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Checking "}}""",
+            """{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"your foods."}}""",
+            """{"type":"content_block_delta","index":1,"delta":{"type":"citations_delta","citation":{"type":"web_search_result_location","url":"https://usda.gov/rice","title":"USDA"}}}""",
+            """{"type":"content_block_stop","index":1}""",
+            """{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_9","name":"sparky_search_foods","input":{}}}""",
+            """{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"food_na"}}""",
+            """{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"me\":\"rice\"}"}}""",
+            """{"type":"content_block_stop","index":2}""",
+            """{"type":"message_delta","delta":{"stop_reason":"tool_use"}}""",
+            """{"type":"message_stop"}"""
+        )
+        reply("""{"content":[{"type":"text","text":"Rice is 130 kcal."}],"stop_reason":"end_turn"}""")
+        val session = provider().newSession("S", emptyList(), "q", listOf(searchTool))
+        val pieces = mutableListOf<String>()
+        val turn = session.next(emptyList()) { pieces += it }
+        assertEquals(listOf("Checking ", "your foods."), pieces)
+        assertEquals("Checking your foods.", turn.text)
+        assertEquals(listOf(ToolCall("toolu_9", "sparky_search_foods", obj("""{"food_name":"rice"}"""))), turn.toolCalls)
+        assertEquals(listOf("https://usda.gov/rice"), turn.sources.map { it.url })
+
+        session.next(listOf(ToolResult("toolu_9", "sparky_search_foods", "130 kcal")))
+        val first = server.takeRequest().json()
+        assertEquals("streamed", "true", first["stream"]!!.jsonPrimitive.content)
+        assertEquals("the conversation is cached as it grows", "ephemeral", first["cache_control"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        // The rebuilt turn goes back exactly: signature, text with its citation, the full tool input
+        val echoed = server.takeRequest().json()["messages"]!!.jsonArray[1].jsonObject["content"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("thinking", "text", "tool_use"), echoed.map { it["type"]!!.jsonPrimitive.content })
+        assertEquals("sig-xyz", echoed[0]["signature"]!!.jsonPrimitive.content)
+        assertEquals("", echoed[0]["thinking"]!!.jsonPrimitive.content)
+        assertEquals("Checking your foods.", echoed[1]["text"]!!.jsonPrimitive.content)
+        assertEquals(1, echoed[1]["citations"]!!.jsonArray.size)
+        assertEquals(obj("""{"food_name":"rice"}"""), echoed[2]["input"])
+    }
+
+    @Test fun aBrokenStreamedToolInputIsReportedNotRun() = runBlocking {
+        sse(
+            """{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"sparky_search_foods","input":{}}}""",
+            """{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"food_name\":\"ri"}}""",
+            """{"type":"message_delta","delta":{"stop_reason":"tool_use"}}"""
+        )
+        val call = provider().newSession("S", emptyList(), "q", listOf(searchTool)).next().toolCalls.single()
+        assertEquals("The arguments were not valid JSON.", call.parseError)
+    }
+
+    @Test fun aStreamErrorBecomesAProviderError() = runBlocking {
+        sse("""{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}""")
+        val e = runCatching { provider().newSession("S", emptyList(), "q", emptyList()).next() }.exceptionOrNull()
+        assertTrue(e is ProviderException); assertTrue(e!!.message!!.contains("Overloaded"))
+    }
+
+    @Test fun automaticCachingIsDroppedWhenTheApiRejectsIt() = runBlocking {
+        reply("""{"type":"error","error":{"type":"invalid_request_error","message":"cache_control: Extra inputs are not permitted"}}""", 400)
+        reply("""{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}""")
+        assertEquals("ok", provider().newSession("S", emptyList(), "q", emptyList()).next().text)
+        assertTrue(server.takeRequest().json().containsKey("cache_control")); assertFalse(server.takeRequest().json().containsKey("cache_control"))
+    }
+
+    @Test fun photosAreSentAsImagesWithTheReplyShape() = runBlocking {
+        reply("""{"content":[{"type":"text","text":"{\"summary\":\"x\"}"}],"stop_reason":"end_turn"}""")
+        val out = provider().lookAt("INSTRUCTIONS", listOf("QUJD" to "image/jpeg"), MealPhotoGuesser.SCHEMA)
+        assertEquals("""{"summary":"x"}""", out)
+        val body = server.takeRequest().json()
+        assertEquals("INSTRUCTIONS", body["system"]!!.jsonPrimitive.content)
+        val image = body["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonArray[0].jsonObject
+        assertEquals("image", image["type"]!!.jsonPrimitive.content)
+        assertEquals("QUJD", image["source"]!!.jsonObject["data"]!!.jsonPrimitive.content)
+        assertEquals("json_schema", body["output_config"]!!.jsonObject["format"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun photosFallBackToPlainJsonWhenTheSchemaIsRejected() = runBlocking {
+        reply("""{"type":"error","error":{"type":"invalid_request_error","message":"output_config.format: structured outputs are not supported"}}""", 400)
+        reply("""{"content":[{"type":"text","text":"{}"}],"stop_reason":"end_turn"}""")
+        provider().lookAt("I", listOf("QUJD" to "image/png"), MealPhotoGuesser.SCHEMA)
+        server.takeRequest()
+        val retry = server.takeRequest().json()
+        assertFalse(retry["output_config"]?.jsonObject?.containsKey("format") ?: false)
+    }
+
     @Test fun listsClaudeModels() = runBlocking {
         reply("""{"data":[{"id":"claude-opus-5-5","type":"model"},{"id":"claude-sonnet-5-5","type":"model"},{"id":"other","type":"model"}]}""")
         assertEquals(listOf("claude-opus-5-5", "claude-sonnet-5-5"), provider().listModels().getOrThrow())

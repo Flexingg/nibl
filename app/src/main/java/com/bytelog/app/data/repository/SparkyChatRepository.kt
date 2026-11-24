@@ -29,7 +29,8 @@ class SparkyChatRepository(
     private val sparkyAiBackend: com.bytelog.app.research.SparkyAiBackend? = null,
     /** Where meal plans from the assistant are added. */
     private val planRepository: PlanRepository? = null,
-    private val today: () -> LocalDate = { LocalDate.now() }
+    private val today: () -> LocalDate = { LocalDate.now() },
+    private val clock: () -> java.time.LocalTime = { java.time.LocalTime.now() }
 ) {
     private val _messages = MutableStateFlow<List<ChatMessageOutput>>(emptyList())
     val messages: StateFlow<List<ChatMessageOutput>> = _messages.asStateFlow()
@@ -40,6 +41,10 @@ class SparkyChatRepository(
     /** What the web research assistant is doing right now ("Searching the web: …"). */
     private val _researchStatus = MutableStateFlow<String?>(null)
     val researchStatus: StateFlow<String?> = _researchStatus.asStateFlow()
+
+    /** The web assistant's answer as it's being written (null when nothing is streaming). */
+    private val _streamingText = MutableStateFlow<String?>(null)
+    val streamingText: StateFlow<String?> = _streamingText.asStateFlow()
 
     /** A change the web assistant wants to make; the chat shows it for approval. */
     private val _pendingAction = MutableStateFlow<com.bytelog.app.research.PendingAction?>(null)
@@ -221,16 +226,18 @@ class SparkyChatRepository(
             onProgress = { _researchStatus.value = it },
             // Logging goes through Sparky's own AI, which the assistant can talk to as often as it needs.
             sparkyAi = sparkyAiBackend ?: com.bytelog.app.research.ChatSparkyAiBackend(sparkyApiClient),
-            planReader = planRepository?.let { repo -> { repo.upcoming(today()) } }
+            planReader = planRepository?.let { repo -> { repo.upcoming(today()) } },
+            userContext = { researchContext() },
+            onText = { _streamingText.value = it.ifEmpty { null } }
         )
-        val history = priorMessages.filter { it.id != "welcome" && it.content.isNotBlank() }.takeLast(12)
-            .map { com.bytelog.app.research.ChatTurn(fromUser = it.role == "user", text = it.content) }
+        val history = researchHistory(priorMessages)
 
         _researchStatus.value = "Thinking…"
         val result = try {
             agent.run(history, question)
         } finally {
             _researchStatus.value = null
+            _streamingText.value = null
             _pendingAction.value = null
             pendingDecision = null
             _isLoading.value = false
@@ -238,16 +245,18 @@ class SparkyChatRepository(
         result.fold(
             onSuccess = { r ->
                 val body = if (r.notice != null && r.text != r.notice) r.text + "\n\n_${r.notice}_" else r.text
-                addAssistant(body, viaWeb = true, sources = r.sources, tools = r.sparkyToolsRun + r.delegatedTools.map { "sparky_ai:$it" }, plan = r.mealPlan)
+                addAssistant(body, viaWeb = true, sources = r.sources, tools = r.sparkyToolsRun + r.delegatedTools.map { "sparky_ai:$it" }, plan = r.mealPlan,
+                    actionNote = r.actionNote)
                 r.planEdit?.let { edit ->
                     val last = _messages.value.last()
                     val withCard = withEdit(last, edit)
                     _messages.value = _messages.value.dropLast(1) + withCard
                 }
                 if (r.wroteData) {
-                    val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                    // Refresh every day the changes touched, not just today
+                    val days = r.touchedDates.ifEmpty { setOf(today()) }.map { it.format(DateTimeFormatter.ISO_LOCAL_DATE) }
                     appScope.launch(Dispatchers.IO) {
-                        try { foodRepository.syncDateWithServer(today) } catch (_: Exception) {}
+                        days.forEach { day -> try { foodRepository.syncDateWithServer(day) } catch (_: Exception) {} }
                         try { weightRepository.syncWeightHistory() } catch (_: Exception) {}
                     }
                 }
@@ -276,7 +285,8 @@ class SparkyChatRepository(
         viaWeb: Boolean = false,
         sources: List<com.bytelog.app.research.WebSource> = emptyList(),
         tools: List<String> = emptyList(),
-        plan: MealPlanDraft? = null
+        plan: MealPlanDraft? = null,
+        actionNote: String? = null
     ) {
         _messages.value = _messages.value + ChatMessageOutput(
             role = "assistant",
@@ -284,9 +294,57 @@ class SparkyChatRepository(
             executedTools = tools,
             webSources = sources,
             viaWeb = viaWeb,
-            mealPlan = plan
+            mealPlan = plan,
+            actionNote = actionNote
         )
     }
+
+    /**
+     * The visible chat as history for the assistant. Its own earlier answers carry a note of what it did with the
+     * user's data (tools and ids), so follow-ups like "make that 2 servings" can find the entry it logged.
+     */
+    private fun researchHistory(prior: List<ChatMessageOutput>): List<com.bytelog.app.research.ChatTurn> =
+        prior.filter { it.id != "welcome" && it.content.isNotBlank() }.takeLast(HISTORY_MESSAGES).map {
+            val note = it.actionNote?.takeIf { n -> it.role != "user" && n.isNotBlank() }
+            com.bytelog.app.research.ChatTurn(
+                fromUser = it.role == "user",
+                text = if (note == null) it.content else it.content + "\n\n[Note for the assistant, not shown to the user. What I did with the user's data in this answer:\n" + note + "]"
+            )
+        }
+
+    /**
+     * What the assistant should know about the user right now: their local time and the meal it suggests, their
+     * daily goals and what's left of them today. Read from the phone, so it costs no lookup.
+     */
+    private suspend fun researchContext(): String? {
+        val now = clock()
+        val day = today()
+        return buildString {
+            append("- Local time: ").append(now.format(DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US)))
+                .append(". The meal that fits now: ").append(mealAt(now)).append(".\n")
+            val settings = settingsRepository
+            if (settings != null) {
+                val kcal = settings.targetCalories.first(); val p = settings.targetProtein.first()
+                val c = settings.targetCarbs.first(); val f = settings.targetFat.first()
+                append("- Daily goals: ${kcal.roundToInt()} kcal, protein ${p.roundToInt()} g, carbs ${c.roundToInt()} g, fat ${f.roundToInt()} g.\n")
+                val entries = runCatching { foodRepository.getEntriesForDate(day.toString()).first() }.getOrNull()
+                    ?.filter { it.syncStatus != com.bytelog.app.data.local.model.FoodEntry.SYNC_STATUS_PENDING_DELETE }
+                if (entries != null) {
+                    val eK = entries.sumOf { it.calories.toDouble() }; val eP = entries.sumOf { it.protein.toDouble() }
+                    val eC = entries.sumOf { it.carbs.toDouble() }; val eF = entries.sumOf { it.fat.toDouble() }
+                    if (entries.isEmpty()) append("- Nothing logged yet today.\n")
+                    else {
+                        val meals = entries.groupBy { it.mealName }.entries.joinToString(", ") { (m, list) -> "$m (${list.size})" }
+                        append("- Logged today: ${eK.roundToInt()} kcal, protein ${eP.roundToInt()} g, carbs ${eC.roundToInt()} g, fat ${eF.roundToInt()} g. Meals: $meals.\n")
+                    }
+                    append("- Left today: ${(kcal - eK).roundToInt()} kcal, protein ${(p - eP).roundToInt()} g, carbs ${(c - eC).roundToInt()} g, fat ${(f - eF).roundToInt()} g.\n")
+                }
+            }
+        }.trim().ifEmpty { null }
+    }
+
+    private fun Double.roundToInt() = kotlin.math.round(this).toInt()
+    private fun Float.roundToInt() = kotlin.math.round(this).toInt()
 
     /** An answer with its meal plan block (if any) read into a plan and taken out of the text. */
     /** An answer with its meal plan and plan changes (if any) read into cards and taken out of the text. */
@@ -346,6 +404,21 @@ class SparkyChatRepository(
             _messages.value = trimmedList.toList()
         }
         sendMessage(newText, newImageBase64, webResearch)
+    }
+
+    companion object {
+        /** How many recent messages the web assistant sees as history. */
+        const val HISTORY_MESSAGES = 16
+
+        /** The meal that usually fits [time]. */
+        fun mealAt(time: java.time.LocalTime): String = when {
+            time.isBefore(java.time.LocalTime.of(4, 0)) -> "Snacks"
+            time.isBefore(java.time.LocalTime.of(10, 30)) -> "Breakfast"
+            time.isBefore(java.time.LocalTime.of(14, 30)) -> "Lunch"
+            time.isBefore(java.time.LocalTime.of(17, 0)) -> "Snacks"
+            time.isBefore(java.time.LocalTime.of(21, 0)) -> "Dinner"
+            else -> "Snacks"
+        }
     }
 
     suspend fun clearHistory(): Boolean {

@@ -173,5 +173,22 @@ fun ResearchAssistantCard(settings: SettingsRepository, modifier: Modifier = Mod
                 colors = SwitchDefaults.colors(checkedTrackColor = ByteTomato)
             )
         }
+
+        if (config.provider.readsImages) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Estimate meal photos with ${config.provider.shortName}", color = ByteCream, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Photo logging uses your key and gives a couple of best guesses for each food to pick from. Off: Sparky's AI estimates photos.",
+                        color = ByteCreamMuted, fontSize = 11.sp
+                    )
+                }
+                Switch(
+                    checked = config.photosWithOwnModel,
+                    onCheckedChange = { scope.launch { settings.savePhotosWithOwnModel(it) } },
+                    colors = SwitchDefaults.colors(checkedTrackColor = ByteTomato)
+                )
+            }
+        }
     }
 }

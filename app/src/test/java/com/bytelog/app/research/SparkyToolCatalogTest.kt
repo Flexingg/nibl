@@ -77,4 +77,20 @@ class SparkyToolCatalogTest {
         assertEquals(51, serverTools.size)
         assertEquals(emptyList<String>(), serverTools.filter { SparkyToolCatalog.categoryFor(it) == null })
     }
+
+    @Test fun changesReadAsPlainLanguage() {
+        val today = java.time.LocalDate.of(2026, 11, 24)
+        fun h(tool: String, args: String) = SparkyToolCatalog.humanize(tool, obj(args), today)
+        assertEquals("Log food: 2 serving Greek yogurt · Breakfast · today · 150 kcal" to emptyList<String>(),
+            h("sparky_manage_food", """{"action":"log_food","food_name":"Greek yogurt","quantity":2.0,"unit":"serving","meal_type":"breakfast","entry_date":"2026-11-24","calories":150}"""))
+        assertEquals("Log food: 1.5 cup rice · yesterday", h("sparky_manage_food", """{"action":"log_food","food_name":"rice","quantity":1.5,"unit":"cup","date":"2026-11-23"}""").first)
+        assertEquals("Log food: oats · Fri 20 Nov", h("sparky_manage_food", """{"action":"log_food","food_name":"oats","date":"2026-11-20"}""").first)
+        // What isn't in the headline is listed, readably; nulls are skipped
+        val (head, details) = h("sparky_manage_food", """{"action":"delete_entry","entry_id":"e-42","reason":null,"items":[1,2]}""")
+        assertEquals("Delete entry", head)
+        assertEquals(listOf("Entry id: e-42", "Items: 2 items"), details)
+        // No action: named after the tool
+        assertEquals("Goals: 1800 kcal", h("sparky_manage_goals", """{"calories":1800}""").first)
+    }
 }
+

@@ -53,6 +53,7 @@ class SettingsRepository(
         val KEY_RESEARCH_PROVIDER = stringPreferencesKey("research_provider")
         val KEY_RESEARCH_TAVILY = stringPreferencesKey("research_tavily_key")
         val KEY_RESEARCH_ASK_WRITES = androidx.datastore.preferences.core.booleanPreferencesKey("research_ask_before_writing")
+        val KEY_RESEARCH_PHOTOS = androidx.datastore.preferences.core.booleanPreferencesKey("research_photos_with_own_model")
         fun researchKeyPref(p: com.bytelog.app.research.ProviderId) = stringPreferencesKey("research_key_${p.name.lowercase()}")
         fun researchModelPref(p: com.bytelog.app.research.ProviderId) = stringPreferencesKey("research_model_${p.name.lowercase()}")
     }
@@ -169,7 +170,8 @@ class SettingsRepository(
             apiKeys = providers.mapNotNull { p -> prefs[researchKeyPref(p)]?.let(cipher::decrypt)?.let { p to it } }.toMap(),
             models = providers.mapNotNull { p -> prefs[researchModelPref(p)]?.takeIf { it.isNotBlank() }?.let { p to it } }.toMap(),
             tavilyKey = prefs[KEY_RESEARCH_TAVILY]?.let(cipher::decrypt),
-            askBeforeWriting = prefs[KEY_RESEARCH_ASK_WRITES] ?: true
+            askBeforeWriting = prefs[KEY_RESEARCH_ASK_WRITES] ?: true,
+            photosWithOwnModel = prefs[KEY_RESEARCH_PHOTOS] ?: true
         )
     }
 
@@ -243,6 +245,10 @@ class SettingsRepository(
 
     suspend fun saveAskBeforeWriting(ask: Boolean) {
         context.dataStore.edit { it[KEY_RESEARCH_ASK_WRITES] = ask }
+    }
+
+    suspend fun savePhotosWithOwnModel(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_RESEARCH_PHOTOS] = enabled }
     }
 
     suspend fun saveAutoAdjustCalories(enabled: Boolean) {

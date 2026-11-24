@@ -61,7 +61,66 @@ object SparkyToolCatalog {
         return readToolPrefixes.any { toolName.startsWith(it) }
     }
 
-    /** A short phrase for the progress line and confirmation dialog. */
+    private val nameKeys = listOf("food_name", "name", "food", "exercise_name", "medication_name", "title", "description")
+    private val amountKeys = listOf("quantity", "servings", "serving_quantity", "amount", "weight", "value", "duration_minutes", "duration")
+    private val unitKeys = listOf("unit", "serving_unit", "quantity_unit", "units", "weight_unit")
+    private val mealKeys = listOf("meal_type", "meal", "meal_name")
+    private val dateKeys = listOf("entry_date", "date", "log_date", "start_date")
+    private val calorieKeys = listOf("calories", "kcal", "energy")
+
+    /**
+     * A plain-language headline for a change, like "Log food: 2 serving Greek yogurt · Breakfast · today · 150 kcal",
+     * and the rest of the arguments as "Label: value" lines, for the approval dialog. Never raw JSON.
+     */
+    fun humanize(toolName: String, args: JsonObject, today: java.time.LocalDate = java.time.LocalDate.now()): Pair<String, List<String>> {
+        fun scalar(key: String): String? = (args[key] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+        fun first(keys: List<String>): Pair<String, String>? = keys.firstNotNullOfOrNull { k -> scalar(k)?.let { k to it } }
+        val used = mutableSetOf("action")
+
+        val action = scalar("action")
+        val verb = (action ?: toolName.removePrefix("sparky_").removePrefix("manage_")).replace('_', ' ').trim()
+            .replaceFirstChar { it.titlecase() }
+        val name = first(nameKeys)?.also { used += it.first }?.second
+        val amount = first(amountKeys)?.also { used += it.first }?.second?.let(::number)
+        val unit = first(unitKeys)?.also { used += it.first }?.second
+        val meal = first(mealKeys)?.also { used += it.first }?.second?.replaceFirstChar { it.titlecase() }
+        val date = first(dateKeys)?.also { used += it.first }?.second?.let { dayLabel(it, today) }
+        val kcal = first(calorieKeys)?.also { used += it.first }?.second?.let(::number)
+
+        val what = listOfNotNull(amount, unit, name).joinToString(" ").ifBlank { null }
+        val parts = listOfNotNull(what, meal, date, kcal?.let { "$it kcal" })
+        val headline = if (parts.isEmpty()) verb else "$verb: ${parts.joinToString(" · ")}"
+
+        val details = args.entries.filter { (k, v) -> k !in used && v !is kotlinx.serialization.json.JsonNull }.mapNotNull { (k, v) ->
+            val value = when (v) {
+                is kotlinx.serialization.json.JsonPrimitive -> v.contentOrNull?.takeIf { it.isNotBlank() }?.let { if (v.isString) it else number(it) }
+                is kotlinx.serialization.json.JsonArray -> if (v.isEmpty()) null else "${v.size} item${if (v.size == 1) "" else "s"}"
+                is JsonObject -> v.entries.mapNotNull { (ik, iv) -> (iv as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull?.let { "${label(ik)} $it" } }
+                    .take(4).joinToString(", ").ifBlank { null }
+                else -> null
+            } ?: return@mapNotNull null
+            "${label(k)}: ${if (value.length > 80) value.take(80) + "…" else value}"
+        }.take(8)
+        return headline to details
+    }
+
+    private fun label(key: String) = key.replace('_', ' ').trim().replaceFirstChar { it.titlecase() }
+
+    private fun number(raw: String): String = raw.toDoubleOrNull()?.let { d ->
+        if (d == Math.floor(d) && kotlin.math.abs(d) < 1e9) d.toLong().toString() else "%.1f".format(java.util.Locale.US, d).trimEnd('0').trimEnd('.')
+    } ?: raw
+
+    private fun dayLabel(raw: String, today: java.time.LocalDate): String {
+        val day = runCatching { java.time.LocalDate.parse(raw.take(10)) }.getOrNull() ?: return raw
+        return when (day) {
+            today -> "today"
+            today.minusDays(1) -> "yesterday"
+            today.plusDays(1) -> "tomorrow"
+            else -> day.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.US))
+        }
+    }
+
+    /** A short phrase for the progress line. */
     fun describe(toolName: String, args: JsonObject): String {
         val action = args["action"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }
         val subject = when (categoryFor(toolName)) {
