@@ -67,6 +67,7 @@ fun EditFoodEntrySheet(
     onSave: (updatedEntry: FoodEntry) -> Unit,
     onDelete: (entry: FoodEntry) -> Unit,
     onCopy: ((entry: FoodEntry) -> Unit)? = null,
+    entryPhotos: com.bytelog.app.data.remote.SparkyEntryPhotos? = null,
     onDismiss: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
@@ -352,7 +353,24 @@ fun EditFoodEntrySheet(
             }
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        if (entryPhotos != null) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            var currentPhotos by remember(entry.id) {
+                mutableStateOf(entryPhotos.getCachedPhotos(ctx, entry.id))
+            }
+            FoodEntryPhotosSection(
+                entryId = entry.id,
+                initialImages = currentPhotos,
+                entryPhotos = entryPhotos,
+                onImagesChanged = { updated ->
+                    currentPhotos = updated
+                    entryPhotos.setCachedPhotos(ctx, entry.id, updated)
+                }
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+        }
 
         // Action Buttons: Delete, Copy & Save Changes
         Row(

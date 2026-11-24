@@ -3,6 +3,9 @@ package com.bytelog.app.data.repository
 /** The sections of the home screen list below the calorie, water and weight header, in their default order. */
 enum class HomeSection(val key: String, val title: String, val description: String, val hideable: Boolean = true) {
     WEEKLY_REVIEW("weekly_review", "Your week", "Monday's look back at the last seven days"),
+    FASTING("fasting", "Fasting", "Active fast timer, metabolic zone and quick start/end"),
+    CAFFEINE("caffeine", "Caffeine", "Active caffeine, bedtime projection and quick log"),
+    WELLNESS_HUB("wellness_hub", "Reports & tools", "Customizable reports, progress photos, Mealie and Health Connect"),
     LEFTOVERS("fridge", "Leftovers", "Batches in the fridge, one tap logs a portion"),
     FAMILY("family", "Family", "What everyone has eaten today"),
     PLANNED("planned", "Planned", "Food planned for the day, ticked off as you eat it"),

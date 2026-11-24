@@ -122,6 +122,74 @@ class ByteLogApplication : Application() {
         )
     }
 
+    val sparkyExternalProviders by lazy {
+        com.bytelog.app.data.remote.SparkyExternalProviders(sparkyApiClient)
+    }
+
+    val mealieApiClient by lazy {
+        com.bytelog.app.data.mealie.MealieApiClient()
+    }
+
+    val mealieRepository by lazy {
+        com.bytelog.app.data.mealie.MealieRepository(
+            context = this,
+            mealieApi = mealieApiClient,
+            sparkyApi = sparkyApiClient,
+            externalProviders = sparkyExternalProviders,
+            recipeRepository = recipeRepository,
+            mealTemplateRepository = mealTemplateRepository,
+            planRepository = planRepository,
+            foodRepository = foodRepository
+        )
+    }
+
+    val entryPhotos by lazy {
+        com.bytelog.app.data.remote.SparkyEntryPhotos(sparkyApiClient)
+    }
+
+    val caffeineRepository by lazy {
+        com.bytelog.app.data.caffeine.CaffeineRepository(this, sparkyApiClient)
+    }
+
+    val progressPhotoApi by lazy {
+        com.bytelog.app.data.photos.ProgressPhotoApi(sparkyApiClient)
+    }
+
+    val progressPhotoRepository by lazy {
+        com.bytelog.app.data.photos.ProgressPhotoRepository(this, progressPhotoApi)
+    }
+
+    val fastingRepository by lazy {
+        com.bytelog.app.data.fasting.FastingRepository(
+            context = this,
+            sparkyApiClient = sparkyApiClient,
+            appScope = applicationScope
+        )
+    }
+
+    val healthConnectExtendedSync by lazy {
+        com.bytelog.app.health.HealthConnectExtendedSync(this, sparkyApiClient, weightRepository)
+    }
+
+    val healthConnectBackfill by lazy {
+        com.bytelog.app.health.HealthConnectBackfill(healthConnectExtendedSync)
+    }
+
+    val reportConfigStore by lazy {
+        com.bytelog.app.data.reports.ReportConfigStore(this)
+    }
+
+    val reportsRepository by lazy {
+        com.bytelog.app.data.reports.ReportsRepository(
+            reportsApi = com.bytelog.app.data.reports.ReportsApi(sparkyApiClient),
+            foodEntryDao = database.foodEntryDao(),
+            waterLogDao = database.waterLogDao(),
+            weightDao = database.weightDao(),
+            settingsRepository = settingsRepository,
+            healthExtendedSync = healthConnectExtendedSync
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
 
@@ -143,6 +211,9 @@ class ByteLogApplication : Application() {
 
         // 2a. Health Connect: what Nibl wrote (to spot it coming back through Sparky), and rewriting days as they change
         com.bytelog.app.health.HealthConnectEcho.init(this)
+        com.bytelog.app.health.HealthConnectWorker.extendedSyncProvider = {
+            (it.applicationContext as ByteLogApplication).healthConnectExtendedSync
+        }
         database.invalidationTracker.addObserver(object : androidx.room.InvalidationTracker.Observer(arrayOf("food_entries", "water_log_entries")) {
             override fun onInvalidated(tables: Set<String>) = requestHealthSync()
         })
@@ -159,7 +230,7 @@ class ByteLogApplication : Application() {
                     val minute = settingsRepository.reminderMinute.first()
                     com.bytelog.app.notifications.DailyReminderScheduler.scheduleDailyReminder(this@ByteLogApplication, hour, minute)
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) { }
         }
     }
 }

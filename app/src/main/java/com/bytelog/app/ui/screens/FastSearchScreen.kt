@@ -512,12 +512,39 @@ fun FastSearchScreen(
                 )
             }
 
+            val availableProviders by viewModel.availableProviders.collectAsState()
+            val selectedProviderFilter by viewModel.selectedProviderFilter.collectAsState()
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
+                if (searchQuery.isNotBlank() && availableProviders.isNotEmpty()) {
+                    item(key = "provider_filters") {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        ) {
+                            item {
+                                androidx.compose.material3.FilterChip(
+                                    selected = selectedProviderFilter == "all",
+                                    onClick = { viewModel.setProviderFilter("all") },
+                                    label = { Text("All sources") }
+                                )
+                            }
+                            items(availableProviders.size) { idx ->
+                                val p = availableProviders[idx]
+                                androidx.compose.material3.FilterChip(
+                                    selected = selectedProviderFilter == p.type || selectedProviderFilter == p.id,
+                                    onClick = { viewModel.setProviderFilter(p.type) },
+                                    label = { Text(p.name.ifBlank { p.type.uppercase() }) }
+                                )
+                            }
+                        }
+                    }
+                }
                 if (searchQuery.isNotBlank() && displayFoods.isEmpty() && mealResults.isEmpty()) {
                     item {
                         if (isSearchingRemote) {

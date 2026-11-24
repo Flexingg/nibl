@@ -245,7 +245,16 @@ fun ByteLogNavHost(
                 onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } },
                 onOpenPlanner = { navController.navigate("planner") { launchSingleTop = true } },
                 onScanReceipt = { navController.navigate("receipt") { launchSingleTop = true } },
-                onBestValue = { navController.navigate("value") { launchSingleTop = true } }
+                onBestValue = { navController.navigate("value") { launchSingleTop = true } },
+                fastingRepository = app.fastingRepository,
+                caffeineRepository = app.caffeineRepository,
+                entryPhotos = app.entryPhotos,
+                onOpenFasting = { navController.navigate("fasting") { launchSingleTop = true } },
+                onOpenCaffeine = { navController.navigate("caffeine") { launchSingleTop = true } },
+                onOpenReports = { navController.navigate("reports") { launchSingleTop = true } },
+                onOpenProgressPhotos = { navController.navigate("progress_photos") { launchSingleTop = true } },
+                onOpenMealie = { navController.navigate("mealie") { launchSingleTop = true } },
+                onOpenHealthConnect = { navController.navigate("health_connect_detail") { launchSingleTop = true } }
             )
         }
 
@@ -343,7 +352,7 @@ fun ByteLogNavHost(
             val date = backStackEntry.arguments?.getString("date") ?: ""
 
             val fastSearchViewModel: FastSearchViewModel = viewModel {
-                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository).apply {
+                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository, app.sparkyExternalProviders).apply {
                     initContext(mealTypeId, mealName, date)
                     if (planOnly && date.isNotBlank()) setPlanDays(setOf(date))
                 }
@@ -384,7 +393,7 @@ fun ByteLogNavHost(
             // The scanner adds to the same tray as the search it was opened from, so scanning and searching mix freely
             // (opened on its own, e.g. from a widget, it has a tray of its own)
             val fastSearchViewModel: FastSearchViewModel = viewModel(viewModelStoreOwner = com.bytelog.app.ui.navigation.rememberTrayOwner(navController, backStackEntry)) {
-                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository).apply {
+                FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository, app.sparkyExternalProviders).apply {
                     initContext(mealTypeId, mealName, date)
                 }
             }
@@ -405,7 +414,13 @@ fun ByteLogNavHost(
                 mealTemplateRepository = app.mealTemplateRepository,
                 onNavigateBack = { navController.popBackStack() },
                 onOpenMyFoods = { navController.navigate("my_foods") { launchSingleTop = true } },
-                onOpenFamily = { navController.navigate("family") { launchSingleTop = true } }
+                onOpenFamily = { navController.navigate("family") { launchSingleTop = true } },
+                onOpenMealie = { navController.navigate("mealie") { launchSingleTop = true } },
+                onOpenHealthConnectDetail = { navController.navigate("health_connect_detail") { launchSingleTop = true } },
+                onOpenReports = { navController.navigate("reports") { launchSingleTop = true } },
+                onOpenProgressPhotos = { navController.navigate("progress_photos") { launchSingleTop = true } },
+                onOpenFasting = { navController.navigate("fasting") { launchSingleTop = true } },
+                onOpenCaffeine = { navController.navigate("caffeine") { launchSingleTop = true } }
             )
         }
 
@@ -510,6 +525,89 @@ fun ByteLogNavHost(
                 onNavigateBack = { navController.popBackStack() },
                 onOpenShoppingList = { navController.navigate("shopping") { launchSingleTop = true } },
                 onOpenPlanner = { navController.navigate("planner") { launchSingleTop = true } }
+            )
+        }
+
+        // 9. Full Mealie Integration
+        page("mealie") {
+            val vm: com.bytelog.app.ui.mealie.MealieViewModel = viewModel {
+                com.bytelog.app.ui.mealie.MealieViewModel(app.mealieRepository)
+            }
+            com.bytelog.app.ui.mealie.MealieScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenRecipe = { id -> navController.navigate("recipe/$id") { launchSingleTop = true } }
+            )
+        }
+
+        // 10. Caffeine Tracking & Decay Curve
+        page("caffeine") {
+            val vm: com.bytelog.app.ui.caffeine.CaffeineViewModel = viewModel(
+                factory = com.bytelog.app.ui.caffeine.CaffeineViewModel.factory(app.caffeineRepository)
+            )
+            com.bytelog.app.ui.caffeine.CaffeineScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 11. Progress Photos (Gallery, Side-by-Side Compare, Time-Lapse)
+        page("progress_photos") {
+            val vm: com.bytelog.app.ui.photos.ProgressPhotoViewModel = viewModel(
+                factory = com.bytelog.app.ui.photos.ProgressPhotoViewModel.factory(app.progressPhotoRepository, settingsRepo)
+            )
+            com.bytelog.app.ui.photos.ProgressPhotosScreen(
+                viewModel = vm,
+                onNavigateBack = { navController.popBackStack() },
+                onOpenCamera = { pose ->
+                    navController.navigate("progress_photos_camera/${pose.apiValue}")
+                }
+            )
+        }
+        page(
+            route = "progress_photos_camera/{pose}",
+            arguments = listOf(navArgument("pose") { type = NavType.StringType })
+        ) { entry ->
+            val poseArg = entry.arguments?.getString("pose")
+            val vm: com.bytelog.app.ui.photos.ProgressPhotoViewModel = viewModel(
+                factory = com.bytelog.app.ui.photos.ProgressPhotoViewModel.factory(app.progressPhotoRepository, settingsRepo)
+            )
+            com.bytelog.app.ui.photos.ProgressPhotoCameraScreen(
+                viewModel = vm,
+                initialPose = com.bytelog.app.data.photos.PhotoPose.fromApiValue(poseArg) ?: com.bytelog.app.data.photos.PhotoPose.FRONT,
+                onNavigateBack = { navController.popBackStack() },
+                onPhotoSaved = { navController.popBackStack() }
+            )
+        }
+
+        // 12. Active Fasting
+        page("fasting") {
+            val vm: com.bytelog.app.ui.fasting.FastingViewModel = viewModel(
+                factory = com.bytelog.app.ui.fasting.FastingViewModel.Factory(app.fastingRepository)
+            )
+            com.bytelog.app.ui.fasting.FastingScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 13. Detailed Health Connect & Historical Backfill
+        page("health_connect_detail") {
+            com.bytelog.app.ui.health.HealthConnectDetailScreen(
+                extendedSync = app.healthConnectExtendedSync,
+                backfill = app.healthConnectBackfill,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 14. Detailed & Customizable Reports
+        page("reports") {
+            val vm: com.bytelog.app.ui.reports.ReportsViewModel = viewModel(
+                factory = com.bytelog.app.ui.reports.ReportsViewModel.Factory(app.reportsRepository, app.reportConfigStore)
+            )
+            com.bytelog.app.ui.reports.ReportsScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() }
             )
         }
     }

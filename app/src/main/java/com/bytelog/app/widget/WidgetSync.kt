@@ -32,7 +32,10 @@ object WidgetSync {
                 combine(sources) { it.size }
             }
                 .debounce(600)
-                .collect { runCatching { WidgetUpdater.updateAll(app) } }
+                .collect {
+                    runCatching { WidgetUpdater.updateAll(app) }
+                    runCatching { com.bytelog.app.tiles.QuickSettingsTileUpdater.requestTileUpdates(app) }
+                }
         }
     }
 }

@@ -119,6 +119,10 @@ class SparkyApiClient(
         this.cachedServiceConfigId = null
     }
 
+    fun currentBaseUrl(): String = baseUrl
+    fun httpClient(): OkHttpClient = client
+    fun jsonCodec(): Json = json
+
     /**
      * Resolve active AI service configuration ID from Sparky Fitness Server.
      * Queries /api/chat/ai-service-settings/active first, and falls back to

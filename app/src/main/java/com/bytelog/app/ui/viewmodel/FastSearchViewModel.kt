@@ -37,7 +37,9 @@ class FastSearchViewModel(
     /** Your saved meals and recipes (from Sparky), searched alongside foods. */
     private val mealTemplates: kotlinx.coroutines.flow.Flow<List<com.bytelog.app.data.local.model.MealTemplate>> = flowOf(emptyList()),
     /** Where food added to a future day goes: planned, not logged. */
-    private val plans: com.bytelog.app.data.repository.PlanRepository? = null
+    private val plans: com.bytelog.app.data.repository.PlanRepository? = null,
+    /** Configured external food providers on Sparky (USDA, FatSecret, Mealie, etc.). */
+    private val externalProviders: com.bytelog.app.data.remote.SparkyExternalProviders? = null
 ) : ViewModel() {
 
     /**
@@ -134,26 +136,71 @@ class FastSearchViewModel(
     /** Opening the keyboard straight away only helps when there are no suggestions to tap instead. */
     suspend fun shouldFocusSearchOnOpen(): Boolean = !foodRepository.hasAnyEntries()
 
-    // Remote search status for OpenFoodFacts & Sparky database
+    // Remote search status for OpenFoodFacts, Sparky database & configured external providers (USDA, FatSecret, Mealie, etc.)
     private val _isSearchingRemote = MutableStateFlow(false)
     val isSearchingRemote: StateFlow<Boolean> = _isSearchingRemote.asStateFlow()
 
+    private val _availableProviders = MutableStateFlow<List<com.bytelog.app.data.remote.ExternalProviderInfo>>(emptyList())
+    val availableProviders: StateFlow<List<com.bytelog.app.data.remote.ExternalProviderInfo>> = _availableProviders.asStateFlow()
+
+    private val _selectedProviderFilter = MutableStateFlow("all")
+    val selectedProviderFilter: StateFlow<String> = _selectedProviderFilter.asStateFlow()
+
+    private val externalMetaByFoodId = java.util.concurrent.ConcurrentHashMap<String, com.bytelog.app.data.remote.ExternalFoodResult>()
+
+    fun setProviderFilter(providerKey: String) {
+        _selectedProviderFilter.value = providerKey
+    }
+
     init {
+        if (externalProviders != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { externalProviders.listActiveFoodProviders() }
+                    .onSuccess { _availableProviders.value = it }
+            }
+        }
         viewModelScope.launch {
-            _searchQuery
-                .map { it.trim() }
+            kotlinx.coroutines.flow.combine(_searchQuery.map { it.trim() }, _selectedProviderFilter) { q, filter -> q to filter }
                 .distinctUntilChanged()
-                .onEach { q ->
+                .onEach { (q, filter) ->
                     // A query seen recently shows its results at once; the request below refreshes them
                     if (q.length < 2) _remote.value = "" to emptyList()
-                    else foodRepository.cachedRemoteResults(q)?.let { _remote.value = q to it }
+                    else if (filter == "all") foodRepository.cachedRemoteResults(q)?.let { _remote.value = q to it }
                 }
                 .debounce(180)
-                .collectLatest { q ->
+                .collectLatest { (q, filter) ->
                     if (q.length < 2) { _isSearchingRemote.value = false; return@collectLatest }
                     _isSearchingRemote.value = true
                     try {
-                        foodRepository.searchRemote(q).collect { _remote.value = q to it }
+                        val providers = _availableProviders.value
+                        if (filter != "all" && externalProviders != null) {
+                            val chosen = providers.firstOrNull { it.type.equals(filter, ignoreCase = true) || it.id == filter }
+                            val extResults = if (chosen != null) {
+                                externalProviders.searchProvider(chosen.type, q, chosen.id)
+                            } else {
+                                externalProviders.searchProvider(filter, q, null)
+                            }
+                            extResults.forEach { externalMetaByFoodId[it.item.id] = it }
+                            _remote.value = q to extResults.map { it.item }
+                        } else {
+                            val merged = mutableListOf<FoodItem>()
+                            foodRepository.searchRemote(q).collect { baseRemote ->
+                                merged.clear()
+                                merged.addAll(baseRemote)
+                                _remote.value = q to merged.toList()
+                            }
+                            if (externalProviders != null && providers.isNotEmpty()) {
+                                val extResults = runCatching {
+                                    externalProviders.searchAllConfiguredProviders(q, providers)
+                                }.getOrDefault(emptyList())
+                                if (extResults.isNotEmpty()) {
+                                    extResults.forEach { externalMetaByFoodId[it.item.id] = it }
+                                    val existingIds = merged.map { it.id }.toHashSet()
+                                    extResults.forEach { if (existingIds.add(it.item.id)) merged.add(it.item) }
+                                    _remote.value = q to merged.toList()
+                                }
+                            }
+                        }
                     } finally {
                         _isSearchingRemote.value = false
                     }
@@ -271,6 +318,21 @@ class FastSearchViewModel(
         libraryBacked += entry.id
         _stagedEntries.value = _stagedEntries.value + entry
         _activeStagedId.value = entry.id
+
+        // For USDA / FatSecret summary items, fetch full variants & micronutrients in the background
+        val extMeta = externalMetaByFoodId[food.id]
+        if (extMeta != null && extMeta.needsDetailFetch && externalProviders != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val detailed = runCatching {
+                    externalProviders.fetchFoodDetail(extMeta.providerType, extMeta.externalId, extMeta.providerId)
+                }.getOrNull() ?: return@launch
+                val enrichedFood = detailed.item
+                stagedFoods[entry.id] = enrichedFood
+                runCatching { foodRepository.rememberFood(enrichedFood) }
+                val current = _stagedEntries.value.firstOrNull { it.id == entry.id } ?: return@launch
+                updateStagedPortion(entry.id, Portion(current.quantity, current.unit))
+            }
+        }
         return entry
     }
 
@@ -487,7 +549,19 @@ class FastSearchViewModel(
      * Continuous burst barcode scanner handler.
      */
     suspend fun handleScannedBarcode(barcode: String): FoodItem? {
-        val food = foodRepository.lookupBarcode(barcode)
+        var food = foodRepository.lookupBarcode(barcode)
+        val ext = externalProviders
+        if (food == null && ext != null) {
+            val barcodeProviders = _availableProviders.value.filter { it.supportsBarcode }
+            val v2 = runCatching { ext.lookupBarcodeV2(barcode, null) }.getOrNull()
+                ?: barcodeProviders.firstNotNullOfOrNull { p ->
+                    runCatching { ext.lookupBarcodeV2(barcode, p.id) }.getOrNull()
+                }
+            if (v2 != null) {
+                externalMetaByFoodId[v2.item.id] = v2
+                food = v2.item
+            }
+        }
         if (food != null) {
             // A code scanned again after leaving the frame adds another portion rather than a duplicate line
             tapFood(food)

@@ -152,7 +152,16 @@ fun DiaryScreen(
     /** Prices from a receipt. */
     onScanReceipt: () -> Unit = {},
     /** Foods ranked by what a dollar buys. */
-    onBestValue: () -> Unit = {}
+    onBestValue: () -> Unit = {},
+    fastingRepository: com.bytelog.app.data.fasting.FastingRepository? = null,
+    caffeineRepository: com.bytelog.app.data.caffeine.CaffeineRepository? = null,
+    entryPhotos: com.bytelog.app.data.remote.SparkyEntryPhotos? = null,
+    onOpenFasting: () -> Unit = {},
+    onOpenCaffeine: () -> Unit = {},
+    onOpenReports: () -> Unit = {},
+    onOpenProgressPhotos: () -> Unit = {},
+    onOpenMealie: () -> Unit = {},
+    onOpenHealthConnect: () -> Unit = {}
 ) {
     var copyPlanFrom by remember { mutableStateOf<List<com.bytelog.app.data.local.model.PlannedEntry>?>(null) }
     val family by (familyViewModel?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(com.bytelog.app.ui.viewmodel.FamilyState(loading = false)) }).collectAsState()
@@ -498,6 +507,104 @@ fun DiaryScreen(
                               }
                             }
                         }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.FASTING -> {
+                            if (fastingRepository != null) {
+                                item(key = "fasting") {
+                                    val activeFast by fastingRepository.activeFast.collectAsState()
+                                    val fastPrefs by fastingRepository.preferences.collectAsState()
+                                    LaunchedEffect(fastingRepository) { fastingRepository.refresh() }
+                                    Box(Modifier.homeItem(this, listState, "fasting")) {
+                                        com.bytelog.app.ui.fasting.FastingCard(
+                                            activeFast = activeFast,
+                                            defaultProtocolCode = fastPrefs.defaultProtocol,
+                                            onStartFast = {
+                                                val protocol = com.bytelog.app.data.fasting.FastingProtocol.fromCode(fastPrefs.defaultProtocol)
+                                                val now = java.time.Instant.now()
+                                                val target = now.plusSeconds((fastPrefs.targetFastingHours * 3600f).toLong())
+                                                scope.launch {
+                                                    fastingRepository.startFast(
+                                                        startTimeIso = now.toString(),
+                                                        targetEndTimeIso = target.toString(),
+                                                        fastingType = protocol.code
+                                                    )
+                                                }
+                                            },
+                                            onEndFast = {
+                                                activeFast?.let { fast ->
+                                                    scope.launch {
+                                                        fastingRepository.endFast(
+                                                            id = fast.id,
+                                                            endTimeIso = java.time.Instant.now().toString(),
+                                                            startTimeIso = fast.startTime,
+                                                            targetEndTimeIso = fast.targetEndTime,
+                                                            fastingType = fast.fastingType
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            onOpenDetails = onOpenFasting
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.CAFFEINE -> {
+                            if (caffeineRepository != null) {
+                                item(key = "caffeine") {
+                                    val caffeineStatus by caffeineRepository.status.collectAsState()
+                                    LaunchedEffect(selectedDate) { caffeineRepository.refresh(selectedDate) }
+                                    Box(Modifier.homeItem(this, listState, "caffeine")) {
+                                        com.bytelog.app.ui.caffeine.CaffeineCard(
+                                            status = caffeineStatus,
+                                            onQuickLogCoffee = {
+                                                val nowHHmm = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                                                val mealId = mealTypes.firstOrNull()?.id.orEmpty()
+                                                scope.launch {
+                                                    caffeineRepository.logCaffeine("Drip Coffee", 95f, nowHHmm, selectedDate, mealId)
+                                                    snackbarHostState.showSnackbar("Logged Drip Coffee (95 mg caffeine)")
+                                                }
+                                            },
+                                            onOpenDetail = onOpenCaffeine
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        com.bytelog.app.data.repository.HomeSection.WELLNESS_HUB -> {
+                            item(key = "wellness_hub") {
+                                Box(Modifier.homeItem(this, listState, "wellness_hub")) {
+                                    androidx.compose.foundation.lazy.LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)
+                                    ) {
+                                        item {
+                                            androidx.compose.material3.AssistChip(
+                                                onClick = onOpenReports,
+                                                label = { Text("Reports") }
+                                            )
+                                        }
+                                        item {
+                                            androidx.compose.material3.AssistChip(
+                                                onClick = onOpenProgressPhotos,
+                                                label = { Text("Progress Photos") }
+                                            )
+                                        }
+                                        item {
+                                            androidx.compose.material3.AssistChip(
+                                                onClick = onOpenMealie,
+                                                label = { Text("Mealie") }
+                                            )
+                                        }
+                                        item {
+                                            androidx.compose.material3.AssistChip(
+                                                onClick = onOpenHealthConnect,
+                                                label = { Text("Health Connect") }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                         com.bytelog.app.data.repository.HomeSection.LEFTOVERS -> {
                         if (activeBatches.isNotEmpty()) {
@@ -1041,6 +1148,7 @@ fun DiaryScreen(
             EditFoodEntrySheet(
                 entry = entry,
                 availableMealTypes = mealTypes,
+                entryPhotos = entryPhotos,
                 onSave = { updatedEntry ->
                     viewModel.updateEntry(updatedEntry)
                     editingEntry = null
