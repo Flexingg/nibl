@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "bytelog_settings")
@@ -49,6 +50,7 @@ class SettingsRepository(
         val KEY_REDUCE_TRANSPARENCY = androidx.datastore.preferences.core.booleanPreferencesKey("reduce_transparency")
         val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
         val KEY_FAB_MENU = stringPreferencesKey("fab_menu_layout")
+        val KEY_UNANSWERED_CREATES = stringPreferencesKey("sync_unanswered_creates")
         val KEY_UPDATE_AUTO = androidx.datastore.preferences.core.booleanPreferencesKey("update_auto_check")
         val KEY_UPDATE_LAST_CHECK = androidx.datastore.preferences.core.longPreferencesKey("update_last_check")
         val KEY_UPDATE_DISMISSED = stringPreferencesKey("update_dismissed_version")
@@ -219,6 +221,30 @@ class SettingsRepository(
     suspend fun saveHomeLayout(layout: HomeLayout) {
         context.dataStore.edit { it[KEY_HOME_LAYOUT] = layout.encode() }
     }
+
+    /**
+     * Diary entries whose upload got no answer (the connection dropped), with when: Sparky may have saved them, so
+     * the next upload looks for them there first instead of sending a second copy.
+     */
+    suspend fun unansweredCreates(): Map<String, Long> = context.dataStore.data.first()[KEY_UNANSWERED_CREATES].orEmpty()
+        .split(';').mapNotNull { part -> part.split('=').takeIf { it.size == 2 }?.let { (id, at) -> at.toLongOrNull()?.let { id to it } } }.toMap()
+
+    suspend fun markUnansweredCreate(id: String, at: Long) {
+        context.dataStore.edit { prefs ->
+            val map = decodeUnanswered(prefs[KEY_UNANSWERED_CREATES]) + (id to at)
+            prefs[KEY_UNANSWERED_CREATES] = map.entries.joinToString(";") { "${it.key}=${it.value}" }
+        }
+    }
+
+    suspend fun clearUnansweredCreate(id: String) {
+        context.dataStore.edit { prefs ->
+            val map = decodeUnanswered(prefs[KEY_UNANSWERED_CREATES])
+            if (id in map) prefs[KEY_UNANSWERED_CREATES] = (map - id).entries.joinToString(";") { "${it.key}=${it.value}" }
+        }
+    }
+
+    private fun decodeUnanswered(raw: String?): Map<String, Long> = raw.orEmpty().split(';')
+        .mapNotNull { part -> part.split('=').takeIf { it.size == 2 }?.let { (id, at) -> at.toLongOrNull()?.let { id to it } } }.toMap()
 
     /** The order of the home screen's + menu, and which actions are hidden. */
     val fabMenuLayout: Flow<FabMenuLayout> = context.dataStore.data.map { FabMenuLayout.parse(it[KEY_FAB_MENU]) }

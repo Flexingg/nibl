@@ -27,7 +27,15 @@ data class ReportsUiState(
     val compareMetricA: CompareMetric = CompareMetric.CALORIES,
     val compareMetricB: CompareMetric = CompareMetric.WEIGHT,
     val compareResult: CompareResult? = null,
-    val isCompareLoading: Boolean = false
+    val isCompareLoading: Boolean = false,
+    // Exercise Progress
+    val exercises: List<com.bytelog.app.data.reports.LoggedExercise> = emptyList(),
+    val selectedExercise: com.bytelog.app.data.reports.LoggedExercise? = null,
+    val progressGrouping: com.bytelog.app.data.reports.ProgressGrouping = com.bytelog.app.data.reports.ProgressGrouping.WEEK,
+    val exerciseProgress: com.bytelog.app.data.reports.ExerciseProgressReport? = null,
+    val isProgressLoading: Boolean = false,
+    val progressError: String? = null,
+    val weightUnit: String = "kg"
 )
 
 class ReportsViewModel(
@@ -40,12 +48,14 @@ class ReportsViewModel(
 
     private var loadJob: Job? = null
     private var compareJob: Job? = null
+    private var progressJob: Job? = null
 
     init {
         viewModelScope.launch {
             val saved = configStore.customization.first()
             _uiState.update { it.copy(customization = saved, range = saved.defaultRange) }
             loadForRange(saved.defaultRange)
+            loadExercises()
 
             configStore.customization.collect { updated ->
                 _uiState.update { it.copy(customization = updated) }
@@ -57,10 +67,49 @@ class ReportsViewModel(
         if (_uiState.value.range == range && _uiState.value.snapshot != null) return
         _uiState.update { it.copy(range = range) }
         loadForRange(range)
+        loadProgress()
     }
 
     fun refresh() {
         loadForRange(_uiState.value.range)
+        loadExercises()
+    }
+
+    fun selectExercise(exercise: com.bytelog.app.data.reports.LoggedExercise) {
+        _uiState.update { it.copy(selectedExercise = exercise) }
+        loadProgress()
+    }
+
+    fun selectProgressGrouping(grouping: com.bytelog.app.data.reports.ProgressGrouping) {
+        _uiState.update { it.copy(progressGrouping = grouping) }
+        loadProgress()
+    }
+
+    private fun loadExercises() {
+        viewModelScope.launch {
+            val unit = runCatching { repository.weightUnit() }.getOrDefault("kg")
+            repository.loggedExercises()
+                .onSuccess { list ->
+                    _uiState.update { st ->
+                        st.copy(exercises = list, weightUnit = unit,
+                            selectedExercise = st.selectedExercise?.takeIf { s -> list.any { it.id == s.id } } ?: list.firstOrNull())
+                    }
+                    loadProgress()
+                }
+                .onFailure { e -> _uiState.update { it.copy(weightUnit = unit, progressError = "Couldn't load your exercises: ${e.message}") } }
+        }
+    }
+
+    private fun loadProgress() {
+        val st = _uiState.value
+        val exercise = st.selectedExercise ?: run { _uiState.update { it.copy(exerciseProgress = null) }; return }
+        progressJob?.cancel()
+        progressJob = viewModelScope.launch {
+            _uiState.update { it.copy(isProgressLoading = true, progressError = null) }
+            repository.loadExerciseProgress(exercise, st.range, st.progressGrouping)
+                .onSuccess { r -> _uiState.update { it.copy(exerciseProgress = r, isProgressLoading = false) } }
+                .onFailure { e -> _uiState.update { it.copy(isProgressLoading = false, progressError = "Couldn't load ${exercise.name}: ${e.message}") } }
+        }
     }
 
     fun updateCustomization(config: ReportCustomization) {
