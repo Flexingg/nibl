@@ -215,6 +215,26 @@ class HomeLayoutUiTest {
     }
 
     @Test
+    fun aSmallerSizeFitsMoreOnScreen() {
+        var size by mutableStateOf(com.bytelog.app.ui.theme.UiSize.COMFORTABLE)
+        compose.setContent {
+            ByteLogTheme(darkTheme = true) {
+                com.bytelog.app.ui.theme.UiScale(size) {
+                    DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
+                }
+            }
+        }
+        waitFor { compose.onAllNodesWithText("BODYWEIGHT").fetchSemanticsNodes().isNotEmpty() }
+        val comfortable = top("BODYWEIGHT")
+        shot("size_comfortable")
+        size = com.bytelog.app.ui.theme.UiSize.COMPACT
+        compose.waitForIdle()
+        val compact = top("BODYWEIGHT")
+        shot("size_compact")
+        assertTrue("compact moves the cards up ($comfortable -> $compact)", compact < comfortable * 0.95f)
+    }
+
+    @Test
     fun theHomeScreenScrollsWhereverYouTouchIt() {
         compose.setContent {
             ByteLogTheme(darkTheme = true) {

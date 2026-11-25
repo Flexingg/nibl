@@ -239,20 +239,23 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(pageScroll)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Appearance: light/dark and device colours
             val themeMode by settingsRepository.themeMode.collectAsState(initial = com.bytelog.app.ui.theme.ThemeMode.SYSTEM)
             val deviceColors by settingsRepository.useDeviceColors.collectAsState(initial = true)
             val reduceTransparency by settingsRepository.reduceTransparency.collectAsState(initial = false)
+            val uiSize by settingsRepository.uiSize.collectAsState(initial = com.bytelog.app.ui.theme.UiSize.DEFAULT)
             com.bytelog.app.ui.components.AppearanceCard(
                 mode = themeMode,
                 deviceColors = deviceColors,
                 onMode = { scope.launch { settingsRepository.saveThemeMode(it) } },
                 onDeviceColors = { scope.launch { settingsRepository.saveUseDeviceColors(it) } },
                 reduceTransparency = reduceTransparency,
-                onReduceTransparency = { scope.launch { settingsRepository.saveReduceTransparency(it) } }
+                onReduceTransparency = { scope.launch { settingsRepository.saveReduceTransparency(it) } },
+                uiSize = uiSize,
+                onUiSize = { scope.launch { settingsRepository.saveUiSize(it) } }
             )
 
             // The home screen's + menu: its order and what's in it

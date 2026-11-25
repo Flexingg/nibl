@@ -38,7 +38,9 @@ fun AppearanceCard(
     onDeviceColors: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     reduceTransparency: Boolean = false,
-    onReduceTransparency: (Boolean) -> Unit = {}
+    onReduceTransparency: (Boolean) -> Unit = {},
+    uiSize: com.bytelog.app.ui.theme.UiSize = com.bytelog.app.ui.theme.UiSize.DEFAULT,
+    onUiSize: (com.bytelog.app.ui.theme.UiSize) -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
     Column(
@@ -74,6 +76,32 @@ fun AppearanceCard(
                 }
             }
         }
+        // Size: how much fits on screen
+        Text("Size", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            val sizes = com.bytelog.app.ui.theme.UiSize.entries
+            sizes.forEachIndexed { i, size ->
+                val selected = size == uiSize
+                val bg by animateColorAsState(if (selected) cs.secondaryContainer else cs.surfaceContainerHighest, label = "size_bg")
+                val outer = 20.dp; val inner = 6.dp
+                val shape = when (i) {
+                    0 -> RoundedCornerShape(topStart = outer, bottomStart = outer, topEnd = inner, bottomEnd = inner)
+                    sizes.lastIndex -> RoundedCornerShape(topStart = inner, bottomStart = inner, topEnd = outer, bottomEnd = outer)
+                    else -> RoundedCornerShape(inner)
+                }
+                Box(
+                    Modifier.weight(1f).height(44.dp).pressBounce(0.94f).clip(if (selected) RoundedCornerShape(outer) else shape).background(bg)
+                        .semantics { role = Role.RadioButton; this.selected = selected }
+                        .clickable { onUiSize(size) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Each option is drawn at its own size, so the choice previews itself
+                    Text(size.label, color = if (selected) cs.onSecondaryContainer else cs.onSurface,
+                        fontSize = (14f * size.scale / uiSize.scale).sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
+                }
+            }
+        }
+        Text("Smaller sizes fit more on screen. Your phone's own text size still applies.", color = cs.onSurfaceVariant, fontSize = 12.sp)
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(enabled = supportsDeviceColors) { onDeviceColors(!deviceColors) }.padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically

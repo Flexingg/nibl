@@ -198,7 +198,7 @@ fun AppUpdateCard(updater: AppUpdater, settings: SettingsRepository, modifier: M
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Check automatically", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Looks for a new version every few hours and shows it on the home screen. Nothing installs without you.", color = cs.onSurfaceVariant, fontSize = 11.sp)
+                Text("Looks for a new version when you open the app (at most every half hour) and shows it on the home screen. Nothing installs without you.", color = cs.onSurfaceVariant, fontSize = 11.sp)
             }
             Switch(checked = auto, onCheckedChange = { scope.launch { settings.saveAutoCheckUpdates(it) } })
         }

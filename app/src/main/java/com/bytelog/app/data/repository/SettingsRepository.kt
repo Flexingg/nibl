@@ -48,6 +48,7 @@ class SettingsRepository(
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_DEVICE_COLORS = androidx.datastore.preferences.core.booleanPreferencesKey("device_colors")
         val KEY_REDUCE_TRANSPARENCY = androidx.datastore.preferences.core.booleanPreferencesKey("reduce_transparency")
+        val KEY_UI_SIZE = stringPreferencesKey("ui_size")
         val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
         val KEY_FAB_MENU = stringPreferencesKey("fab_menu_layout")
         val KEY_UNANSWERED_CREATES = stringPreferencesKey("sync_unanswered_creates")
@@ -221,6 +222,13 @@ class SettingsRepository(
         context.dataStore.edit { it[KEY_REDUCE_TRANSPARENCY] = enabled }
     }
 
+    /** How big the app is drawn (Settings → Appearance → Size). Compact by default. */
+    val uiSize: Flow<com.bytelog.app.ui.theme.UiSize> = context.dataStore.data.map { com.bytelog.app.ui.theme.UiSize.fromName(it[KEY_UI_SIZE]) }
+
+    suspend fun saveUiSize(size: com.bytelog.app.ui.theme.UiSize) {
+        context.dataStore.edit { it[KEY_UI_SIZE] = size.name }
+    }
+
     /** Write the diary's food and water to Health Connect. */
     val healthConnectWrite: Flow<Boolean> = context.dataStore.data.map { it[KEY_HEALTH_CONNECT_WRITE] ?: false }
 
@@ -273,7 +281,7 @@ class SettingsRepository(
         context.dataStore.edit { it[KEY_FAB_MENU] = layout.encode() }
     }
 
-    /** Look for a new version on GitHub by itself (at most every few hours). On by default. */
+    /** Look for a new version on GitHub by itself (at most every half hour). On by default. */
     val autoCheckUpdates: Flow<Boolean> = context.dataStore.data.map { it[KEY_UPDATE_AUTO] ?: true }
 
     suspend fun saveAutoCheckUpdates(enabled: Boolean) {

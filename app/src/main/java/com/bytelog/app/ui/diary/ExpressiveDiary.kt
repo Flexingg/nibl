@@ -134,7 +134,7 @@ private fun <T> spatial() = spring<T>(dampingRatio = 0.8f, stiffness = 380f)
 // Header: calories (with a shape that flies between the card and the strip), water, weight
 // ======================================================================
 
-private const val HERO_DP = 156
+private const val HERO_DP = 132
 
 /**
  * The Diary header. Like the previous folding header, but the calorie shape is its own layer that shrinks and
@@ -182,7 +182,7 @@ fun ExpressiveDiaryHeader(
         // Shape: centred vertically on the left of the big card, then 44 dp inside the strip.
         val small = 44.dp.toPx()
         val scale = lerpF(1f, small / heroPx, clamp01(f))
-        val hx = lerpF(16.dp.toPx(), 10.dp.toPx(), f)
+        val hx = lerpF(14.dp.toPx(), 10.dp.toPx(), f)
         val hy = lerpF((e[0] - heroPx) / 2f, (heroC - small) / 2f, f)
         layout(w, height) {
             heroCard.place(0, 0)
@@ -268,9 +268,9 @@ fun rememberCountUp(target: Int): Int {
 @Composable
 fun HeroMacros(summary: DailySummary) {
     val x = LocalByteExtraColors.current
-    Row(Modifier.fillMaxWidth().heightIn(min = (HERO_DP + 32).dp).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Spacer(Modifier.width((HERO_DP + 14).dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.fillMaxWidth().heightIn(min = (HERO_DP + 20).dp).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.width((HERO_DP + 12).dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             MacroRow("PROTEIN", summary.totalProtein, summary.targetProtein, x.protein)
             MacroRow("CARBS", summary.totalCarbs, summary.targetCarbs, x.carbs)
             MacroRow("FAT", summary.totalFat, summary.targetFat, x.fat)
@@ -368,7 +368,7 @@ fun WaterExpanded(
     val haptic = LocalHapticFeedback.current
     val progress = if (targetOz > 0) currentOz / targetOz else 0f
     val p by animateFloatAsState(progress, spatial(), label = "water_bar")
-    Column(Modifier.fillMaxWidth().clickable(onClick = onCustom).padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = onCustom).padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             WaterBadge(currentOz, 40.dp)
             Spacer(Modifier.width(12.dp))
@@ -473,7 +473,7 @@ private fun WeightBadge(size: androidx.compose.ui.unit.Dp, shape: BlobShape) {
 @Composable
 fun WeightExpanded(weight: Float?, unit: String, delta: Float?, recent: List<Float>, shape: BlobShape, onOpen: () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         WeightBadge(40.dp, shape)
         Spacer(Modifier.width(12.dp))
         Column {
@@ -573,7 +573,7 @@ data class GroupButton(
 fun ConnectedButtonGroup(buttons: List<GroupButton>, modifier: Modifier = Modifier) {
     var pressedIndex by remember { mutableIntStateOf(-1) }
     val reduce = LocalReduceMotion.current
-    Row(modifier.fillMaxWidth().height(46.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    Row(modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         buttons.forEachIndexed { i, b ->
             val source = remember { MutableInteractionSource() }
             val pressed by source.collectIsPressedAsState()

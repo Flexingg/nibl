@@ -195,7 +195,7 @@ fun ReportsScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (snap != null) {
                         items(visibleSections, key = { it.name }) { section ->
@@ -269,7 +269,7 @@ internal fun ReportCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(FluidRadius.lg))
             .background(ByteCardDark)
-            .padding(16.dp),
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -225,7 +226,9 @@ class RecipeScreensRenderTest {
         // Scaling doubles every ingredient
         compose.waitUntil(5_000) { compose.onAllNodesWithText("1814 g  Ground Turkey 93% Lean", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("1. Heat the oil in a large pot over medium-high heat.", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("1 of 4 steps done · screen stays on", useUnmergedTree = true).assertExists()
+        // The progress is in the header's subtitle, which folds away while the page is scrolled down
+        compose.onRoot().performTouchInput { swipeDown(startY = centerY - 400f, endY = centerY + 600f) }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("1 of 4 steps done · screen stays on", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         shot("04-cook-mode")
     }
 

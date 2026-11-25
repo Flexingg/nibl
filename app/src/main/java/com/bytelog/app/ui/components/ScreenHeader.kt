@@ -43,7 +43,8 @@ fun ScreenHeader(
     title: String,
     onBack: () -> Unit,
     subtitle: String? = null,
-    fraction: () -> Float = { 1f },
+    /** How far the page has scrolled (0 = top, 1 = folded). Null for a header that stays as it is. */
+    fraction: (() -> Float)? = null,
     statusBarPadding: Boolean = true,
     leading: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
@@ -53,7 +54,7 @@ fun ScreenHeader(
         Layout(
             content = {
                 Box(Modifier.layoutId("back")) {
-                    MorphButton(onBack, Modifier.size(44.dp).glass(GlassLevel.Thin, androidx.compose.foundation.shape.CircleShape), androidx.compose.ui.graphics.Color.Transparent, description = "Back") {
+                    MorphButton(onBack, Modifier.size(40.dp).glass(GlassLevel.Thin, androidx.compose.foundation.shape.CircleShape), androidx.compose.ui.graphics.Color.Transparent, description = "Back") {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = cs.onSurface)
                     }
                 }
@@ -63,28 +64,34 @@ fun ScreenHeader(
                     Column {
                         Text(
                             title, color = cs.onSurface, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            fontSize = (34f + (21f - 34f) * fraction().coerceIn(0f, 1f)).sp, letterSpacing = (-0.4).sp
+                            fontSize = (28f + (19f - 28f) * (fraction?.invoke() ?: 1f).coerceIn(0f, 1f)).sp, letterSpacing = (-0.3).sp
                         )
-                        if (subtitle != null) {
-                            Text(subtitle, color = cs.onSurfaceVariant, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // On a page that scrolls, the subtitle fades out as the header folds and is gone once it's a
+                        // slim bar; a header that doesn't fold keeps it
+                        val f = fraction?.invoke()?.coerceIn(0f, 1f) ?: 0f
+                        if (subtitle != null && f < 0.95f) {
+                            Text(
+                                subtitle, color = cs.onSurfaceVariant, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.graphicsLayer { alpha = (1f - f * 1.6f).coerceIn(0f, 1f) }
+                            )
                         }
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) { measurables, constraints ->
-            val f = fraction().coerceIn(0f, 1f)
+            val f = (fraction?.invoke() ?: 1f).coerceIn(0f, 1f)
             val pad = 12.dp.roundToPx()
             val back = measurables.first { it.layoutId == "back" }.measure(Constraints())
             val actions = measurables.first { it.layoutId == "actions" }.measure(Constraints())
-            val compactH = 64.dp.roundToPx()
+            val compactH = 56.dp.roundToPx()
             // Expanded: title on its own line under the buttons. Compact: title between them.
-            val titleStartExpanded = 20.dp.roundToPx()
+            val titleStartExpanded = 18.dp.roundToPx()
             val titleStartCompact = pad + back.width + 12.dp.roundToPx()
             val titleStart = (titleStartExpanded + (titleStartCompact - titleStartExpanded) * f).roundToInt()
             val titleMax = (constraints.maxWidth - titleStart - pad - (actions.width * f).roundToInt()).coerceAtLeast(0)
             val titleP = measurables.first { it.layoutId == "title" }.measure(Constraints(maxWidth = titleMax))
-            val expandedH = compactH + titleP.height + 8.dp.roundToPx()
+            val expandedH = compactH + titleP.height + 4.dp.roundToPx()
             val h = (expandedH + (compactH - expandedH) * f).roundToInt()
             layout(constraints.maxWidth, h) {
                 back.place(pad, (compactH - back.height) / 2)
@@ -99,14 +106,14 @@ fun ScreenHeader(
 
 /** 0 at the top of a scrolling column, 1 once it has scrolled [rangeDp]. */
 @Composable
-fun rememberScrollFraction(state: ScrollState, rangeDp: Float = 96f): () -> Float {
+fun rememberScrollFraction(state: ScrollState, rangeDp: Float = 72f): () -> Float {
     val range = with(LocalDensity.current) { rangeDp.dp.toPx() }
     return remember(state, range) { { (state.value / range).coerceIn(0f, 1f) } }
 }
 
 /** 0 at the top of a lazy list, 1 once it has scrolled [rangeDp]. */
 @Composable
-fun rememberScrollFraction(state: LazyListState, rangeDp: Float = 96f): () -> Float {
+fun rememberScrollFraction(state: LazyListState, rangeDp: Float = 72f): () -> Float {
     val range = with(LocalDensity.current) { rangeDp.dp.toPx() }
     return remember(state, range) {
         { if (state.firstVisibleItemIndex > 0) 1f else (state.firstVisibleItemScrollOffset / range).coerceIn(0f, 1f) }

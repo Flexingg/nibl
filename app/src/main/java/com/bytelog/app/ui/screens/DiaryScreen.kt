@@ -347,6 +347,11 @@ fun DiaryScreen(
     val headerState = com.bytelog.app.ui.components.rememberHeaderCollapseState()
     val headerFraction = com.bytelog.app.ui.components.rememberHeaderFraction(headerState)
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // Whenever the list comes to rest, however it was scrolled (a finger, or the list moving by itself after
+    // logging), the header settles to full cards or slim strips: it never stays half folded
+    LaunchedEffect(listState) {
+        androidx.compose.runtime.snapshotFlow { listState.isScrollInProgress }.collect { scrolling -> if (!scrolling) headerState.settle() }
+    }
     // The title and the header cards sit above the list; a drag that starts on them scrolls the list too (folding
     // the header first, like a drag on the list), so the home screen scrolls wherever you touch it.
     val scrollsList = Modifier
@@ -491,7 +496,7 @@ fun DiaryScreen(
                     .then(dayMotion)
                     .nestedScroll(toolbarScroll.connection)
                     .nestedScroll(headerState.connection),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 homeLayout.visible.forEach { section ->
                     when (section) {
