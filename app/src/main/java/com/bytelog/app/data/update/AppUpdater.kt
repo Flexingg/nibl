@@ -30,6 +30,8 @@ data class UpdateInfo(
     /** What changed, from the release notes, as plain text. */
     val notes: String,
     val apkUrl: String,
+    /** The same APK through GitHub's API, which works for a private repository when a token is given. */
+    val apkApiUrl: String? = null,
     val apkSize: Long,
     val pageUrl: String
 )
@@ -46,6 +48,8 @@ sealed interface UpdateState {
     /** Android needs the user to let Nibl install apps before it can update itself. */
     data class NeedsPermission(val info: UpdateInfo) : UpdateState
     data class Failed(val message: String, val info: UpdateInfo? = null) : UpdateState
+    /** GitHub won't show the releases without signing in (the repository is private, or the token was refused). */
+    data class NeedsToken(val message: String) : UpdateState
 }
 
 /**
@@ -58,6 +62,8 @@ class AppUpdater(
     private val currentVersion: String,
     /** True for a debug build, which updates from the release's debug APK so it stays a debug build. */
     private val debugBuild: Boolean,
+    /** A GitHub token, needed while the repository is private (read-only access to it is enough). */
+    private val token: suspend () -> String? = { null },
     private val repo: String = REPO,
     private val apiBase: String = "https://api.github.com",
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -85,15 +91,23 @@ class AppUpdater(
         lastCheckComplete = false
         val result = withContext(Dispatchers.IO) {
             runCatching {
+                val auth = token()?.trim()?.takeIf { it.isNotEmpty() }
                 val request = Request.Builder().url("$apiBase/repos/$repo/releases/latest")
                     .header("Accept", "application/vnd.github+json")
                     .header("User-Agent", "Nibl-Android")
+                    .apply { auth?.let { header("Authorization", "Bearer $it") } }
                     // An unchanged answer comes back as 304, which GitHub doesn't count against the rate limit
                     .apply { etag?.let { header("If-None-Match", it) } }
                     .build()
                 client.newCall(request).execute().use { r ->
                     val body = if (r.code == 304) lastBody.orEmpty() else r.body?.string().orEmpty()
-                    if (r.code == 404) { lastCheckComplete = true; return@runCatching null }
+                    // GitHub answers 404 for a private repository it won't show: that's not "up to date"
+                    if (r.code == 404 || r.code == 401 || (r.code == 403 && auth != null && r.header("X-RateLimit-Remaining") != "0")) {
+                        throw TokenNeeded(
+                            if (auth == null) "GitHub won't show Nibl's releases without signing in: the repository is private. Add a GitHub token below, or make the repository public."
+                            else "GitHub refused the token (HTTP ${r.code}). Check it can read the Nibl repository's contents."
+                        )
+                    }
                     if (!r.isSuccessful && r.code != 304) throw IllegalStateException(if (r.code == 403) "GitHub is limiting requests right now. Try again later." else "GitHub answered HTTP ${r.code}.")
                     if (r.code == 200) { etag = r.header("ETag"); lastBody = body }
                     val release = Json.parseToJsonElement(body) as? JsonObject ?: throw IllegalStateException("GitHub sent an unreadable answer.")
@@ -110,7 +124,10 @@ class AppUpdater(
                 _state.value = if (info != null && isNewer(info.version, currentVersion)) UpdateState.Available(info)
                 else UpdateState.UpToDate(info?.version)
             },
-            onFailure = { _state.value = UpdateState.Failed("Couldn't check for updates: ${it.message ?: it.javaClass.simpleName}") }
+            onFailure = {
+                _state.value = if (it is TokenNeeded) UpdateState.NeedsToken(it.message.orEmpty())
+                else UpdateState.Failed("Couldn't check for updates: ${it.message ?: it.javaClass.simpleName}")
+            }
         )
         return result.map { info -> info?.takeIf { isNewer(it.version, currentVersion) } }
     }
@@ -172,7 +189,13 @@ class AppUpdater(
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }   // older downloads
         val target = File(dir, "Nibl-${info.tag}.apk")
-        val request = Request.Builder().url(info.apkUrl).header("User-Agent", "Nibl-Android").build()
+        // With a token, through the API (works for a private repository; GitHub redirects to the file and OkHttp
+        // drops the Authorization header when it leaves github.com). Without one, the public download link.
+        val auth = token()?.trim()?.takeIf { it.isNotEmpty() }
+        val request = if (auth != null && info.apkApiUrl != null) {
+            Request.Builder().url(info.apkApiUrl).header("User-Agent", "Nibl-Android")
+                .header("Accept", "application/octet-stream").header("Authorization", "Bearer $auth").build()
+        } else Request.Builder().url(info.apkUrl).header("User-Agent", "Nibl-Android").build()
         client.newCall(request).execute().use { r ->
             if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}")
             val body = r.body ?: throw IllegalStateException("empty download")
@@ -217,6 +240,9 @@ class AppUpdater(
         }
     }
 
+    /** GitHub wouldn't show the releases without (valid) sign-in. */
+    private class TokenNeeded(message: String) : Exception(message)
+
     companion object {
         const val REPO = "Flexingg/nibl"
 
@@ -236,6 +262,7 @@ class AppUpdater(
                 tag = tag,
                 notes = plainNotes(release.text("body").orEmpty()),
                 apkUrl = asset.text("browser_download_url") ?: return null,
+                apkApiUrl = asset.text("url"),
                 apkSize = (asset["size"] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull ?: 0L,
                 pageUrl = release.text("html_url") ?: "https://github.com/$REPO/releases/latest"
             )

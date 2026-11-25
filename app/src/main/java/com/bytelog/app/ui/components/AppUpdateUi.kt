@@ -161,14 +161,15 @@ fun AppUpdateCard(updater: AppUpdater, settings: SettingsRepository, modifier: M
                     when (val s = state) {
                         UpdateState.Idle -> "Updates come from the app's GitHub releases."
                         UpdateState.Checking -> "Checking GitHub…"
-                        is UpdateState.UpToDate -> "You're up to date."
-                        is UpdateState.Available -> "Version ${s.info.version} is available."
+                        is UpdateState.UpToDate -> s.latest?.let { "You're up to date: GitHub's latest is $it." } ?: "You're up to date."
+                        is UpdateState.Available -> "Version ${s.info.version} is available (you have ${BuildConfig.VERSION_NAME})."
                         is UpdateState.Downloading -> s.progress?.let { "Downloading ${s.info.version}… ${(it * 100).toInt()}%" } ?: "Downloading ${s.info.version}…"
                         is UpdateState.Installing -> "Confirm the install when Android asks."
                         is UpdateState.NeedsPermission -> "Allow Nibl to install apps, then tap Update again."
                         is UpdateState.Failed -> s.message
+                        is UpdateState.NeedsToken -> s.message
                     },
-                    color = if (state is UpdateState.Failed) cs.error else cs.onSurfaceVariant, fontSize = 12.sp
+                    color = if (state is UpdateState.Failed || state is UpdateState.NeedsToken) cs.error else cs.onSurfaceVariant, fontSize = 12.sp
                 )
             }
             val info = when (val s = state) {
@@ -194,6 +195,31 @@ fun AppUpdateCard(updater: AppUpdater, settings: SettingsRepository, modifier: M
         }
         (state as? UpdateState.Available)?.info?.takeIf { it.notes.isNotBlank() }?.let { i ->
             TextButton(onClick = { showNotes = i }, modifier = Modifier.padding(start = 0.dp)) { Text("What's new in ${i.version}") }
+        }
+        // A token, while the repository is private
+        val savedToken by settings.githubToken.collectAsState(initial = null)
+        if (state is UpdateState.NeedsToken || !savedToken.isNullOrBlank()) {
+            var draft by remember { mutableStateOf("") }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("GitHub token", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (savedToken.isNullOrBlank()) "Nibl's repository is private, so GitHub needs a token to show its releases. Create a fine-grained token with access to only the Nibl repository and \"Contents: read\", and paste it here. It's stored encrypted on this phone."
+                    else "A token is saved (encrypted). Replace it below, or remove it if the repository is public now.",
+                    color = cs.onSurfaceVariant, fontSize = 11.sp
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = draft, onValueChange = { draft = it.trim() }, singleLine = true,
+                    placeholder = { Text("github_pat_…", fontSize = 13.sp) },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(enabled = draft.isNotBlank(), onClick = {
+                        scope.launch { settings.saveGithubToken(draft); draft = ""; updater.check() }
+                    }) { Text("Save and check") }
+                    if (!savedToken.isNullOrBlank()) TextButton(onClick = { scope.launch { settings.saveGithubToken(null) } }) { Text("Remove") }
+                }
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

@@ -20,7 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -72,7 +74,10 @@ fun MoveCopyItemsDialog(
     defaultMealName: String,
     mealTypes: List<MealType>,
     onDismiss: () -> Unit,
-    onConfirm: (mode: MoveCopyMode, targetDate: String, targetMealTypeId: String, targetMealName: String) -> Unit
+    /** The foods being moved or copied; a copy can change their amount. */
+    entries: List<com.bytelog.app.data.local.model.FoodEntry> = emptyList(),
+    /** [scale]: how much of each food to copy (1 = as logged). Always 1 for a move. */
+    onConfirm: (mode: MoveCopyMode, targetDate: String, targetMealTypeId: String, targetMealName: String, scale: Float) -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
     val dateFormatter = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd") }
@@ -83,6 +88,8 @@ fun MoveCopyItemsDialog(
     var mode by remember { mutableStateOf(initialMode) }
     var targetDate by remember { mutableStateOf(sourceDate) }
     var targetMealName by remember { mutableStateOf(defaultMealName) }
+    // A copy's amount: one food takes a new amount, several take a multiplier
+    var scale by remember { mutableStateOf(1f) }
 
     val effectiveMealTypes = remember(mealTypes) {
         if (mealTypes.isNotEmpty()) mealTypes else MealType.DEFAULT_MEAL_TYPES
@@ -291,6 +298,11 @@ fun MoveCopyItemsDialog(
                     }
                 }
 
+                if (mode == MoveCopyMode.COPY && entries.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    CopyAmountPicker(entries = entries, scale = scale, onScale = { scale = it })
+                }
+
                 Spacer(modifier = Modifier.height(20.dp))
 
                 // Action Buttons: Cancel and Confirm
@@ -316,7 +328,7 @@ fun MoveCopyItemsDialog(
                             val cleanTargetMeal = targetMealName.trim()
                             val matched = effectiveMealTypes.find { it.name.trim().equals(cleanTargetMeal, ignoreCase = true) }
                             val targetTypeId = matched?.id ?: cleanTargetMeal.lowercase()
-                            onConfirm(mode, cleanTargetDate, targetTypeId, cleanTargetMeal)
+                            onConfirm(mode, cleanTargetDate, targetTypeId, cleanTargetMeal, if (mode == MoveCopyMode.COPY) scale else 1f)
                             onDismiss()
                         },
                         modifier = Modifier
@@ -343,3 +355,91 @@ fun MoveCopyItemsDialog(
         }
     }
 }
+
+/**
+ * How much to copy. One food: its amount, typed or stepped with − and +, with the calories it comes to. Several foods
+ * (or a whole meal): a multiplier (¼× to 3×, or typed), with the total it comes to.
+ */
+@Composable
+internal fun CopyAmountPicker(
+    entries: List<com.bytelog.app.data.local.model.FoodEntry>,
+    scale: Float,
+    onScale: (Float) -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+    val cs = androidx.compose.material3.MaterialTheme.colorScheme
+    val totalKcal = entries.sumOf { it.calories.toDouble() } * scale
+    Text("AMOUNT", color = ByteCreamMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+    Spacer(modifier = Modifier.height(6.dp))
+    if (entries.size == 1) {
+        val e = entries.single()
+        val step = com.bytelog.app.data.repository.CopyAmount.step(e.unit)
+        val qty = e.quantity * scale
+        var text by remember(e.id) { mutableStateOf(com.bytelog.app.data.repository.CopyAmount.amount(qty)) }
+        fun set(q: Float) {
+            val clean = q.coerceAtLeast(step / 4f)
+            text = com.bytelog.app.data.repository.CopyAmount.amount(clean)
+            onScale(com.bytelog.app.data.repository.CopyAmount.scaleFor(e, clean))
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconButton(onClick = { set(qty - step) }, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(50)).background(ByteSurfaceVariantDark)) {
+                Icon(Icons.Default.Remove, contentDescription = "Less", tint = ByteCream)
+            }
+            androidx.compose.material3.OutlinedTextField(
+                value = text,
+                onValueChange = { v ->
+                    text = v.filter { it.isDigit() || it == '.' }
+                    text.toFloatOrNull()?.takeIf { it > 0f }?.let { onScale(com.bytelog.app.data.repository.CopyAmount.scaleFor(e, it)) }
+                },
+                singleLine = true,
+                suffix = { Text(e.unit, color = ByteCreamMuted) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { set(qty + step) }, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(50)).background(ByteSurfaceVariantDark)) {
+                Icon(Icons.Default.Add, contentDescription = "More", tint = ByteCream)
+            }
+        }
+        Text(
+            "${totalKcal.toInt()} kcal" + if (scale != 1f) " (logged: ${com.bytelog.app.data.repository.CopyAmount.amount(e.quantity)} ${e.unit})" else "",
+            color = ByteCreamMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)
+        )
+    } else {
+        var custom by remember { mutableStateOf(false) }
+        var customText by remember { mutableStateOf("") }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            items(com.bytelog.app.data.repository.CopyAmount.PRESETS) { p ->
+                val on = !custom && kotlin.math.abs(scale - p) < 0.001f
+                Box(
+                    Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) MacroProtein else ByteSurfaceVariantDark)
+                        .clickable { custom = false; onScale(p); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(com.bytelog.app.data.repository.CopyAmount.label(p), color = if (on) ByteInkDark else ByteCreamMuted,
+                        fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium)
+                }
+            }
+            item {
+                Box(
+                    Modifier.clip(RoundedCornerShape(16.dp)).background(if (custom) MacroProtein else ByteSurfaceVariantDark)
+                        .clickable { custom = true }.padding(horizontal = 12.dp, vertical = 8.dp)
+                ) { Text("Other", color = if (custom) ByteInkDark else ByteCreamMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium) }
+            }
+        }
+        if (custom) {
+            androidx.compose.material3.OutlinedTextField(
+                value = customText,
+                onValueChange = { v -> customText = v.filter { it.isDigit() || it == '.' }; customText.toFloatOrNull()?.takeIf { it > 0f }?.let(onScale) },
+                singleLine = true, placeholder = { Text("e.g. 1.25") }, suffix = { Text("×", color = ByteCreamMuted) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+            )
+        }
+        Text(
+            "${entries.size} foods · ${totalKcal.toInt()} kcal" + if (scale != 1f) " at ${com.bytelog.app.data.repository.CopyAmount.label(scale)}" else "",
+            color = ByteCreamMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+

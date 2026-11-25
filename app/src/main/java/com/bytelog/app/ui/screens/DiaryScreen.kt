@@ -24,6 +24,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.bytelog.app.ui.diary.daySwipe
 import androidx.compose.ui.graphics.graphicsLayer
 import com.bytelog.app.ui.components.homeItem
+import com.bytelog.app.ui.dashboard.longPressToEdit
+import com.bytelog.app.ui.dashboard.tileCard
 import com.bytelog.app.ui.components.popIn
 import com.bytelog.app.ui.components.pressBounce
 import androidx.compose.foundation.lazy.LazyRow
@@ -250,7 +252,7 @@ fun DiaryScreen(
     val weekPlan by viewModel.weekPlan.collectAsState()
     val weekShopping by viewModel.weekShopping.collectAsState()
     val plannedEntries by viewModel.plannedEntries.collectAsState()
-    val homeLayout by viewModel.homeLayout.collectAsState()
+    val homeTiles by viewModel.homeTiles.collectAsState()
     val fabMenuLayout by viewModel.fabMenuLayout.collectAsState()
 
     // Fasting timer: time since food was last eaten, shown on today's diary once it's over an hour
@@ -301,7 +303,6 @@ fun DiaryScreen(
     var mealToClear by remember { mutableStateOf<DisplayMealGroup?>(null) }
     var showHydrationSheet by remember { mutableStateOf(false) }
     var showWeightDialog by remember { mutableStateOf(false) }
-    var showHomeLayout by remember { mutableStateOf(false) }
     var showGoalAdjustDialog by remember { mutableStateOf(false) }
     var copyingMealName by remember { mutableStateOf<String?>(null) }
     var savingTemplateMealName by remember { mutableStateOf<String?>(null) }
@@ -345,6 +346,27 @@ fun DiaryScreen(
     val weightShape = com.bytelog.app.ui.diary.BlobShape.CIRCLE
 
     val headerState = com.bytelog.app.ui.components.rememberHeaderCollapseState()
+    // ----- Home tiles: which show (a tile with nothing to show stays out of the way), and which fold at the top -----
+    var editingHome by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = editingHome) { editingHome = false }
+    val shownTiles = homeTiles.visible.filter { placed ->
+        when (placed.tile) {
+            com.bytelog.app.data.repository.HomeTile.WEEKLY_REVIEW -> weeklyReview != null
+            com.bytelog.app.data.repository.HomeTile.FASTING -> fastingRepository != null
+            com.bytelog.app.data.repository.HomeTile.CAFFEINE -> caffeineRepository != null
+            com.bytelog.app.data.repository.HomeTile.LEFTOVERS -> activeBatches.isNotEmpty()
+            com.bytelog.app.data.repository.HomeTile.FAMILY -> family.members.isNotEmpty()
+            com.bytelog.app.data.repository.HomeTile.PLANNED -> plannedEntries.isNotEmpty()
+            com.bytelog.app.data.repository.HomeTile.WHAT_FITS -> whatFits.isNotEmpty()
+            else -> true
+        }
+    }
+    val foldCount = com.bytelog.app.data.repository.TileGrid.foldCount(shownTiles)
+    val headerTiles = shownTiles.take(foldCount)
+    val listTiles = shownTiles.drop(foldCount)
+    // With nothing at the top to fold, scrolling goes straight to the list
+    val foldScroll: Modifier = if (headerTiles.isNotEmpty()) Modifier.nestedScroll(headerState.connection) else Modifier
+
     val headerFraction = com.bytelog.app.ui.components.rememberHeaderFraction(headerState)
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     // Whenever the list comes to rest, however it was scrolled (a finger, or the list moving by itself after
@@ -356,7 +378,7 @@ fun DiaryScreen(
     // the header first, like a drag on the list), so the home screen scrolls wherever you touch it.
     val scrollsList = Modifier
         .nestedScroll(toolbarScroll.connection)
-        .nestedScroll(headerState.connection)
+        .then(foldScroll)
         .scrollable(listState, androidx.compose.foundation.gestures.Orientation.Vertical, reverseDirection = true)
     val poppedKeys = remember { mutableSetOf<Any>() }
 
@@ -388,58 +410,18 @@ fun DiaryScreen(
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fluidBackdrop(),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = Color.Transparent
-    ) { paddingValues ->
-      // The diary is the backdrop the floating toolbar and add button blur
-      val haze = remember { dev.chrisbanes.haze.HazeState() }
-      Box(Modifier.fillMaxSize().padding(paddingValues)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(Modifier.blurSource(haze))
-                .padding(horizontal = 16.dp)
-        ) {
-            // The day, small, so the cards start near the top. Settings, Family and Sparky are in the + menu.
-            Box(scrollsList) {
-                com.bytelog.app.ui.diary.CompactDayLine(
-                    date = selectedDate,
-                    title = describeDay(selectedDate),
-                    subtitle = dayDate.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
-                    badge = fastText?.let { t -> { com.bytelog.app.ui.diary.FastingPill(t) } }
-                )
-            }
-            updateBanner?.invoke(Modifier.padding(top = 6.dp))
-            Spacer(Modifier.height(8.dp))
-
-          // Header and list: swipe sideways here to change day
-          Column(
-              Modifier
-                  .fillMaxSize()
-                  .daySwipe(daySwipe, enabled = !fabMenuOpen) { direction ->
-                      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                      viewModel.changeDay(direction.toLong())
-                  }
-          ) {
-            // Calories, water and weight: full cards at the top, two narrow strips once the list scrolls
-            com.bytelog.app.ui.diary.ExpressiveDiaryHeader(
-                modifier = dayMotion.then(scrollsList),
-                fraction = headerFraction,
-                hero = {
+    // The calorie, water and weight cards, shared by the folding top and the list
+    val calorieHero: @Composable (fraction: () -> Float) -> Unit = { fraction ->
                     com.bytelog.app.ui.diary.CalorieHero(
                         eaten = dailySummary.totalCalories.roundToInt(),
                         goal = dailySummary.targetCalories.roundToInt(),
                         progress = dailySummary.calorieProgress,
                         shape = heroShape,
-                        fraction = headerFraction,
+                        fraction = fraction,
                         onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
                     )
-                },
-                heroExpanded = { com.bytelog.app.ui.diary.HeroMacros(dailySummary) },
-                heroCompact = { com.bytelog.app.ui.diary.HeroStrip(dailySummary) },
-                waterExpanded = {
+                }
+    val waterExpanded: @Composable () -> Unit = {
                     com.bytelog.app.ui.diary.WaterExpanded(
                         currentOz = waterTotalOz,
                         targetOz = waterGoalOz,
@@ -454,8 +436,8 @@ fun DiaryScreen(
                         sizes = waterSizes,
                         onLogAmount = { oz, label -> viewModel.quickAddWaterOz(amountOz = oz, containerName = label) }
                     )
-                },
-                waterCompact = {
+                }
+    val waterPill: @Composable () -> Unit = {
                     com.bytelog.app.ui.diary.WaterPill(
                         currentOz = waterTotalOz,
                         targetOz = waterGoalOz,
@@ -465,8 +447,8 @@ fun DiaryScreen(
                         onLogAmount = { oz, label -> viewModel.quickAddWaterOz(amountOz = oz, containerName = label) },
                         onCustom = { showHydrationSheet = true }
                     )
-                },
-                weightExpanded = {
+                }
+    val weightExpanded: @Composable () -> Unit = {
                     com.bytelog.app.ui.diary.WeightExpanded(
                         weight = currentWeight?.let { com.bytelog.app.ui.components.displayWeight(it, weightUnit) },
                         unit = weightUnit,
@@ -475,8 +457,8 @@ fun DiaryScreen(
                         shape = weightShape,
                         onOpen = { showWeightDialog = true }
                     )
-                },
-                weightCompact = {
+                }
+    val weightPill: @Composable () -> Unit = {
                     com.bytelog.app.ui.diary.WeightPill(
                         weight = (currentWeight ?: previousWeight)?.let { com.bytelog.app.ui.components.displayWeight(it, weightUnit) },
                         unit = weightUnit,
@@ -484,41 +466,97 @@ fun DiaryScreen(
                         shape = weightShape
                     )
                 }
-            )
 
-            Spacer(modifier = Modifier.height(12.dp))
+    val startEditing: () -> Unit = {
+        if (!editingHome) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            fabMenuOpen = false
+            editingHome = true
+        }
+    }
+    val activeFastNow by (fastingRepository?.activeFast ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.bytelog.app.data.fasting.FastingLog?>(null) }).collectAsState()
+    val caffeineNow by (caffeineRepository?.status ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.bytelog.app.data.caffeine.CaffeineStatus?>(null) }).collectAsState()
+    val tilesOnScreen = shownTiles.map { it.tile }.toSet()
+    val fastingShown = com.bytelog.app.data.repository.HomeTile.FASTING in tilesOnScreen
+    val caffeineShown = com.bytelog.app.data.repository.HomeTile.CAFFEINE in tilesOnScreen
+    LaunchedEffect(fastingRepository, fastingShown) { if (fastingShown) fastingRepository?.refresh() }
+    LaunchedEffect(caffeineRepository, selectedDate, caffeineShown) { if (caffeineShown) caffeineRepository?.refresh(selectedDate) }
+    val logFoodNow: () -> Unit = {
+        val m = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
+        onNavigateToSearch(m.id, m.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }, selectedDate)
+    }
+    val faceOf = com.bytelog.app.ui.dashboard.rememberTileFaces(
+        com.bytelog.app.ui.dashboard.DashboardData(
+            summary = dailySummary,
+            waterOz = waterTotalOz,
+            waterGoalOz = waterGoalOz,
+            drinkOz = defaultContainerOz,
+            weight = (currentWeight ?: previousWeight)?.let { com.bytelog.app.ui.components.displayWeight(it, weightUnit) },
+            weightUnit = weightUnit,
+            weightDelta = com.bytelog.app.ui.components.weightChange(currentWeight, previousWeight, weightUnit),
+            weeklyReview = weeklyReview,
+            activeFast = activeFastNow,
+            sinceLastMealMs = lastMealAt?.let { clock - it }?.takeIf { isToday },
+            nowMs = clock,
+            caffeine = caffeineNow,
+            batches = activeBatches,
+            familyCount = family.members.size,
+            plannedCount = plannedEntries.size,
+            plannedCalories = plannedEntries.sumOf { it.calories.toDouble() }.toFloat(),
+            daysPlanned = weekPlan.count { it.foods > 0 },
+            shopping = weekShopping.first,
+            shoppingChecked = weekShopping.second,
+            fitCount = whatFits.size,
+            tdee = adaptiveCalc.tdee.takeIf { it > 0f },
+            mealsLogged = loggedMealGroups.size,
+            mealsCalories = dailySummary.totalCalories
+        ),
+        com.bytelog.app.ui.dashboard.DashboardActions(
+            calories = onOpenReports,
+            water = { showHydrationSheet = true },
+            logDrink = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); viewModel.logDefaultDrink() },
+            weight = { showWeightDialog = true },
+            week = onOpenReports,
+            fasting = onOpenFasting,
+            caffeine = onOpenCaffeine,
+            reports = onOpenReports,
+            photos = onOpenProgressPhotos,
+            mealie = onOpenMealie,
+            health = onOpenHealthConnect,
+            leftovers = { openBatch = activeBatches.firstOrNull() },
+            family = onOpenFamily,
+            planner = onOpenPlanner,
+            shopping = onOpenShoppingList,
+            whatFits = logFoodNow,
+            quickLog = logFoodNow,
+            trends = onOpenReports,
+            meals = {}
+        )
+    )
 
-            // Meal Categories List (Shows only logged meals, plus quick meal chips to add new ones)
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(dayMotion)
-                    .nestedScroll(toolbarScroll.connection)
-                    .nestedScroll(headerState.connection),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                homeLayout.visible.forEach { section ->
-                    when (section) {
-                        com.bytelog.app.data.repository.HomeSection.WEEKLY_REVIEW -> {
-                        weeklyReview?.let { review ->
-                            item(key = "weekly_review") {
-                              Box(Modifier.homeItem(this, listState, "weekly_review")) {
+    // Each tile as a full-width card (the meals are their own list items)
+    val fullTile: @Composable (com.bytelog.app.data.repository.HomeTile) -> Unit = { tile ->
+        when (tile) {
+            com.bytelog.app.data.repository.HomeTile.CALORIES -> {
+                Box(Modifier.fillMaxWidth().tileCard(), contentAlignment = Alignment.CenterStart) {
+                    com.bytelog.app.ui.diary.HeroMacros(dailySummary)
+                    Box(Modifier.padding(start = 14.dp)) { calorieHero { 0f } }
+                }
+            }
+            com.bytelog.app.data.repository.HomeTile.WATER -> Box(Modifier.fillMaxWidth().tileCard()) { waterExpanded() }
+            com.bytelog.app.data.repository.HomeTile.WEIGHT -> Box(Modifier.fillMaxWidth().tileCard()) { weightExpanded() }
+            com.bytelog.app.data.repository.HomeTile.WEEKLY_REVIEW -> weeklyReview?.let { review ->
+                              Box(Modifier) {
                                 com.bytelog.app.ui.diary.WeeklyReviewCard(review, weightUnit, onDismiss = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     viewModel.dismissWeeklyReview(review)
                                 })
                               }
                             }
-                        }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.FASTING -> {
-                            if (fastingRepository != null) {
-                                item(key = "fasting") {
+            com.bytelog.app.data.repository.HomeTile.FASTING -> if (fastingRepository != null) {
                                     val activeFast by fastingRepository.activeFast.collectAsState()
                                     val fastPrefs by fastingRepository.preferences.collectAsState()
-                                    LaunchedEffect(fastingRepository) { fastingRepository.refresh() }
-                                    Box(Modifier.homeItem(this, listState, "fasting")) {
+                                                                        Box(Modifier) {
                                         com.bytelog.app.ui.fasting.FastingCard(
                                             activeFast = activeFast,
                                             defaultProtocolCode = fastPrefs.defaultProtocol,
@@ -551,15 +589,10 @@ fun DiaryScreen(
                                         )
                                     }
                                 }
-                            }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.CAFFEINE -> {
-                            if (caffeineRepository != null) {
-                                item(key = "caffeine") {
+            com.bytelog.app.data.repository.HomeTile.CAFFEINE -> if (caffeineRepository != null) {
                                     val caffeineStatus by caffeineRepository.status.collectAsState()
                                     val latestCaffeine by caffeineRepository.latestItem.collectAsState()
-                                    LaunchedEffect(selectedDate) { caffeineRepository.refresh(selectedDate) }
-                                    Box(Modifier.homeItem(this, listState, "caffeine")) {
+                                                                        Box(Modifier) {
                                         com.bytelog.app.ui.caffeine.CaffeineCard(
                                             status = caffeineStatus,
                                             latestItem = latestCaffeine,
@@ -575,47 +608,8 @@ fun DiaryScreen(
                                         )
                                     }
                                 }
-                            }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.WELLNESS_HUB -> {
-                            item(key = "wellness_hub") {
-                                Box(Modifier.homeItem(this, listState, "wellness_hub")) {
-                                    androidx.compose.foundation.lazy.LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp)
-                                    ) {
-                                        item {
-                                            androidx.compose.material3.AssistChip(
-                                                onClick = onOpenReports,
-                                                label = { Text("Reports") }
-                                            )
-                                        }
-                                        item {
-                                            androidx.compose.material3.AssistChip(
-                                                onClick = onOpenProgressPhotos,
-                                                label = { Text("Progress Photos") }
-                                            )
-                                        }
-                                        item {
-                                            androidx.compose.material3.AssistChip(
-                                                onClick = onOpenMealie,
-                                                label = { Text("Mealie") }
-                                            )
-                                        }
-                                        item {
-                                            androidx.compose.material3.AssistChip(
-                                                onClick = onOpenHealthConnect,
-                                                label = { Text("Health Connect") }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.LEFTOVERS -> {
-                        if (activeBatches.isNotEmpty()) {
-                            item(key = "fridge") {
-                              Box(Modifier.homeItem(this, listState, "fridge")) {
+            com.bytelog.app.data.repository.HomeTile.LEFTOVERS -> Box(Modifier.fillMaxWidth().tileCard().padding(vertical = 12.dp)) {
+                              Box(Modifier) {
                                 com.bytelog.app.ui.recipes.FridgeStrip(
                                     batches = activeBatches,
                                     targetMealName = quickLogMeal?.name ?: "your diary",
@@ -628,20 +622,12 @@ fun DiaryScreen(
                                 )
                               }
                             }
-                        }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.FAMILY -> {
-                        if (family.members.isNotEmpty()) {
-                            item(key = "family") {
-                              Box(Modifier.homeItem(this, listState, "family")) {
+            com.bytelog.app.data.repository.HomeTile.FAMILY -> {
+                              Box(Modifier) {
                                 com.bytelog.app.ui.family.FamilyStrip(family.members, family.today, onOpenFamilyMember, onOpenFamily)
                               }
                             }
-                        }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.PLANNED -> {
-                            if (plannedEntries.isNotEmpty()) {
-                                item(key = "planned") {
+            com.bytelog.app.data.repository.HomeTile.PLANNED -> {
                                     com.bytelog.app.ui.diary.PlannedCard(
                                         planned = plannedEntries,
                                         loggedCalories = dailySummary.totalCalories,
@@ -659,31 +645,275 @@ fun DiaryScreen(
                                                 if (r == SnackbarResult.ActionPerformed) viewModel.restorePlanned(listOf(p))
                                             }
                                         },
-                                        modifier = Modifier.homeItem(this, listState, "planned"),
+                                        modifier = Modifier,
                                         onCopyToDays = { copyPlanFrom = plannedEntries },
                                         onShoppingList = onOpenShoppingList,
                                         onOpenPlanner = onOpenPlanner
                                     )
                                 }
-                            }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.MEAL_PLAN -> {
-                            item(key = "meal_plan") {
+            com.bytelog.app.data.repository.HomeTile.MEAL_PLAN -> {
                                 com.bytelog.app.ui.diary.MealPlanHomeCard(
                                     days = weekPlan, calorieGoal = dailySummary.targetCalories, onOpen = onOpenPlanner,
-                                    modifier = Modifier.homeItem(this, listState, "meal_plan")
+                                    modifier = Modifier
                                 )
                             }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.SHOPPING -> {
-                            item(key = "shopping") {
+            com.bytelog.app.data.repository.HomeTile.SHOPPING -> {
                                 com.bytelog.app.ui.diary.ShoppingHomeCard(
                                     list = weekShopping.first, checked = weekShopping.second, onOpen = onOpenShoppingList, onScanReceipt = onScanReceipt, onBestValue = onBestValue,
-                                    modifier = Modifier.homeItem(this, listState, "shopping")
+                                    modifier = Modifier
                                 )
                             }
+            com.bytelog.app.data.repository.HomeTile.WHAT_FITS -> {
+                                val fitMeal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
+                                val fitMealName = fitMeal.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                com.bytelog.app.ui.diary.WhatFitsCard(
+                                    caloriesLeft = (dailySummary.targetCalories - dailySummary.totalCalories).roundToInt(),
+                                    proteinLeft = (dailySummary.targetProtein - dailySummary.totalProtein).roundToInt(),
+                                    options = whatFits,
+                                    mealName = fitMealName,
+                                    onLog = { option ->
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.logFit(option, fitMeal.id, fitMealName, showLogged)
+                                    },
+                                    modifier = Modifier
+                                )
+                            }
+            com.bytelog.app.data.repository.HomeTile.QUICK_LOG -> {
+                            val candidateMeals = remember(mealTypes) {
+                                (if (mealTypes.isNotEmpty()) mealTypes else com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES)
+                                    .distinctBy { it.name.trim().lowercase() }
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .tileCard()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = if (loggedMealGroups.isEmpty()) "START LOGGING" else "LOG TO ANOTHER MEAL",
+                                    color = ByteCreamMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+
+                                // One tap logs a whole meal: what you had yesterday, or your usual
+                                val loggedKeys = loggedMealGroups.map { com.bytelog.app.data.repository.MealPatterns.mealKey(it.mealName) }.toSet()
+                                candidateMeals.forEach { mt ->
+                                    val key = com.bytelog.app.data.repository.MealPatterns.mealKey(mt.name)
+                                    val sc = mealShortcuts[key]
+                                    if (sc != null && key !in loggedKeys) {
+                                        val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                        MealShortcutRow(
+                                            mealName = cleanName,
+                                            shortcuts = sc,
+                                            onLog = { source ->
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.logShortcut(source, mt.id, cleanName, showLogged)
+                                            }
+                                        )
+                                    }
+                                }
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(MacroProtein.copy(alpha = 0.15f))
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    templateTargetMeal = null
+                                                    showTemplatesSheet = true
+                                                }
+                                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                         ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.RestaurantMenu,
+                                                    contentDescription = null,
+                                                    tint = MacroProtein,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "Templates",
+                                                    color = MacroProtein,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                    items(candidateMeals, key = { it.id }) { mt ->
+                                        val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(ByteSurfaceDark)
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    onNavigateToSearch(mt.id, cleanName, selectedDate)
+                                                }
+                                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = null,
+                                                    tint = ByteTomato,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = cleanName,
+                                                    color = ByteCream,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        com.bytelog.app.data.repository.HomeSection.MEALS -> {
+            com.bytelog.app.data.repository.HomeTile.TRENDS -> {
+                            WeightVsCaloriesCard(
+                                modifier = Modifier,
+                                chartPoints = chartPoints,
+                                calculation = adaptiveCalc,
+                                selectedDaysRange = selectedChartDays,
+                                weightUnit = weightUnit,
+                                onSelectDaysRange = { days ->
+                                    viewModel.setChartRange(days)
+                                },
+                                onOpenGoalAdjuster = {
+                                    showGoalAdjustDialog = true
+                                }
+                            )
+                        }
+            com.bytelog.app.data.repository.HomeTile.REPORTS, com.bytelog.app.data.repository.HomeTile.PROGRESS_PHOTOS,
+            com.bytelog.app.data.repository.HomeTile.MEALIE, com.bytelog.app.data.repository.HomeTile.HEALTH_CONNECT ->
+                com.bytelog.app.ui.dashboard.SummaryTile(faceOf(tile), com.bytelog.app.data.repository.TileSize.FULL, onLongClick = startEditing)
+            com.bytelog.app.data.repository.HomeTile.MEALS -> {}
+        }
+    }
+
+    // A tile at the top: its full or tile version, and the strip it folds into
+    val foldSpec: (com.bytelog.app.data.repository.PlacedTile, Int, Boolean) -> com.bytelog.app.ui.dashboard.FoldTileSpec = { placed, foldedSpan, isHero ->
+        val tile = placed.tile
+        val face = faceOf(tile)
+        val full = placed.size == com.bytelog.app.data.repository.TileSize.FULL
+        val bare = full && (tile == com.bytelog.app.data.repository.HomeTile.CALORIES || tile == com.bytelog.app.data.repository.HomeTile.WATER || tile == com.bytelog.app.data.repository.HomeTile.WEIGHT)
+        com.bytelog.app.ui.dashboard.FoldTileSpec(
+            key = tile.key,
+            span = placed.size.span,
+            ownCard = !bare,
+            stripHeight = if (isHero && foldedSpan == 4) 64.dp else 54.dp,
+            // Half and small tiles take a long press themselves; water's drink button has its own
+            onLongPress = if (!full || tile == com.bytelog.app.data.repository.HomeTile.WATER) null else startEditing,
+            expanded = {
+                when {
+                    !full -> com.bytelog.app.ui.dashboard.SummaryTile(face, placed.size, onLongClick = startEditing)
+                    tile == com.bytelog.app.data.repository.HomeTile.CALORIES -> com.bytelog.app.ui.diary.HeroMacros(dailySummary)
+                    tile == com.bytelog.app.data.repository.HomeTile.WATER -> waterExpanded()
+                    tile == com.bytelog.app.data.repository.HomeTile.WEIGHT -> weightExpanded()
+                    else -> fullTile(tile)
+                }
+            },
+            compact = { span ->
+                when {
+                    isHero -> com.bytelog.app.ui.diary.HeroStrip(dailySummary, narrow = span < 4)
+                    tile == com.bytelog.app.data.repository.HomeTile.WATER && span >= 2 -> waterPill()
+                    tile == com.bytelog.app.data.repository.HomeTile.WEIGHT && span >= 2 -> weightPill()
+                    else -> com.bytelog.app.ui.dashboard.TileStrip(face, span)
+                }
+            }
+        )
+    }
+
+    Scaffold(
+        modifier = Modifier.fluidBackdrop(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = Color.Transparent
+    ) { paddingValues ->
+      // The diary is the backdrop the floating toolbar and add button blur
+      val haze = remember { dev.chrisbanes.haze.HazeState() }
+      Box(Modifier.fillMaxSize().padding(paddingValues)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(Modifier.blurSource(haze))
+                .padding(horizontal = 16.dp)
+        ) {
+            // The day, small, so the cards start near the top. Settings, Family and Sparky are in the + menu.
+            Box(scrollsList) {
+                com.bytelog.app.ui.diary.CompactDayLine(
+                    date = selectedDate,
+                    title = describeDay(selectedDate),
+                    subtitle = dayDate.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
+                    badge = fastText?.let { t -> { com.bytelog.app.ui.diary.FastingPill(t) } }
+                )
+            }
+            updateBanner?.invoke(Modifier.padding(top = 6.dp))
+            Spacer(Modifier.height(8.dp))
+
+          // Header and list: swipe sideways here to change day
+          androidx.compose.animation.Crossfade(editingHome, label = "edit_home") { editing ->
+          if (editing) {
+              com.bytelog.app.ui.dashboard.HomeTilesEditor(
+                  saved = homeTiles,
+                  faceOf = faceOf,
+                  onChange = { viewModel.saveHomeTiles(it) },
+                  onDone = { editingHome = false },
+                  modifier = Modifier.fillMaxSize()
+              )
+          } else {
+          Column(
+              Modifier
+                  .fillMaxSize()
+                  .daySwipe(daySwipe, enabled = !fabMenuOpen) { direction ->
+                      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                      viewModel.changeDay(direction.toLong())
+                  }
+          ) {
+            // The first tiles (up to three, above Meals) fold into slim strips as the list scrolls
+            if (headerTiles.isNotEmpty()) {
+                val folded = com.bytelog.app.ui.dashboard.foldedSpans(headerTiles.map { it.size.span })
+                val heroIndex = headerTiles.indexOfFirst { it.tile == com.bytelog.app.data.repository.HomeTile.CALORIES && it.size == com.bytelog.app.data.repository.TileSize.FULL }
+                com.bytelog.app.ui.dashboard.DashboardHeader(
+                    fraction = headerFraction,
+                    tiles = headerTiles.mapIndexed { i, placed -> foldSpec(placed, folded[i], i == heroIndex) },
+                    heroIndex = heroIndex,
+                    hero = if (heroIndex >= 0) ({ calorieHero(headerFraction) }) else null,
+                    modifier = dayMotion.then(scrollsList)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+
+            // Meal Categories List (Shows only logged meals, plus quick meal chips to add new ones)
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(dayMotion)
+                    .nestedScroll(toolbarScroll.connection)
+                    .then(foldScroll),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                com.bytelog.app.data.repository.TileGrid.rows(listTiles).forEach { row ->
+                    val first = row.first()
+                    when {
+                        first.tile == com.bytelog.app.data.repository.HomeTile.MEALS -> {
                         if (loggedMealGroups.isEmpty()) {
                             item(key = "meals_empty") {
                                 Column(
@@ -909,157 +1139,27 @@ fun DiaryScreen(
                             }
                         }
                         }
-                        com.bytelog.app.data.repository.HomeSection.WHAT_FITS -> {
-                        if (whatFits.isNotEmpty()) {
-                            item(key = "what_fits") {
-                                val fitMeal = quickLogMeal ?: mealTypes.firstOrNull() ?: com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES.first()
-                                val fitMealName = fitMeal.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                                com.bytelog.app.ui.diary.WhatFitsCard(
-                                    caloriesLeft = (dailySummary.targetCalories - dailySummary.totalCalories).roundToInt(),
-                                    proteinLeft = (dailySummary.targetProtein - dailySummary.totalProtein).roundToInt(),
-                                    options = whatFits,
-                                    mealName = fitMealName,
-                                    onLog = { option ->
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        viewModel.logFit(option, fitMeal.id, fitMealName, showLogged)
-                                    },
-                                    modifier = Modifier.homeItem(this, listState, "what_fits")
-                                )
+                        row.size == 1 && first.size == com.bytelog.app.data.repository.TileSize.FULL -> {
+                            item(key = first.tile.key) {
+                                Box(
+                                    Modifier.homeItem(this, listState, first.tile.key)
+                                        .longPressToEdit(first.tile != com.bytelog.app.data.repository.HomeTile.WATER, startEditing)
+                                ) { fullTile(first.tile) }
                             }
                         }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.QUICK_LOG -> {
-                        // Quick Meal Selection Action Bar
-                        item(key = "quick_meals") {
-                            val candidateMeals = remember(mealTypes) {
-                                (if (mealTypes.isNotEmpty()) mealTypes else com.bytelog.app.data.local.model.MealType.DEFAULT_MEAL_TYPES)
-                                    .distinctBy { it.name.trim().lowercase() }
-                            }
-                            Column(
-                                modifier = Modifier
-                                    .homeItem(this, listState, "quick_meals")
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = if (loggedMealGroups.isEmpty()) "START LOGGING" else "LOG TO ANOTHER MEAL",
-                                    color = ByteCreamMuted,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp
-                                )
-
-                                // One tap logs a whole meal: what you had yesterday, or your usual
-                                val loggedKeys = loggedMealGroups.map { com.bytelog.app.data.repository.MealPatterns.mealKey(it.mealName) }.toSet()
-                                candidateMeals.forEach { mt ->
-                                    val key = com.bytelog.app.data.repository.MealPatterns.mealKey(mt.name)
-                                    val sc = mealShortcuts[key]
-                                    if (sc != null && key !in loggedKeys) {
-                                        val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                                        MealShortcutRow(
-                                            mealName = cleanName,
-                                            shortcuts = sc,
-                                            onLog = { source ->
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.logShortcut(source, mt.id, cleanName, showLogged)
-                                            }
-                                        )
-                                    }
-                                }
-
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    item {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(16.dp))
-                                                .background(MacroProtein.copy(alpha = 0.15f))
-                                                .clickable {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                    templateTargetMeal = null
-                                                    showTemplatesSheet = true
-                                                }
-                                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                                         ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.RestaurantMenu,
-                                                    contentDescription = null,
-                                                    tint = MacroProtein,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Text(
-                                                    text = "Templates",
-                                                    color = MacroProtein,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                    }
-                                    items(candidateMeals, key = { it.id }) { mt ->
-                                        val cleanName = mt.name.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(16.dp))
-                                                .background(ByteSurfaceDark)
-                                                .clickable {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                    onNavigateToSearch(mt.id, cleanName, selectedDate)
-                                                }
-                                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Add,
-                                                    contentDescription = null,
-                                                    tint = ByteTomato,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Text(
-                                                    text = cleanName,
-                                                    color = ByteCream,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
-                                    }
+                        else -> {
+                            // Half and small tiles side by side
+                            val rowKey = "row_" + row.joinToString("_") { it.tile.key }
+                            item(key = rowKey) {
+                                com.bytelog.app.ui.dashboard.TileRow(row.map { it.size.span }, Modifier.homeItem(this, listState, rowKey)) {
+                                    row.forEach { t -> com.bytelog.app.ui.dashboard.SummaryTile(faceOf(t.tile), t.size, onLongClick = startEditing) }
                                 }
                             }
-                        }
-                        }
-                        com.bytelog.app.data.repository.HomeSection.TRENDS -> {
-                        // Interactive Weight vs Calories Over Time Chart & Adaptive TDEE
-                        item(key = "weight_chart") {
-                            WeightVsCaloriesCard(
-                                modifier = Modifier.homeItem(this, listState, "weight_chart"),
-                                chartPoints = chartPoints,
-                                calculation = adaptiveCalc,
-                                selectedDaysRange = selectedChartDays,
-                                weightUnit = weightUnit,
-                                onSelectDaysRange = { days ->
-                                    viewModel.setChartRange(days)
-                                },
-                                onOpenGoalAdjuster = {
-                                    showGoalAdjustDialog = true
-                                }
-                            )
-                        }
                         }
                     }
                 }
 
-                // Rearrange the sections above
+                // Arrange the tiles above
                 item(key = "customize_home") {
                     Box(Modifier.fillMaxWidth().animateItem(fadeInSpec = null, fadeOutSpec = null), contentAlignment = Alignment.Center) {
                         Row(
@@ -1067,15 +1167,14 @@ fun DiaryScreen(
                                 .pressBounce()
                                 .glass(com.bytelog.app.ui.theme.GlassLevel.Thin, RoundedCornerShape(50))
                                 .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showHomeLayout = true
+                                    startEditing()
                                 }
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(Icons.Default.Tune, contentDescription = null, tint = ByteCreamMuted, modifier = Modifier.size(16.dp))
-                            Text("Customize home", color = ByteCreamMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Edit home", color = ByteCreamMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -1084,6 +1183,8 @@ fun DiaryScreen(
                     Spacer(modifier = Modifier.height(112.dp))
                 }
             }
+          }
+          }
           }
         }
 
@@ -1097,7 +1198,7 @@ fun DiaryScreen(
         // Floating day toolbar (hides while scrolling down) and the add menu
         androidx.compose.runtime.CompositionLocalProvider(com.bytelog.app.ui.theme.LocalHazeState provides haze) {
         com.bytelog.app.ui.diary.DayToolbar(
-            hidden = toolbarScroll.hidden && !fabMenuOpen,
+            hidden = (toolbarScroll.hidden && !fabMenuOpen) || editingHome,
             dayLabel = describeDay(selectedDate),
             onPrev = {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1117,7 +1218,7 @@ fun DiaryScreen(
             },
             modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 18.dp)
         )
-        com.bytelog.app.ui.diary.DiaryFabMenu(
+        if (!editingHome) com.bytelog.app.ui.diary.DiaryFabMenu(
             expanded = fabMenuOpen,
             onExpandedChange = {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1198,8 +1299,9 @@ fun DiaryScreen(
             sourceDate = selectedDate,
             defaultMealName = target.defaultMealName,
             mealTypes = mealTypes,
+            entries = target.entries,
             onDismiss = { activeMoveCopy = null },
-            onConfirm = { chosenMode, targetDate, targetTypeId, targetMealName ->
+            onConfirm = { chosenMode, targetDate, targetTypeId, targetMealName, scale ->
                 if (chosenMode == MoveCopyMode.MOVE) {
                     if (target.isEntireMeal) {
                         viewModel.moveMeal(selectedDate, target.sourceMealName, targetDate, targetMealName)
@@ -1207,10 +1309,11 @@ fun DiaryScreen(
                         viewModel.moveEntries(target.entries, targetDate, targetTypeId, targetMealName)
                     }
                 } else {
-                    if (target.isEntireMeal) {
+                    // A whole meal at its own amount is copied by Sparky; at another amount, food by food
+                    if (target.isEntireMeal && scale == 1f) {
                         viewModel.copyMeal(selectedDate, target.sourceMealName, targetDate, targetMealName)
                     } else {
-                        viewModel.copyEntries(target.entries, targetDate, targetTypeId, targetMealName)
+                        viewModel.copyEntries(target.entries, targetDate, targetTypeId, targetMealName, scale)
                     }
                 }
                 activeMoveCopy = null
@@ -1241,17 +1344,6 @@ fun DiaryScreen(
                 mealToClear = null
             }
         )
-    }
-
-    // Customize home: reorder and hide the sections
-    if (showHomeLayout) {
-        ModalBottomSheet(
-            onDismissRequest = { showHomeLayout = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = ByteSurfaceDark
-        ) {
-            com.bytelog.app.ui.diary.HomeLayoutEditor(homeLayout, onChange = { viewModel.saveHomeLayout(it) })
-        }
     }
 
     // Hydration Modal Bottom Sheet

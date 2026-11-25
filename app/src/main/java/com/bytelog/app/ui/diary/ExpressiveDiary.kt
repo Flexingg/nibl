@@ -114,7 +114,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.bytelog.app.data.local.model.DailySummary
-import com.bytelog.app.ui.components.FoldingCard
 import com.bytelog.app.ui.components.pressBounce
 import com.bytelog.app.ui.theme.LocalByteExtraColors
 import com.bytelog.app.ui.theme.LocalReduceMotion
@@ -131,72 +130,10 @@ private fun <T> fastSpatial() = spring<T>(dampingRatio = FAST_DAMPING, stiffness
 private fun <T> spatial() = spring<T>(dampingRatio = 0.8f, stiffness = 380f)
 
 // ======================================================================
-// Header: calories (with a shape that flies between the card and the strip), water, weight
+// Calories (the shape flies between the card and its strip in the home header), water, weight
 // ======================================================================
 
 private const val HERO_DP = 132
-
-/**
- * The Diary header. Like the previous folding header, but the calorie shape is its own layer that shrinks and
- * flies from the big card into the narrow strip while the cards fold.
- */
-@Composable
-fun ExpressiveDiaryHeader(
-    fraction: () -> Float,
-    hero: @Composable () -> Unit,
-    heroExpanded: @Composable () -> Unit,
-    heroCompact: @Composable () -> Unit,
-    waterExpanded: @Composable () -> Unit,
-    waterCompact: @Composable () -> Unit,
-    weightExpanded: @Composable () -> Unit,
-    weightCompact: @Composable () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Layout(
-        modifier = modifier,
-        content = {
-            FoldingCard(fraction, 32, 22, Modifier.layoutId(0), heroExpanded, heroCompact)
-            FoldingCard(fraction, 28, 27, Modifier.layoutId(1), waterExpanded, waterCompact)
-            FoldingCard(fraction, 28, 27, Modifier.layoutId(2), weightExpanded, weightCompact)
-            Box(Modifier.layoutId(3).zIndex(1f)) { hero() }
-        }
-    ) { measurables, constraints ->
-        val w = constraints.maxWidth
-        val gapE = 10.dp.roundToPx(); val gapC = 8.dp.roundToPx()
-        val heroC = 64.dp.roundToPx(); val rowC = 54.dp.roundToPx()
-        val heroPx = HERO_DP.dp.roundToPx()
-        val byId = measurables.associateBy { it.layoutId as Int }
-        val e = (0..2).map { byId.getValue(it).maxIntrinsicHeight(w) }
-        val f = fraction().coerceIn(-0.07f, 1.07f)
-        val half = (w - gapC) / 2
-        fun fixed(i: Int, cw: Float, ch: Float) = byId.getValue(i).measure(Constraints.fixed(cw.roundToInt().coerceAtLeast(0), ch.roundToInt().coerceAtLeast(0)))
-        val heroCard = fixed(0, w.toFloat(), lerpF(e[0].toFloat(), heroC.toFloat(), f))
-        val water = fixed(1, lerpF(w.toFloat(), half.toFloat(), f), lerpF(e[1].toFloat(), rowC.toFloat(), f))
-        val weight = fixed(2, lerpF(w.toFloat(), half.toFloat(), f), lerpF(e[2].toFloat(), rowC.toFloat(), f))
-        val heroShape = byId.getValue(3).measure(Constraints.fixed(heroPx, heroPx))
-
-        val expandedTotal = e[0] + gapE + e[1] + gapE + e[2]
-        val collapsedTotal = heroC + gapC + rowC
-        val height = lerpF(expandedTotal.toFloat(), collapsedTotal.toFloat(), f).roundToInt().coerceAtLeast(0)
-        val rowTop = heroC + gapC
-        // Shape: centred vertically on the left of the big card, then 44 dp inside the strip.
-        val small = 44.dp.toPx()
-        val scale = lerpF(1f, small / heroPx, clamp01(f))
-        val hx = lerpF(14.dp.toPx(), 10.dp.toPx(), f)
-        val hy = lerpF((e[0] - heroPx) / 2f, (heroC - small) / 2f, f)
-        layout(w, height) {
-            heroCard.place(0, 0)
-            water.place(0, lerpF((e[0] + gapE).toFloat(), rowTop.toFloat(), f).roundToInt())
-            weight.place(lerpF(0f, (half + gapC).toFloat(), f).roundToInt(), lerpF((e[0] + gapE + e[1] + gapE).toFloat(), rowTop.toFloat(), f).roundToInt())
-            // Sub-pixel translation in the layer: rounding the position to whole pixels while the scale changes
-            // smoothly made the shape stutter as it moved.
-            heroShape.placeWithLayer(0, 0, zIndex = 1f) {
-                translationX = hx; translationY = hy
-                scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0f, 0f)
-            }
-        }
-    }
-}
 
 /** Calories eaten so far (counting up to the goal) inside a morphing shape, with a wavy ring for the day's progress. */
 @Composable
@@ -292,11 +229,18 @@ private fun MacroRow(label: String, value: Float, target: Float, color: Color) {
     }
 }
 
-/** Narrow calorie strip (the flying shape sits in its first 64 dp). */
+/** Narrow calorie strip (the flying shape sits in its first 64 dp). [narrow] at half width: just the number. */
 @Composable
-fun HeroStrip(summary: DailySummary) {
+fun HeroStrip(summary: DailySummary, narrow: Boolean = false) {
     val cs = MaterialTheme.colorScheme
     val x = LocalByteExtraColors.current
+    if (narrow) {
+        Column(Modifier.fillMaxSize().padding(start = 60.dp, end = 8.dp), verticalArrangement = Arrangement.Center) {
+            Text(String.format(Locale.getDefault(), "%,d", rememberCountUp(summary.totalCalories.roundToInt())), color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("KCAL", color = cs.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, maxLines = 1)
+        }
+        return
+    }
     Row(Modifier.fillMaxSize().padding(start = 64.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {

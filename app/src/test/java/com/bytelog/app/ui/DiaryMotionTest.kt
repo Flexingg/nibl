@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import com.bytelog.app.data.local.model.DailySummary
 import com.bytelog.app.data.local.model.WeightEntry
 import com.bytelog.app.ui.components.BodyweightCard
-import com.bytelog.app.ui.components.CollapsingDiaryHeader
 import com.bytelog.app.ui.components.DailyMacroHeader
 import com.bytelog.app.ui.components.HeaderCollapseState
 import com.bytelog.app.ui.components.HydrationCard
@@ -120,15 +119,18 @@ class DiaryMotionTest {
         compose.setContent {
             ByteLogTheme {
                 Column(Modifier.fillMaxSize().background(ByteInkDark).padding(16.dp)) {
-                    CollapsingDiaryHeader(
+                    com.bytelog.app.ui.dashboard.DashboardHeader(
                         fraction = { fold },
                         modifier = Modifier.testTag("header"),
-                        macroExpanded = { DailyMacroHeader(summary) },
-                        macroCompact = { MacroStrip(summary) },
-                        waterExpanded = { HydrationCard(48f, 96f, 20f, "Bottle", onLogDefault = {}, onOpenCustom = {}, onUndoLast = {}) },
-                        waterCompact = { WaterStrip(48f, 96f, 20f, onLogDefault = {}) },
-                        weightExpanded = { BodyweightCard(today, before, "lbs", onOpenLogDialog = {}) },
-                        weightCompact = { WeightStrip(displayWeight(today, "lbs"), "lbs", weightChange(today, before, "lbs")) }
+                        tiles = listOf(
+                            com.bytelog.app.ui.dashboard.FoldTileSpec("calories", 4, ownCard = false, expanded = { DailyMacroHeader(summary) }, compact = { MacroStrip(summary) }),
+                            com.bytelog.app.ui.dashboard.FoldTileSpec("water", 4, ownCard = false,
+                                expanded = { HydrationCard(48f, 96f, 20f, "Bottle", onLogDefault = {}, onOpenCustom = {}, onUndoLast = {}) },
+                                compact = { WaterStrip(48f, 96f, 20f, onLogDefault = {}) }),
+                            com.bytelog.app.ui.dashboard.FoldTileSpec("weight", 4, ownCard = false,
+                                expanded = { BodyweightCard(today, before, "lbs", onOpenLogDialog = {}) },
+                                compact = { WeightStrip(displayWeight(today, "lbs"), "lbs", weightChange(today, before, "lbs")) })
+                        )
                     )
                 }
             }
@@ -160,8 +162,8 @@ class DiaryMotionTest {
 
         val fullH = full.bottom - full.top
         val foldedH = folded.bottom - folded.top
-        // Matches the approved render: 56 dp for calories + 8 dp gap + 46 dp for the water/weight row
-        assertEquals(110f, foldedH.value, 0.6f)
+        // A full-width strip, an 8 dp gap and the water/weight row, 54 dp each
+        assertEquals(116f, foldedH.value, 0.6f)
         assertTrue("the full header is much taller ($fullH vs $foldedH)", fullH.value > foldedH.value * 2.5f)
         assertEquals("full width in both states", full.right - full.left, folded.right - folded.left)
 

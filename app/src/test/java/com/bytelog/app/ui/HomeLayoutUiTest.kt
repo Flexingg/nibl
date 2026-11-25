@@ -21,21 +21,23 @@ import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.longClick
+import androidx.compose.material.icons.filled.Add
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.bytelog.app.data.local.db.ByteLogDatabase
 import com.bytelog.app.data.local.model.MealType
 import com.bytelog.app.data.remote.SparkyApiClient
 import com.bytelog.app.data.repository.FoodRepository
-import com.bytelog.app.data.repository.HomeLayout
-import com.bytelog.app.data.repository.HomeSection
+import com.bytelog.app.data.repository.HomeTile
+import com.bytelog.app.data.repository.HomeTiles
+import com.bytelog.app.data.repository.TileSize
 import com.bytelog.app.data.repository.MealPrepRepository
 import com.bytelog.app.data.repository.MealTemplateRepository
 import com.bytelog.app.data.repository.RecipeRepository
 import com.bytelog.app.data.repository.SettingsRepository
 import com.bytelog.app.data.repository.WaterRepository
 import com.bytelog.app.data.repository.WeightRepository
-import com.bytelog.app.ui.diary.HomeLayoutEditor
 import com.bytelog.app.ui.screens.DiaryScreen
 import com.bytelog.app.ui.theme.ByteLogTheme
 import com.bytelog.app.ui.viewmodel.DiaryViewModel
@@ -57,7 +59,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
-/** Reordering the home screen: the editor, and the diary following the saved order. */
+/** The home dashboard: tiles in their sizes, the folding top, and editing it. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w400dp-h860dp-xhdpi")
@@ -87,7 +89,7 @@ class HomeLayoutUiTest {
 
     @After
     fun tearDown() {
-        runBlocking { settings.saveHomeLayout(HomeLayout.DEFAULT) }
+        runBlocking { settings.saveHomeTiles(HomeTiles.DEFAULT) }
         scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
@@ -112,71 +114,133 @@ class HomeLayoutUiTest {
 
     private fun top(text: String) = compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().first().boundsInRoot.top
 
-    @Test
-    fun draggingASectionMovesItAndSwitchesHideThem() {
-        var layout by mutableStateOf(HomeLayout.DEFAULT)
-        compose.setContent {
-            ByteLogTheme(darkTheme = true) {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) { HomeLayoutEditor(layout, onChange = { layout = it }) }
-            }
-        }
-        shot("home_layout_1_editor")
-        // Drag "Your week" down past a few sections
-        compose.onNodeWithContentDescription("Drag Your week").performTouchInput { swipeDown(startY = centerY, endY = centerY + 600f, durationMillis = 1200) }
-        compose.waitForIdle()
-        assertTrue("moved down: ${layout.order}", layout.order.indexOf(HomeSection.WEEKLY_REVIEW) >= 2)
-        assertEquals(HomeSection.values().toSet(), layout.order.toSet())
+    private fun face(tile: HomeTile) = com.bytelog.app.ui.dashboard.TileFace(
+        tile.title, androidx.compose.material.icons.Icons.Default.Add, androidx.compose.ui.graphics.Color(0xFF8CCDFF),
+        androidx.compose.ui.graphics.Color(0xFF004B70), value = if (tile.ordinal % 2 == 0) "${tile.ordinal * 10}" else null, detail = tile.description
+    )
 
-        // The accessibility action moves one step
-        val before = layout.order.indexOf(HomeSection.TRENDS)
-        compose.onNode(SemanticsMatcher("has move up") { n ->
-            SemanticsActions.CustomActions in n.config && n.config[SemanticsActions.CustomActions].any { it.label == "Move Weight & calories up" }
-        }).let { node ->
-            val action = node.fetchSemanticsNode().config[SemanticsActions.CustomActions].first { it.label == "Move Weight & calories up" }
-            compose.runOnIdle { action.action() }
-        }
-        compose.waitForIdle()
-        assertEquals(before - 1, layout.order.indexOf(HomeSection.TRENDS))
-
-        // Hiding a section, then resetting
-        val switches = compose.onAllNodes(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.ToggleableState))
-        switches[0].performClick()
-        compose.waitForIdle()
-        assertEquals(1, layout.hidden.size)
-        shot("home_layout_2_edited")
-        compose.onNodeWithText("Reset").performClick()
-        compose.waitForIdle()
-        assertEquals(HomeLayout.DEFAULT, layout)
-    }
-
-    @Test
-    fun theDiaryFollowsTheSavedOrder() {
-        // Trends first, the quick meal row hidden
-        val custom = HomeLayout.DEFAULT
-            .move(HomeSection.values().indexOf(HomeSection.TRENDS), 0)
-            .toggle(HomeSection.QUICK_LOG, visible = false)
-        runBlocking { settings.saveHomeLayout(custom); settings.homeLayout.first { it == custom } }
+    private fun diary() {
         compose.setContent {
             ByteLogTheme(darkTheme = true) {
                 DiaryScreen(diaryVm, recipesVm, onOpenRecipe = {}, onImportRecipe = {}, onNavigateToSearch = { _, _, _ -> }, onNavigateToBarcode = { _, _, _ -> }, onNavigateToChat = {}, onNavigateToSettings = {}, onOpenRecentMeals = {})
             }
         }
-        waitFor { diaryVm.homeLayout.value == custom }
-        waitFor { compose.onAllNodesWithText("Weight vs Calories").fetchSemanticsNodes().isNotEmpty() }
-        // The meals come after it: further down, or not yet composed
-        val meals = compose.onAllNodesWithText("No foods logged", substring = true).fetchSemanticsNodes()
-        assertTrue("trends above the meals", meals.isEmpty() || top("Weight vs Calories") < meals.first().boundsInRoot.top)
-        assertTrue("quick meals hidden", compose.onAllNodesWithText("START LOGGING").fetchSemanticsNodes().isEmpty())
-        shot("home_layout_3_diary_custom")
+    }
 
-        // Opening the editor from the bottom of the list
-        val lists = compose.onAllNodes(androidx.compose.ui.test.hasScrollToKeyAction())
-        (0 until lists.fetchSemanticsNodes().size).firstOrNull { i ->
-            runCatching { lists[i].performScrollToKey("customize_home") }.isSuccess
+    private fun saveTiles(tiles: HomeTiles) = runBlocking { settings.saveHomeTiles(tiles); settings.homeTiles.first { it == tiles } }
+
+    @Test
+    fun theEditorMovesResizesRemovesAndAddsTiles() {
+        var tiles by mutableStateOf(HomeTiles.DEFAULT)
+        compose.setContent {
+            ByteLogTheme(darkTheme = true) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    com.bytelog.app.ui.dashboard.HomeTilesEditor(tiles, ::face, onChange = { tiles = it }, onDone = {})
+                }
+            }
         }
-        compose.onNodeWithText("Customize home").performClick()
-        waitFor { compose.onAllNodesWithText("Drag to reorder", substring = true).fetchSemanticsNodes().isNotEmpty() }
-        shot("home_layout_4_sheet")
+        compose.waitForIdle()
+        shot("home_tiles_1_editor")
+
+        // A tap changes the size: full, half, small
+        compose.onNodeWithContentDescription("Water, Full width").performClick()
+        compose.waitForIdle()
+        assertEquals(TileSize.HALF, tiles.sizeOf(HomeTile.WATER))
+        compose.onNodeWithContentDescription("Weight, Full width").performClick()
+        compose.waitForIdle()
+        assertEquals(TileSize.HALF, tiles.sizeOf(HomeTile.WEIGHT))
+        compose.onNodeWithContentDescription("Weight, Half width").performClick()
+        compose.waitForIdle()
+        assertEquals(TileSize.SMALL, tiles.sizeOf(HomeTile.WEIGHT))
+
+        // Hold and drag: weight goes in front of water
+        val before = tiles.visible.indexOfFirst { it.tile == HomeTile.WEIGHT }
+        compose.onNodeWithContentDescription("Weight, Small").performTouchInput {
+            down(center)
+            advanceEventTime(900)
+            repeat(12) { moveBy(androidx.compose.ui.geometry.Offset(-30f, -4f)) }
+            up()
+        }
+        compose.waitForIdle()
+        val after = tiles.visible.indexOfFirst { it.tile == HomeTile.WEIGHT }
+        assertTrue("dragged earlier ($before -> $after)", after < before)
+        assertEquals(HomeTile.values().size, tiles.order.size)
+
+        // × takes a tile off; the tray puts it back at the end
+        compose.onNodeWithContentDescription("Remove Calories").performClick()
+        compose.waitForIdle()
+        assertTrue(HomeTile.CALORIES in tiles.hidden)
+        compose.onNode(androidx.compose.ui.test.hasScrollToKeyAction()).performScrollToKey("add_tray")
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodesWithText("ADD TILES").fetchSemanticsNodes().isNotEmpty())
+        shot("home_tiles_3_removed")
+        compose.onNodeWithText("Calories").performClick()
+        compose.waitForIdle()
+        assertEquals(HomeTile.CALORIES, tiles.visible.last().tile)
+
+        compose.onNodeWithText("Reset").performClick()
+        compose.waitForIdle()
+        assertEquals(HomeTiles.DEFAULT, tiles)
+    }
+
+    @Test
+    fun theDiaryShowsTilesInTheirSizesAndTheTopOnesFold() {
+        // Water and weight side by side at the top, the calorie card under them, the shortcuts as small tiles
+        val custom = HomeTiles.DEFAULT
+            .resize(HomeTile.WATER, TileSize.HALF).resize(HomeTile.WEIGHT, TileSize.HALF)
+            .moveVisible(0, 2)
+        assertEquals(listOf(HomeTile.WATER, HomeTile.WEIGHT, HomeTile.CALORIES), custom.visible.take(3).map { it.tile })
+        saveTiles(custom)
+        diary()
+        waitFor { diaryVm.homeTiles.value == custom }
+        waitFor { compose.onAllNodesWithText("PROTEIN").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue("half tiles above the calorie card", top("WATER") < top("PROTEIN"))
+        assertTrue("water and weight side by side", kotlin.math.abs(top("WATER") - top("WEIGHT")) < 4f)
+        shot("home_tiles_4_diary_custom")
+        // The four shortcuts are small tiles in one row
+        assertTrue(kotlin.math.abs(top("Reports") - top("Mealie")) < 4f)
+
+        compose.onNodeWithText("PROTEIN").performTouchInput { swipeUp(startY = centerY, endY = centerY - 700f, durationMillis = 500) }
+        compose.waitForIdle()
+        shot("home_tiles_5_diary_folded")
+        assertTrue("the calorie card folded to a strip", compose.onAllNodesWithText("KCAL").fetchSemanticsNodes().isNotEmpty())
+
+    }
+
+    @Test
+    fun smallTilesOnTopFoldIntoSmallStripsAndCardsCanBeHalfWidth() {
+        var tiles = HomeTiles.DEFAULT
+        listOf(HomeTile.MEALIE, HomeTile.PROGRESS_PHOTOS, HomeTile.REPORTS).forEach { tiles = tiles.moveTo(it, tiles.visible.first().tile) }
+        tiles = tiles.resize(HomeTile.MEAL_PLAN, TileSize.HALF).resize(HomeTile.SHOPPING, TileSize.HALF)
+            .resize(HomeTile.WATER, TileSize.SMALL).resize(HomeTile.WEIGHT, TileSize.SMALL)
+            .moveTo(HomeTile.MEAL_PLAN, HomeTile.WATER).moveTo(HomeTile.SHOPPING, HomeTile.WATER)
+        assertEquals(listOf(HomeTile.REPORTS, HomeTile.PROGRESS_PHOTOS, HomeTile.MEALIE), tiles.visible.take(3).map { it.tile })
+        saveTiles(tiles)
+        diary()
+        waitFor { diaryVm.homeTiles.value == tiles }
+        waitFor { compose.onAllNodesWithText("PROTEIN").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue("small tiles in one row", kotlin.math.abs(top("Reports") - top("Mealie")) < 4f)
+        assertTrue("meal plan and shopping side by side", kotlin.math.abs(top("MEAL PLAN") - top("SHOPPING")) < 4f)
+        shot("home_tiles_8_small_top")
+        compose.onNodeWithText("PROTEIN").performTouchInput { swipeUp(startY = centerY, endY = centerY - 700f, durationMillis = 500) }
+        compose.waitForIdle()
+        shot("home_tiles_9_small_top_folded")
+    }
+
+    @Test
+    fun aLongPressStartsEditingAndDoneKeepsTheChanges() {
+        saveTiles(HomeTiles.DEFAULT)
+        diary()
+        waitFor { compose.onAllNodesWithText("BODYWEIGHT").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("BODYWEIGHT").performTouchInput { longClick() }
+        waitFor { compose.onAllNodesWithText("Edit home").fetchSemanticsNodes().isNotEmpty() }
+        shot("home_tiles_6_edit_mode")
+        compose.onNodeWithContentDescription("Weight, Full width").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Done").performClick()
+        waitFor { diaryVm.homeTiles.value.sizeOf(HomeTile.WEIGHT) == TileSize.HALF }
+        waitFor { compose.onAllNodesWithText("Edit home").fetchSemanticsNodes().isEmpty() }
+        shot("home_tiles_7_after_edit")
     }
 
     @Test
