@@ -49,7 +49,7 @@ class TargetDatePickerTest {
                 MoveCopyItemsDialog(
                     initialMode = MoveCopyMode.COPY, title = "Meal: Dinner", subtitle = "2 items • 700 kcal", sourceDate = source,
                     defaultMealName = "Dinner", mealTypes = MealType.DEFAULT_MEAL_TYPES, onDismiss = {},
-                    onConfirm = { _, date, _, _ -> result = date }
+                    onConfirm = { _, date, _, _, _ -> result = date }
                 )
             }
         }
@@ -68,6 +68,56 @@ class TargetDatePickerTest {
         compose.onNodeWithContentDescription("Pick a date").assertTextContains(LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy", java.util.Locale.getDefault())), substring = true)
         compose.onNodeWithText("Copy to Dinner").performClick()
         assertEquals(LocalDate.now().toString(), result)
+    }
+
+    private fun food(id: String, name: String, qty: Float, unit: String, kcal: Float) = com.bytelog.app.data.local.model.FoodEntry(
+        id = id, foodName = name, mealTypeId = "dinner", mealName = "Dinner", quantity = qty, unit = unit,
+        calories = kcal, protein = 1f, carbs = 1f, fat = 1f, entryDate = LocalDate.now().toString()
+    )
+
+    @Test fun copyingOneFoodTakesANewAmount() {
+        // The amount picker on its own: a text field inside a Robolectric dialog never idles
+        var scale = 1f
+        compose.setContent {
+            ByteLogTheme(darkTheme = true) {
+                androidx.compose.foundation.layout.Column(
+                    androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer).padding(20.dp)
+                ) {
+                    val s = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(1f) }
+                    com.bytelog.app.ui.components.CopyAmountPicker(listOf(food("1", "Rice", 150f, "g", 200f)), s.value) { s.value = it; scale = it }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("AMOUNT").assertExists()
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("226 kcal", substring = true).assertExists()   // 170 g of 150 g at 200 kcal
+        shot("copy_amount_one_food")
+        assertEquals(170f / 150f, scale, 0.001f)
+    }
+
+    @Test fun copyingSeveralFoodsTakesAMultiplier() {
+        var scale = 0f
+        compose.setContent {
+            ByteLogTheme(darkTheme = true) {
+                MoveCopyItemsDialog(
+                    initialMode = MoveCopyMode.COPY, title = "Meal: Dinner", subtitle = "2 items • 700 kcal", sourceDate = LocalDate.now().toString(),
+                    defaultMealName = "Dinner", mealTypes = MealType.DEFAULT_MEAL_TYPES, onDismiss = {},
+                    entries = listOf(food("1", "Rice", 150f, "g", 200f), food("2", "Chicken", 1f, "serving", 500f)),
+                    onConfirm = { _, _, _, _, s -> scale = s }
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("2 foods · 700 kcal").assertExists()
+        compose.onNodeWithText("1½×").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("2 foods · 1050 kcal at 1½×").assertExists()
+        shot("copy_amount_several_foods")
+        compose.onNodeWithText("Copy to Dinner").performClick()
+        assertEquals(1.5f, scale, 0.001f)
     }
 
     @Test fun theDatePickerLooksRightOnItsOwn() {

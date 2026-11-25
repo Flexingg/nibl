@@ -758,15 +758,19 @@ class FoodRepository(
         entries: List<FoodEntry>,
         targetDate: String,
         targetMealTypeId: String,
-        targetMealName: String
+        targetMealName: String,
+        /** How much of each food to copy: 1 = the same amount, 0.5 = half, 2 = double. */
+        scale: Float = 1f
     ) = withContext(Dispatchers.IO) {
         if (entries.isEmpty()) return@withContext
         val cleanDate = if (targetDate.contains("T")) targetDate.substringBefore("T") else targetDate
         val cleanMealName = targetMealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
-        val copiedEntries = entries.map { entry ->
+        val copiedEntries = entries.map { com.bytelog.app.data.repository.CopyAmount.scaled(it, scale) }.map { entry ->
             entry.copy(
                 id = UUID.randomUUID().toString(),
+                // A copy is eaten at its own time: today's copies get the time they're logged
+                entryTime = null,
                 entryDate = cleanDate,
                 mealTypeId = targetMealTypeId,
                 mealName = cleanMealName,

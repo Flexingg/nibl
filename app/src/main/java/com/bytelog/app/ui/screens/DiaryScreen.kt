@@ -1198,8 +1198,9 @@ fun DiaryScreen(
             sourceDate = selectedDate,
             defaultMealName = target.defaultMealName,
             mealTypes = mealTypes,
+            entries = target.entries,
             onDismiss = { activeMoveCopy = null },
-            onConfirm = { chosenMode, targetDate, targetTypeId, targetMealName ->
+            onConfirm = { chosenMode, targetDate, targetTypeId, targetMealName, scale ->
                 if (chosenMode == MoveCopyMode.MOVE) {
                     if (target.isEntireMeal) {
                         viewModel.moveMeal(selectedDate, target.sourceMealName, targetDate, targetMealName)
@@ -1207,10 +1208,11 @@ fun DiaryScreen(
                         viewModel.moveEntries(target.entries, targetDate, targetTypeId, targetMealName)
                     }
                 } else {
-                    if (target.isEntireMeal) {
+                    // A whole meal at its own amount is copied by Sparky; at another amount, food by food
+                    if (target.isEntireMeal && scale == 1f) {
                         viewModel.copyMeal(selectedDate, target.sourceMealName, targetDate, targetMealName)
                     } else {
-                        viewModel.copyEntries(target.entries, targetDate, targetTypeId, targetMealName)
+                        viewModel.copyEntries(target.entries, targetDate, targetTypeId, targetMealName, scale)
                     }
                 }
                 activeMoveCopy = null

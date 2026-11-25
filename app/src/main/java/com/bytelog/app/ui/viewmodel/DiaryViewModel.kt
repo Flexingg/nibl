@@ -638,9 +638,9 @@ class DiaryViewModel(
         }
     }
 
-    fun copyEntries(entries: List<FoodEntry>, targetDate: String, targetMealTypeId: String, targetMealName: String) {
+    fun copyEntries(entries: List<FoodEntry>, targetDate: String, targetMealTypeId: String, targetMealName: String, scale: Float = 1f) {
         viewModelScope.launch {
-            foodRepository.copyEntries(entries, targetDate, targetMealTypeId, targetMealName)
+            foodRepository.copyEntries(entries, targetDate, targetMealTypeId, targetMealName, scale)
             _syncMessage.emit("Copied ${entries.size} item(s) to $targetMealName")
         }
     }

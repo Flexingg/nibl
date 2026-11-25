@@ -52,6 +52,7 @@ class SettingsRepository(
         val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
         val KEY_FAB_MENU = stringPreferencesKey("fab_menu_layout")
         val KEY_UNANSWERED_CREATES = stringPreferencesKey("sync_unanswered_creates")
+        val KEY_GITHUB_TOKEN = stringPreferencesKey("update_github_token")
         val KEY_UPDATE_AUTO = androidx.datastore.preferences.core.booleanPreferencesKey("update_auto_check")
         val KEY_UPDATE_LAST_CHECK = androidx.datastore.preferences.core.longPreferencesKey("update_last_check")
         val KEY_UPDATE_DISMISSED = stringPreferencesKey("update_dismissed_version")
@@ -279,6 +280,16 @@ class SettingsRepository(
 
     suspend fun saveFabMenuLayout(layout: FabMenuLayout) {
         context.dataStore.edit { it[KEY_FAB_MENU] = layout.encode() }
+    }
+
+    /** A read-only GitHub token for updates while the repository is private. Stored encrypted. */
+    val githubToken: Flow<String?> = context.dataStore.data.map { readSecret(it[KEY_GITHUB_TOKEN]) }
+
+    suspend fun saveGithubToken(token: String?) {
+        context.dataStore.edit { prefs ->
+            val t = token?.trim().orEmpty()
+            if (t.isEmpty()) prefs.remove(KEY_GITHUB_TOKEN) else prefs[KEY_GITHUB_TOKEN] = sealSecret(t)
+        }
     }
 
     /** Look for a new version on GitHub by itself (at most every half hour). On by default. */
