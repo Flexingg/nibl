@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
-    /** Looks for a new version on GitHub when the user lets it, at most every few hours. */
+    /** Looks for a new version on GitHub when the user lets it, at most every half hour. */
     private fun checkForUpdate() {
         val app = application as ByteLogApplication
         app.applicationScope.launch {
@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
         if (lastAppearance == null) {
             splash.setKeepOnScreenCondition { lastAppearance == null }
             (application as ByteLogApplication).applicationScope.launch {
-                lastAppearance = Appearance(appearance.themeMode.first(), appearance.useDeviceColors.first(), appearance.reduceTransparency.first())
+                lastAppearance = Appearance(appearance.themeMode.first(), appearance.useDeviceColors.first(), appearance.reduceTransparency.first(), appearance.uiSize.first())
             }
         }
         enableEdgeToEdge()
@@ -132,7 +132,8 @@ class MainActivity : ComponentActivity() {
             val themeMode by settingsRepo.themeMode.collectAsState(initial = known.themeMode)
             val deviceColors by settingsRepo.useDeviceColors.collectAsState(initial = known.deviceColors)
             val reduceTransparency by settingsRepo.reduceTransparency.collectAsState(initial = known.reduceTransparency)
-            androidx.compose.runtime.SideEffect { lastAppearance = Appearance(themeMode, deviceColors, reduceTransparency) }
+            val uiSize by settingsRepo.uiSize.collectAsState(initial = known.uiSize)
+            androidx.compose.runtime.SideEffect { lastAppearance = Appearance(themeMode, deviceColors, reduceTransparency, uiSize) }
             val dark = when (themeMode) {
                 com.bytelog.app.ui.theme.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
                 com.bytelog.app.ui.theme.ThemeMode.LIGHT -> false
@@ -143,6 +144,8 @@ class MainActivity : ComponentActivity() {
             val windowColor = if (dark) android.graphics.Color.BLACK else android.graphics.Color.rgb(0xF2, 0xF3, 0xF5)
             androidx.compose.runtime.SideEffect { window.decorView.setBackgroundColor(windowColor) }
             ByteLogTheme(darkTheme = dark, dynamicColor = deviceColors, reduceTransparency = reduceTransparency) {
+            // The chosen size scales everything drawn below (and the phone's own font size still applies on top)
+            com.bytelog.app.ui.theme.UiScale(uiSize) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -167,6 +170,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
             }
         }
     }
@@ -648,7 +652,8 @@ fun ByteLogNavHost(
 private data class Appearance(
     val themeMode: com.bytelog.app.ui.theme.ThemeMode = com.bytelog.app.ui.theme.ThemeMode.SYSTEM,
     val deviceColors: Boolean = true,
-    val reduceTransparency: Boolean = false
+    val reduceTransparency: Boolean = false,
+    val uiSize: com.bytelog.app.ui.theme.UiSize = com.bytelog.app.ui.theme.UiSize.DEFAULT
 )
 
 /** The last appearance the app drew with, kept for as long as the process lives. */

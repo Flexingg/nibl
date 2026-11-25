@@ -104,6 +104,21 @@ private fun fluidSeedDark(solid: Boolean) = fluidize(SeedDark.copy(
 /** Light, dark or follow the system. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/**
+ * How big everything is drawn: text, spacing, buttons and cards scale together, so a smaller size fits more on screen
+ * with the same proportions. It multiplies the phone's own display and font size settings rather than replacing them.
+ */
+enum class UiSize(val label: String, val scale: Float) {
+    COMFORTABLE("Comfortable", 1f),
+    COMPACT("Compact", 0.92f),
+    DENSE("Dense", 0.85f);
+
+    companion object {
+        val DEFAULT = COMPACT
+        fun fromName(name: String?): UiSize = entries.firstOrNull { it.name == name } ?: DEFAULT
+    }
+}
+
 /** True when the device can supply its own (wallpaper) colours. */
 val supportsDeviceColors: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
@@ -155,4 +170,14 @@ fun ByteLogTheme(
             content = content
         )
     }
+}
+
+/** Draws [content] at [size]: everything (text, spacing, buttons) scales together on top of the phone's own settings. */
+@Composable
+fun UiScale(size: UiSize, content: @Composable () -> Unit) {
+    val base = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density * size.scale, base.fontScale),
+        content = content
+    )
 }

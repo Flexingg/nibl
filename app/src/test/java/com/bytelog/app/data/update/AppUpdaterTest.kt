@@ -101,4 +101,49 @@ class AppUpdaterTest {
         u.onBannerDismissed(info)
         assertTrue("nothing changes unless it had failed", u.state.value is UpdateState.Idle)
     }
+
+    // --- Why 1.29.0 wasn't found, and what keeps it from happening again ---
+
+    @Test fun theRealLatestReleaseParses() {
+        val raw = javaClass.classLoader!!.getResource("update/latest-release.json")!!.readText()
+        val info = AppUpdater.parseRelease(Json.parseToJsonElement(raw) as JsonObject, debugBuild = false)!!
+        assertEquals("1.29.0", info.version)
+        assertTrue(info.apkUrl.endsWith("Nibl-v1.29.0.apk"))
+        assertTrue(AppUpdater.isNewer(info.version, "1.28.0"))
+    }
+
+    @Test fun aReleaseStillUploadingItsApkIsCheckedAgainSoon() = runBlocking {
+        // Published, but the APKs aren't attached yet
+        server.enqueue(MockResponse().setBody("""{"tag_name":"v1.27.0","draft":false,"prerelease":false,"assets":[]}"""))
+        val u = updater()
+        assertFalse("not a finished check", u.checkIfDue(lastCheck = 0L))
+        // A moment later it's there
+        server.enqueue(MockResponse().setBody(release()))
+        assertTrue(u.checkIfDue(lastCheck = 0L))
+        assertTrue(u.state.value is UpdateState.Available)
+    }
+
+    @Test fun aFailedCheckDoesntBlockTheNextOne() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(502))
+        val u = updater()
+        assertFalse(u.checkIfDue(lastCheck = 0L))
+        server.enqueue(MockResponse().setBody(release()))
+        assertTrue(u.checkIfDue(lastCheck = 0L))
+    }
+
+    @Test fun anUnchangedAnswerIsReusedWithItsEtag() = runBlocking {
+        server.enqueue(MockResponse().setHeader("ETag", "\"abc\"").setBody(release()))
+        server.enqueue(MockResponse().setResponseCode(304))
+        val u = updater()
+        u.check()
+        val again = u.check().getOrThrow()
+        assertEquals("1.27.0", again!!.version)
+        server.takeRequest()
+        assertEquals("\"abc\"", server.takeRequest().getHeader("If-None-Match"))
+    }
+
+    @Test fun checksEveryHalfHourAtMost() {
+        assertEquals(30 * 60 * 1000L, AppUpdater.CHECK_EVERY_MS)
+    }
 }
+

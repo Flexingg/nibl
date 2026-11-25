@@ -66,6 +66,14 @@ class AppUpdater(
         .build()
 ) {
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
+
+    /** GitHub's ETag and answer for the latest release, so an unchanged answer costs nothing. */
+    @Volatile private var etag: String? = null
+    @Volatile private var lastBody: String? = null
+
+    /** True when the last check got a full answer (not an error, and not a release still uploading its APK). */
+    @Volatile var lastCheckComplete: Boolean = false
+        private set
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
     /** Asks GitHub for the latest release. Returns the update when it's newer than this build, else null. */
@@ -74,18 +82,26 @@ class AppUpdater(
             return Result.success((_state.value as? UpdateState.Downloading)?.info ?: (_state.value as? UpdateState.Installing)?.info)
         }
         _state.value = UpdateState.Checking
+        lastCheckComplete = false
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 val request = Request.Builder().url("$apiBase/repos/$repo/releases/latest")
                     .header("Accept", "application/vnd.github+json")
                     .header("User-Agent", "Nibl-Android")
+                    // An unchanged answer comes back as 304, which GitHub doesn't count against the rate limit
+                    .apply { etag?.let { header("If-None-Match", it) } }
                     .build()
                 client.newCall(request).execute().use { r ->
-                    val body = r.body?.string().orEmpty()
-                    if (r.code == 404) return@runCatching null
-                    if (!r.isSuccessful) throw IllegalStateException(if (r.code == 403) "GitHub is limiting requests right now. Try again later." else "GitHub answered HTTP ${r.code}.")
+                    val body = if (r.code == 304) lastBody.orEmpty() else r.body?.string().orEmpty()
+                    if (r.code == 404) { lastCheckComplete = true; return@runCatching null }
+                    if (!r.isSuccessful && r.code != 304) throw IllegalStateException(if (r.code == 403) "GitHub is limiting requests right now. Try again later." else "GitHub answered HTTP ${r.code}.")
+                    if (r.code == 200) { etag = r.header("ETag"); lastBody = body }
                     val release = Json.parseToJsonElement(body) as? JsonObject ?: throw IllegalStateException("GitHub sent an unreadable answer.")
-                    parseRelease(release, debugBuild)
+                    // A release is published a few minutes before its APKs finish uploading: that isn't "up to
+                    // date", so it doesn't count as a finished check and the next one comes soon
+                    val info = parseRelease(release, debugBuild)
+                    lastCheckComplete = info != null || release.text("tag_name")?.let { !isNewer(it, currentVersion) } == true
+                    info
                 }
             }
         }
@@ -136,11 +152,14 @@ class AppUpdater(
         if (_state.value is UpdateState.Failed) _state.value = UpdateState.Available(info)
     }
 
-    /** Looks for an update unless one was looked for in the last [CHECK_EVERY_MS]. Returns true if it checked. */
+    /**
+     * Looks for an update unless a complete check happened in the last [CHECK_EVERY_MS]. Returns true only when this
+     * check completed, so the caller records it: a failed check, or a release still uploading, is tried again next time.
+     */
     suspend fun checkIfDue(lastCheck: Long, now: Long = System.currentTimeMillis()): Boolean {
         if (now - lastCheck < CHECK_EVERY_MS && lastCheck <= now) return false
         check()
-        return true
+        return lastCheckComplete
     }
 
     /** Back to the available update after the user cancelled Android's confirmation. */
@@ -202,7 +221,7 @@ class AppUpdater(
         const val REPO = "Flexingg/nibl"
 
         /** How often the app looks for an update by itself. */
-        const val CHECK_EVERY_MS = 6 * 60 * 60 * 1000L
+        const val CHECK_EVERY_MS = 30 * 60 * 1000L
 
         /** Reads a GitHub release: its version and the APK this build should update from. Null when it has none. */
         fun parseRelease(release: JsonObject, debugBuild: Boolean): UpdateInfo? {
