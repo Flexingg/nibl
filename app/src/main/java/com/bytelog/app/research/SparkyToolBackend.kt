@@ -9,6 +9,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import com.bytelog.app.data.remote.mcpRequest
 
 /** Sparky's tools: the user's food library, diary, goals and the rest. */
 interface SparkyToolBackend {

@@ -13,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
+import com.bytelog.app.data.remote.mcpRequest
 
 /**
  * The MCP client against responses captured from the real MCP SDK server, configured like SparkyFitnessServer's

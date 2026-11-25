@@ -61,6 +61,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
+import com.bytelog.app.data.remote.createCustomFood
 
 /** Scanning a nutrition label into a new food, and planning food for days ahead. */
 @RunWith(RobolectricTestRunner::class)

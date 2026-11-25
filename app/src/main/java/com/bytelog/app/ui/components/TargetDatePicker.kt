@@ -75,7 +75,9 @@ fun TargetDatePicker(
     onDate: (String) -> Unit,
     sourceDate: String,
     accent: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Offer "Same Day" (the day being copied from) among the quick days. */
+    showSameDay: Boolean = true
 ) {
     val cs = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
@@ -91,9 +93,9 @@ fun TargetDatePicker(
             listOf(
                 "Today" to today,
                 "Tomorrow" to today.plusDays(1),
-                "Yesterday" to today.minusDays(1),
-                "Same Day" to runCatching { LocalDate.parse(sourceDate) }.getOrDefault(today)
-            ).distinctBy { it.second }.forEach { (label, d) ->
+                "Yesterday" to today.minusDays(1)
+            ).plus(if (showSameDay) listOf("Same Day" to runCatching { LocalDate.parse(sourceDate) }.getOrDefault(today)) else emptyList())
+            .distinctBy { it.second }.forEach { (label, d) ->
                 val selected = current == d
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(12.dp))

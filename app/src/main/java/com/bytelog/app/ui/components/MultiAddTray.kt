@@ -100,7 +100,10 @@ fun MultiAddTray(
      * Closes the amount editor, keeping the food in the tray. With it, no [activeEntryId] means no editor is open;
      * without it the last food added is always the one being edited.
      */
-    onAdd: (() -> Unit)? = null
+    onAdd: (() -> Unit)? = null,
+    /** When the tray's food was eaten ("Today · now"); tapping it opens [onPickEatenAt]. Null hides it. */
+    eatenAtLabel: String? = null,
+    onPickEatenAt: () -> Unit = {}
 ) {
     if (stagedEntries.isEmpty()) {
         header?.let { Box(modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 10.dp)) { it() } }
@@ -180,6 +183,11 @@ fun MultiAddTray(
                     }
                 }
             }
+        }
+
+        // When it was eaten, changeable before logging (hidden while typing a search, to keep results in view)
+        if (eatenAtLabel != null && !compact) {
+            WhenChip(eatenAtLabel, onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onPickEatenAt() })
         }
 
         // Log everything; the meal it goes to can be switched right beside it

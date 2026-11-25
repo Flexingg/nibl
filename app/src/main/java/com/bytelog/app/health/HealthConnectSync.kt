@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import com.bytelog.app.data.remote.deleteFood
 
 /**
  * Health Connect records Nibl has written, remembered so they aren't taken for new food when the SparkyFitness

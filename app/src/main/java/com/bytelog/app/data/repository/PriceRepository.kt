@@ -6,6 +6,8 @@ import com.bytelog.app.data.local.model.ShoppingCheck
 import com.bytelog.app.data.remote.SparkyApiClient
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
+import com.bytelog.app.data.remote.fetchFoodPrice
+import com.bytelog.app.data.remote.saveFoodPrice
 
 /**
  * Where foods are bought and what they cost. Saved on the phone (for the shopping list) and on the food in Sparky

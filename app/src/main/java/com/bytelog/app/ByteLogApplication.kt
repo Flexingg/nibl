@@ -198,6 +198,9 @@ class ByteLogApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // Sparky credentials saved in plain text by older versions are encrypted now
+        applicationScope.launch(Dispatchers.IO) { runCatching { settingsRepository.migrateSecrets() } }
+
         // 1. Purge any leftover demo starter foods
         applicationScope.launch(Dispatchers.IO) {
             database.foodDao().deleteDemoFoods()

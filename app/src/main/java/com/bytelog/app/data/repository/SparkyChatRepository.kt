@@ -13,6 +13,9 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import com.bytelog.app.data.remote.sendChatMessage
+import com.bytelog.app.data.remote.fetchChatHistory
+import com.bytelog.app.data.remote.clearChatHistory
 
 class SparkyChatRepository(
     private val sparkyApiClient: SparkyApiClient,

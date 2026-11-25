@@ -24,6 +24,23 @@ import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
+import com.bytelog.app.data.remote.copyMealFromYesterday
+import com.bytelog.app.data.remote.copyMeal
+import com.bytelog.app.data.remote.copyAllFromYesterday
+import com.bytelog.app.data.remote.createCustomFood
+import com.bytelog.app.data.remote.getFoodDetails
+import com.bytelog.app.data.remote.listMyFoods
+import com.bytelog.app.data.remote.updateFood
+import com.bytelog.app.data.remote.updateFoodVariant
+import com.bytelog.app.data.remote.createFoodFull
+import com.bytelog.app.data.remote.updatePastEntries
+import com.bytelog.app.data.remote.deleteFood
+import com.bytelog.app.data.remote.createFoodVariant
+import com.bytelog.app.data.remote.fetchFoodVariants
+import com.bytelog.app.data.remote.sendChatMessage
+import com.bytelog.app.data.remote.estimateFoodPhoto
+import com.bytelog.app.data.remote.scanNutritionLabel
+import com.bytelog.app.data.remote.estimateMealPhoto
 
 class FoodRepository(
     private val foodDao: FoodDao,
@@ -619,7 +636,12 @@ class FoodRepository(
         if (entries.isEmpty()) return@withContext
 
         // 1. Instant local persistence. Everything added here is new to Sparky (including undo restores).
-        val entries = entries.map { it.copy(syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT) }
+        // Food logged for today without a time of day is stamped with now, so the diary knows when it was eaten.
+        val stampDay = java.time.LocalDate.now().toString()
+        val stampTime = java.time.LocalTime.now().withNano(0).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+        val entries = entries.map {
+            it.copy(syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT, entryTime = it.entryTime ?: if (it.entryDate.take(10) == stampDay) stampTime else null)
+        }
         foodEntryDao.insertEntries(entries)
         entries.forEach { entry ->
             deletedBatchLinks.remove(entry.id)?.let { link -> prepBatchDao?.insertConsumption(link) }

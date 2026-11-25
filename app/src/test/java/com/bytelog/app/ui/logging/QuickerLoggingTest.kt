@@ -189,12 +189,49 @@ class QuickerLoggingTest {
         shot("quick_2_meal_menu")
         compose.onAllNodesWithText("Lunch").onLast().performClick()
         waitFor { vm.stagedEntries.value.single().mealName == "Lunch" }
-        compose.onNodeWithText("Log to Lunch").assertExists()
+        compose.onNodeWithContentDescription("Log 1 to Lunch").assertExists()
 
         // Swiping a suggestion logs it straight away
         compose.onAllNodesWithText("Sourdough Toast").onFirst().performTouchInput { swipeRight() }
         waitFor { todays().any { it.foodId == toast.id } }
         shot("quick_3_swiped")
+    }
+
+    @Test
+    fun whileSearchingTheRestFoldsAwayAndFoodIsStampedWithWhenItWasEaten() {
+        compose.setContent { ByteLogTheme(darkTheme = true) { FastSearchScreen(vm, {}, {}) } }
+        waitFor { compose.onAllNodesWithText("Eggs").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(compose.onAllNodesWithText("Search, scan, speak or add your own").fetchSemanticsNodes().isNotEmpty())
+
+        vm.setSearchQuery("chick")
+        waitFor { compose.onAllNodesWithText("Search, scan, speak or add your own").fetchSemanticsNodes().isEmpty() }
+        assertTrue("one slim line keeps the context", compose.onAllNodesWithText("Logging to Breakfast", substring = true).fetchSemanticsNodes().isNotEmpty())
+        shot("quick_search_focus_mode")
+        vm.setSearchQuery("")
+        waitFor { compose.onAllNodesWithText("Search, scan, speak or add your own").fetchSemanticsNodes().isNotEmpty() }
+
+        // Logged yesterday at 7:30 PM
+        compose.onAllNodesWithText("Eggs").onFirst().performClick()
+        waitFor { vm.stagedEntries.value.size == 1 }
+        vm.closeStagedEditor()
+        compose.waitForIdle()
+        compose.onNodeWithText("Today · now").assertExists()
+        vm.setEatenAt(com.bytelog.app.ui.components.EatenAt(today.minusDays(1), java.time.LocalTime.of(19, 30)))
+        compose.waitForIdle()
+        shot("quick_when_chip")
+        var done = false
+        vm.commitStagedTray { done = true }
+        waitFor { done }
+        val logged = runBlocking { db.foodEntryDao().getEntriesForDate(today.minusDays(1).toString()).first() }.single { it.foodId == eggs.id && it.syncStatus != FoodEntry.SYNC_STATUS_SYNCED }
+        assertEquals("19:30:00", logged.entryTime)
+    }
+
+    @Test
+    fun foodLoggedForTodayGetsTheTimeItWasLogged() = runBlocking {
+        repo.commitMultiAdd(listOf(logged(oats, "Breakfast", 0).copy(id = "now-1", entryTime = null), logged(oats, "Breakfast", 3).copy(id = "old-1", entryTime = null)))
+        val now = db.foodEntryDao().getEntryById("now-1")!!
+        assertTrue("today: stamped ${now.entryTime}", now.entryTime != null)
+        assertEquals("another day: no time made up", null, db.foodEntryDao().getEntryById("old-1")!!.entryTime)
     }
 
     @Test

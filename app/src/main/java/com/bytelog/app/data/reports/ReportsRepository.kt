@@ -230,7 +230,8 @@ class ReportsRepository(
             val remoteWorkoutsDeferred = async { reportsApi.getExerciseDashboard(startDate, endDate).getOrNull() }
 
             val localEntriesDeferred = async { foodEntryDao.getEntriesInRange(startDate, endDate).first() }
-            val allLocalEntriesDeferred = async { foodEntryDao.getAllEntries().first() }
+            // The TDEE for the range looks back 28 days before it, so that's all the history needed
+            val allLocalEntriesDeferred = async { foodEntryDao.getEntriesInRange(start.minusDays(28).format(DATE_FMT), endDate).first() }
             val allWeightsDeferred = async { weightDao.getAllWeightsList() }
             val localWaterByDateDeferred = async {
                 dateStrings.associateWith { d ->

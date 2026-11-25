@@ -11,6 +11,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.UUID
+import com.bytelog.app.data.remote.fetchFamilyMembers
 
 /** One day of a family member's diary with their goals. */
 data class MemberDay(

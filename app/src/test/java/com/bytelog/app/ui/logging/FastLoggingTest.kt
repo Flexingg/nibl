@@ -171,7 +171,8 @@ class FastLoggingTest {
         waitFor { vm.stagedEntries.value.last().unit == "cup" }
         compose.waitForIdle()
         shot("fast_log_2_tray")
-        compose.onNodeWithText("Log 2 to Breakfast").assertExists()
+        // The button reads "Log all 2" while an amount is open; it says where it logs to for screen readers
+        compose.onNodeWithContentDescription("Log 2 to Breakfast").assertExists()
 
         compose.onNodeWithContentDescription("Log 2 to Breakfast").performClick()
         waitFor { runBlocking { db.foodEntryDao().getEntriesForDateOnce(today) }.size == 2 }

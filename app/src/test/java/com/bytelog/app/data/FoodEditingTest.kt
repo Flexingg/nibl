@@ -49,6 +49,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
+import com.bytelog.app.data.remote.deleteFood
 
 /** Editing foods goes to Sparky first: own foods change in place, anyone else's are saved as the user's copy. */
 @RunWith(RobolectricTestRunner::class)

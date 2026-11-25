@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import com.bytelog.app.data.remote.createCustomFood
+import com.bytelog.app.data.remote.scanNutritionLabel
 
 /**
  * Prices from a receipt: read the photo, match each line to a food on the shopping list or in your foods, let you

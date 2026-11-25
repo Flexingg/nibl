@@ -102,6 +102,7 @@ import com.bytelog.app.ui.viewmodel.FastSearchViewModel
 import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.DocumentScanner
+import com.bytelog.app.data.remote.createCustomFood
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -147,6 +148,9 @@ fun FastSearchScreen(
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var searchFocused by remember { mutableStateOf(false) }
+    val eatenAt by viewModel.eatenAt.collectAsState()
+    var showEatenAt by remember { mutableStateOf(false) }
+    val use24h = android.text.format.DateFormat.is24HourFormat(androidx.compose.ui.platform.LocalContext.current)
     var showQuickAddDialog by remember { mutableStateOf(false) }
     var showVoiceLogDialog by remember { mutableStateOf(false) }
     var showCustomFoodDialog by remember { mutableStateOf(false) }
@@ -250,6 +254,8 @@ fun FastSearchScreen(
                 onPickDays = if (viewModel.canPlan) ({ focusManager.clearFocus(); showPlanDays = true }) else null,
                 planDayCount = planDays.size,
                 onAdd = { viewModel.closeStagedEditor() },
+                eatenAtLabel = com.bytelog.app.ui.components.EatenAtText.label(eatenAt, java.time.LocalDate.now(), use24h, nowWhenToday = true),
+                onPickEatenAt = { focusManager.clearFocus(); showEatenAt = true },
                 suggestions = if (searchQuery.isBlank() && togetherPicks.isNotEmpty()) ({
                     com.bytelog.app.ui.components.TogetherStrip(
                         label = together?.label.orEmpty(), picks = togetherPicks,
@@ -305,6 +311,33 @@ fun FastSearchScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // While typing or reading results, everything but the search gets out of the way: the title, the other ways
+            // to add food and the meal chips fold into one slim line (the meal can still be changed from the tray).
+            val focusMode = searchFocused || searchQuery.isNotBlank()
+            AnimatedVisibility(
+                visible = focusMode,
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = leave) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = ByteCream) }
+                    Text(
+                        (if (viewModel.isPlanning) "Planning " else "Logging to ") + selectedMealName + " · " +
+                            com.bytelog.app.ui.components.EatenAtText.label(eatenAt, java.time.LocalDate.now(), use24h, nowWhenToday = true),
+                        color = ByteCreamMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = !focusMode,
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+            ) {
+            Column {
             // Expressive header: title, a big pill search field and the other ways to add food
             com.bytelog.app.ui.components.ScreenHeader(
                 title = "Log food",
@@ -383,9 +416,17 @@ fun FastSearchScreen(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
             }
+            }
+            }
 
-            // Remote Database Searching Indicator
-            AnimatedVisibility(visible = isSearchingRemote) {
+            // Online results still coming: a thin bar while searching, the full line otherwise
+            if (focusMode && isSearchingRemote) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(2.dp),
+                    color = ByteTomato, trackColor = Color.Transparent
+                )
+            }
+            AnimatedVisibility(visible = isSearchingRemote && !focusMode) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -710,6 +751,15 @@ fun FastSearchScreen(
                 }
             }
         }
+    }
+
+    // When the food was eaten: another day and/or a time
+    if (showEatenAt) {
+        com.bytelog.app.ui.components.WhenPickerSheet(
+            initial = eatenAt,
+            onDone = { viewModel.setEatenAt(it); showEatenAt = false },
+            onDismiss = { showEatenAt = false }
+        )
     }
 
     // Quick Add Dialog
