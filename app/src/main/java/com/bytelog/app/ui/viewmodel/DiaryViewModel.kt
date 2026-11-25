@@ -440,12 +440,12 @@ class DiaryViewModel(
     val fabMenuLayout: StateFlow<com.bytelog.app.data.repository.FabMenuLayout> = settingsRepository.fabMenuLayout
         .stateIn(viewModelScope, SharingStarted.Eagerly, com.bytelog.app.data.repository.FabMenuLayout.DEFAULT)
 
-    /** The order of the home screen sections. */
-    val homeLayout: StateFlow<com.bytelog.app.data.repository.HomeLayout> = settingsRepository.homeLayout
-        .stateIn(viewModelScope, SharingStarted.Eagerly, com.bytelog.app.data.repository.HomeLayout.DEFAULT)
+    /** The home dashboard's tiles: order, sizes and which are hidden. */
+    val homeTiles: StateFlow<com.bytelog.app.data.repository.HomeTiles> = settingsRepository.homeTiles
+        .stateIn(viewModelScope, SharingStarted.Eagerly, com.bytelog.app.data.repository.HomeTiles.DEFAULT)
 
-    fun saveHomeLayout(layout: com.bytelog.app.data.repository.HomeLayout) {
-        viewModelScope.launch { settingsRepository.saveHomeLayout(layout) }
+    fun saveHomeTiles(tiles: com.bytelog.app.data.repository.HomeTiles) {
+        viewModelScope.launch { settingsRepository.saveHomeTiles(tiles) }
     }
 
     fun dismissWeeklyReview(review: WeeklyReview) {

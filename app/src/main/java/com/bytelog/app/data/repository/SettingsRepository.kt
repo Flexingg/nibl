@@ -50,6 +50,7 @@ class SettingsRepository(
         val KEY_REDUCE_TRANSPARENCY = androidx.datastore.preferences.core.booleanPreferencesKey("reduce_transparency")
         val KEY_UI_SIZE = stringPreferencesKey("ui_size")
         val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
+        val KEY_HOME_TILES = stringPreferencesKey("home_tiles")
         val KEY_FAB_MENU = stringPreferencesKey("fab_menu_layout")
         val KEY_UNANSWERED_CREATES = stringPreferencesKey("sync_unanswered_creates")
         val KEY_GITHUB_TOKEN = stringPreferencesKey("update_github_token")
@@ -237,7 +238,6 @@ class SettingsRepository(
         context.dataStore.edit { it[KEY_HEALTH_CONNECT_WRITE] = enabled }
     }
 
-    /** The home screen's section order and hidden sections ([HomeLayout] encoding). */
     /** How the meal planner shows the plan. */
     val plannerConfig: Flow<PlannerConfig> = context.dataStore.data.map { PlannerConfig.parse(it[KEY_PLANNER]) }
 
@@ -245,10 +245,18 @@ class SettingsRepository(
         context.dataStore.edit { it[KEY_PLANNER] = config.encode() }
     }
 
-    val homeLayout: Flow<HomeLayout> = context.dataStore.data.map { HomeLayout.parse(it[KEY_HOME_LAYOUT]) }
+    /**
+     * The home dashboard's tiles ([HomeTiles] encoding). Someone who only arranged the older home sections gets
+     * those, turned into tiles.
+     */
+    val homeTiles: Flow<HomeTiles> = context.dataStore.data.map { prefs ->
+        prefs[KEY_HOME_TILES]?.let { HomeTiles.parse(it) }
+            ?: prefs[KEY_HOME_LAYOUT]?.let { HomeTiles.fromLayout(HomeLayout.parse(it)) }
+            ?: HomeTiles.DEFAULT
+    }
 
-    suspend fun saveHomeLayout(layout: HomeLayout) {
-        context.dataStore.edit { it[KEY_HOME_LAYOUT] = layout.encode() }
+    suspend fun saveHomeTiles(tiles: HomeTiles) {
+        context.dataStore.edit { it[KEY_HOME_TILES] = tiles.encode() }
     }
 
     /**
