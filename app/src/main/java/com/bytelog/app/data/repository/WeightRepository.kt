@@ -67,7 +67,10 @@ class WeightRepository(
         }
     }
 
-    fun logWeight(date: String, weight: Float, unit: String? = null, bodyFatPercentage: Float? = null) {
+    /** Called with each weigh-in logged here (date, kg, body fat %): writes it to Health Connect when that's on. */
+    @Volatile var afterLog: (suspend (date: String, kg: Double, bodyFat: Double?) -> Unit)? = null
+
+    fun logWeight(date: String, weight: Float, unit: String? = null, bodyFatPercentage: Float? = null, fromHealthConnect: Boolean = false) {
         appScope.launch(Dispatchers.IO) {
             val resolvedUnit = unit ?: settingsRepository.weightUnit.first()
             val entry = WeightEntry(
@@ -86,6 +89,9 @@ class WeightRepository(
             } else {
                 weight
             }
+
+            // Not one read from Health Connect: it's there already
+            if (!fromHealthConnect) runCatching { afterLog?.invoke(date, weightInKg.toDouble(), bodyFatPercentage?.toDouble()) }
 
             val remoteResult = sparkyApiClient.upsertWeight(date, weightInKg, bodyFatPercentage)
             if (remoteResult.isSuccess) {

@@ -88,7 +88,8 @@ class TileGalleryTest {
         mealShortcuts = listOf("Dinner" to "Chicken chili, Rice"),
         recipes = listOf("Chicken chili", "Overnight oats", "Salmon bowl"),
         mealieHost = "mealie.home",
-        health = HealthSummary(true, System.currentTimeMillis() - 7 * 60_000L, 18, 4, null),
+        health = HealthSummary(true, System.currentTimeMillis() - 7 * 60_000L, 18, 4, null,
+            steps = 7840, activeKcal = 412.0, sleepMinutes = 452, restingHr = 58, distanceMeters = 5900.0),
         photos = listOf(today.minusDays(3).toString() to suspend { null }, today.minusDays(33).toString() to suspend { null })
     )
 

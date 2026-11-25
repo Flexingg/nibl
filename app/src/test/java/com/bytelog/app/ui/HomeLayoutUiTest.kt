@@ -235,8 +235,12 @@ class HomeLayoutUiTest {
         compose.onNodeWithText("Reports").performClick()
         waitFor { compose.onAllNodesWithText("Show less").fetchSemanticsNodes().isNotEmpty() }
         assertTrue("the full version shows more", compose.onAllNodesWithText("Days logged this week", substring = true).fetchSemanticsNodes().isNotEmpty())
+        // The small tiles keep their row; the panel opens below it
+        assertTrue("row unchanged", kotlin.math.abs(top("Reports") - top("Mealie")) < 4f)
+        assertTrue("panel under the row", top("Days logged this week") > top("Mealie"))
         shot("home_tiles_10_small_opened")
-        compose.onNodeWithText("Show less").performClick()
+        // Tapping the small tile again closes it
+        compose.onNodeWithText("Reports").performClick()
         waitFor { compose.onAllNodesWithText("Show less").fetchSemanticsNodes().isEmpty() }
         assertEquals(TileSize.SMALL, diaryVm.homeTiles.value.sizeOf(HomeTile.REPORTS))
     }

@@ -46,13 +46,19 @@ class ByteLogApplication : Application() {
 
     val healthConnectSync by lazy {
         com.bytelog.app.health.HealthConnectSync(
-            this, com.bytelog.app.health.HealthConnectStore(this), database.foodEntryDao(), database.waterLogDao()
+            this, com.bytelog.app.health.HealthConnectStore(this), database.foodEntryDao(), database.waterLogDao(),
+            leaveToSparkyApp = { leaveHealthToSparkyApp() }
         )
     }
+
+    /** The SparkyFitness app is installed and the setting to leave Health Connect writing and uploading to it is on. */
+    suspend fun leaveHealthToSparkyApp(): Boolean =
+        settingsRepository.hcLeaveToSparkyApp.first() && com.bytelog.app.health.SparkyFitnessApp.installed(this)
 
     /** True while Nibl is on screen: Health Connect is only read and written then. */
     @Volatile var inForeground = false
     private var healthJob: kotlinx.coroutines.Job? = null
+    @Volatile private var lastHealthRead = 0L
 
     /**
      * Writes recent days to Health Connect a few seconds after the diary settles (when it's turned on, permitted
@@ -63,6 +69,12 @@ class ByteLogApplication : Application() {
         healthJob = applicationScope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(delayMs)
             if (!inForeground) return@launch
+            // Today's steps, sleep and heart rate for the home screen: read (not uploaded) at most every 15 minutes
+            val now = System.currentTimeMillis()
+            if (now - lastHealthRead > 15 * 60_000L) {
+                lastHealthRead = now
+                runCatching { if (healthConnectExtendedSync.isAvailable()) healthConnectExtendedSync.syncRecent(days = 1, uploadToSparky = false) }
+            }
             if (!settingsRepository.healthConnectWrite.first()) return@launch
             if (!com.bytelog.app.health.HealthConnectStore.hasPermissions(this@ByteLogApplication)) return@launch
             healthConnectSync.syncDays()
@@ -78,13 +90,16 @@ class ByteLogApplication : Application() {
         )
     }
 
-    val weightRepository by lazy {
+    val weightRepository: com.bytelog.app.data.repository.WeightRepository by lazy {
         com.bytelog.app.data.repository.WeightRepository(
             weightDao = database.weightDao(),
             sparkyApiClient = sparkyApiClient,
             settingsRepository = settingsRepository,
             appScope = applicationScope
-        )
+        ).also { repo ->
+            // A weigh-in logged here goes to Health Connect too, when that's turned on in Health Connect's settings
+            repo.afterLog = { date, kg, fat -> healthConnectExtendedSync.writeWeightToHealthConnect(date, kg, fat) }
+        }
     }
 
     val mealTemplateRepository by lazy {
@@ -175,8 +190,8 @@ class ByteLogApplication : Application() {
         )
     }
 
-    val healthConnectExtendedSync by lazy {
-        com.bytelog.app.health.HealthConnectExtendedSync(this, sparkyApiClient, weightRepository)
+    val healthConnectExtendedSync: com.bytelog.app.health.HealthConnectExtendedSync by lazy {
+        com.bytelog.app.health.HealthConnectExtendedSync(this, sparkyApiClient, weightRepository, leaveToSparkyApp = { leaveHealthToSparkyApp() })
     }
 
     val healthConnectBackfill by lazy {

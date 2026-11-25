@@ -296,8 +296,16 @@ fun ByteLogNavHost(
                     app.mealieRepository.config.map { c: com.bytelog.app.data.mealie.MealieConfig -> c.baseUrl.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it).host ?: it } }
                 },
                 healthSummary = remember {
-                    kotlinx.coroutines.flow.combine(settingsRepo.healthConnectWrite, app.healthConnectSync.status) { on, st ->
-                        com.bytelog.app.ui.dashboard.HealthSummary(on, st.lastRun, st.written, st.leftToSparky, st.error)
+                    kotlinx.coroutines.flow.combine(
+                        settingsRepo.healthConnectWrite, app.healthConnectSync.status, app.healthConnectExtendedSync.snapshots
+                    ) { on, st, snaps ->
+                        val today = snaps[java.time.LocalDate.now().toString()]
+                        com.bytelog.app.ui.dashboard.HealthSummary(
+                            on, st.lastRun, st.written, st.leftToSparky, st.error,
+                            steps = today?.steps, activeKcal = today?.activeCaloriesKcal, sleepMinutes = today?.sleepMinutes,
+                            restingHr = today?.restingHrBpm, distanceMeters = today?.distanceMeters,
+                            leftToSparkyApp = st.leftToSparkyApp
+                        )
                     }
                 }
             )

@@ -51,6 +51,7 @@ class SettingsRepository(
         val KEY_UI_SIZE = stringPreferencesKey("ui_size")
         val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
         val KEY_HOME_TILES = stringPreferencesKey("home_tiles")
+        val KEY_HC_LEAVE_TO_SPARKY_APP = androidx.datastore.preferences.core.booleanPreferencesKey("hc_leave_to_sparky_app")
         val KEY_FAB_MENU = stringPreferencesKey("fab_menu_layout")
         val KEY_UNANSWERED_CREATES = stringPreferencesKey("sync_unanswered_creates")
         val KEY_GITHUB_TOKEN = stringPreferencesKey("update_github_token")
@@ -253,6 +254,16 @@ class SettingsRepository(
         prefs[KEY_HOME_TILES]?.let { HomeTiles.parse(it) }
             ?: prefs[KEY_HOME_LAYOUT]?.let { HomeTiles.fromLayout(HomeLayout.parse(it)) }
             ?: HomeTiles.DEFAULT
+    }
+
+    /**
+     * With the SparkyFitness phone app installed, leave Health Connect to it (it writes the diary there and sends
+     * Health Connect data to Sparky), so nothing is counted twice. On unless turned off.
+     */
+    val hcLeaveToSparkyApp: Flow<Boolean> = context.dataStore.data.map { it[KEY_HC_LEAVE_TO_SPARKY_APP] ?: true }
+
+    suspend fun saveHcLeaveToSparkyApp(on: Boolean) {
+        context.dataStore.edit { it[KEY_HC_LEAVE_TO_SPARKY_APP] = on }
     }
 
     suspend fun saveHomeTiles(tiles: HomeTiles) {

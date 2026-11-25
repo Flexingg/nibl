@@ -204,6 +204,33 @@ class HealthConnectTest {
         assertTrue(store.ours.isEmpty())
     }
 
+    @Test fun withTheSparkyFitnessAppDoingItNiblWritesNothingAndTakesItsOwnBack() = runBlocking {
+        db.foodEntryDao().insertEntries(listOf(food("a", "Oatmeal", 300f, "Breakfast")))
+        db.waterLogDao().insertLogs(listOf(WaterLogEntry(id = "41", entryDate = day, waterMl = 500f, loggedAt = "2026-11-01T09:00:00Z")))
+        val store = FakeStore()
+        var leave = false
+        val hc = HealthConnectSync(ApplicationProvider.getApplicationContext(), store, db.foodEntryDao(), db.waterLogDao(), { zone }, { now }, { leave })
+        hc.syncDays(listOf(day))
+        assertEquals(listOf("Oatmeal"), store.foodNames())
+        // The SparkyFitness app is installed: it writes the Sparky diary itself, so Nibl's copies go
+        leave = true
+        val s = hc.syncDays(listOf(day))
+        assertTrue(store.ours.isEmpty())
+        assertTrue(s.leftToSparkyApp)
+    }
+
+    @Test fun aRecordKeepsItsIdWhenTheFoodChanges() = runBlocking {
+        db.foodEntryDao().insertEntries(listOf(food("a", "Oatmeal", 300f, "Breakfast")))
+        val store = FakeStore()
+        val hc = sync(store)
+        hc.syncDays(listOf(day))
+        val before = store.ours.keys.toSet()
+        db.foodEntryDao().insertEntry(food("a", "Oatmeal", 350f, "Breakfast"))   // edited
+        hc.syncDays(listOf(day))
+        // Updated in place under the same id: the SparkyFitness app updates its copy instead of adding one
+        assertEquals(before, store.ours.keys.toSet())
+    }
+
     @Test fun foodNiblWroteThatSparkyImportsBackIsntDownloadedAgain() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db.foodEntryDao().insertEntry(food("a", "Oatmeal", 300f, "Breakfast"))

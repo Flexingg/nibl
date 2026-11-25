@@ -3,6 +3,7 @@ package com.bytelog.app.ui.dashboard
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
@@ -149,7 +150,9 @@ fun SummaryTile(
     onLongClick: (() -> Unit)? = null,
     enabled: Boolean = true,
     /** The row's height, so tiles side by side line up; defaults to what [size] needs. */
-    height: Dp = if (size == TileSize.HALF) TILE_TALL else TILE_HEIGHT
+    height: Dp = if (size == TileSize.HALF) TILE_TALL else TILE_HEIGHT,
+    /** Open: its panel is showing under the row. Outlined in its colour. */
+    selected: Boolean = false
 ) {
     val cs = MaterialTheme.colorScheme
     val radius = if (size == TileSize.SMALL) 20.dp else TILE_RADIUS
@@ -159,6 +162,7 @@ fun SummaryTile(
             .fillMaxWidth()
             .then(if (enabled) Modifier.pressBounce() else Modifier)
             .tileCard(radius)
+            .then(if (selected) Modifier.border(2.dp, face.accent, RoundedCornerShape(radius)) else Modifier)
             .then(face.fill?.let { Modifier.waterFill(it, face.accent, face.container) } ?: Modifier)
             .then(if (enabled) Modifier.combinedClickable(onClick = face.onClick, onLongClick = onLongClick) else Modifier)
             .semantics(mergeDescendants = true) { contentDescription = face.spoken }
