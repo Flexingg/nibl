@@ -173,6 +173,7 @@ fun HomeTilesEditor(
         }
 
         val visible = tiles.visible
+        val heights = rowHeights(visible.map { it.size })
         val hidden = tiles.hiddenTiles
         LazyVerticalGrid(
             columns = GridCells.Fixed(4),
@@ -255,7 +256,7 @@ fun HomeTilesEditor(
                             }
                         }
                 ) {
-                    SummaryTile(face, placed.size, enabled = false)
+                    SummaryTile(face, placed.size, enabled = false, height = heights.getOrElse(index) { TILE_HEIGHT })
                     if (tile.removable) {
                         Box(
                             Modifier

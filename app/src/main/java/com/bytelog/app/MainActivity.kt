@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -288,7 +289,17 @@ fun ByteLogNavHost(
                 onOpenProgressPhotos = { navController.navigate("progress_photos") { launchSingleTop = true } },
                 onOpenMealie = { navController.navigate("mealie") { launchSingleTop = true } },
                 onOpenHealthConnect = { navController.navigate("health_connect_detail") { launchSingleTop = true } },
-                updateBanner = { modifier -> com.bytelog.app.ui.components.UpdateBanner(app.appUpdater, settingsRepo, modifier) }
+                updateBanner = { modifier -> com.bytelog.app.ui.components.UpdateBanner(app.appUpdater, settingsRepo, modifier) },
+                progressPhotos = app.progressPhotoRepository.photos,
+                loadPhoto = { item -> app.progressPhotoRepository.loadBitmap(item, maxDim = 320) },
+                mealieHost = remember {
+                    app.mealieRepository.config.map { c: com.bytelog.app.data.mealie.MealieConfig -> c.baseUrl.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it).host ?: it } }
+                },
+                healthSummary = remember {
+                    kotlinx.coroutines.flow.combine(settingsRepo.healthConnectWrite, app.healthConnectSync.status) { on, st ->
+                        com.bytelog.app.ui.dashboard.HealthSummary(on, st.lastRun, st.written, st.leftToSparky, st.error)
+                    }
+                }
             )
         }
 

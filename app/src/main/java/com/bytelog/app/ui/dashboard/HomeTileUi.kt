@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,12 +51,23 @@ import com.bytelog.app.data.repository.TileSize
 import com.bytelog.app.ui.components.pressBounce
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Height of half and small tiles; on a phone a small tile is about square. */
+/** Height of a row of small tiles; on a phone a small tile is about square. */
 val TILE_HEIGHT = 88.dp
+/** Height of a row with a half tile in it: room for a chart or a short list under the number. */
+val TILE_TALL = 150.dp
 /** Space between tiles, across and down. */
 val TILE_GAP = 10.dp
 /** Corner radius of a home card. */
 val TILE_RADIUS = 24.dp
+
+/** How tall a row of tiles is: taller when it holds a half tile, which has a chart or list. */
+fun rowHeight(sizes: List<TileSize>): Dp = if (sizes.any { it == TileSize.HALF }) TILE_TALL else TILE_HEIGHT
+
+/** Each tile's row height, for tiles packed in order. */
+fun rowHeights(sizes: List<TileSize>): List<Dp> {
+    val rows = TileGrid.place(sizes.map { it.span }).map { it.first }
+    return sizes.indices.map { i -> rowHeight(sizes.filterIndexed { j, _ -> rows[j] == rows[i] }) }
+}
 
 /** A quick action on a tile (water's "+16 oz"). */
 @Immutable
@@ -74,9 +86,13 @@ data class TileFace(
     /** 0..1 drawn as a ring round the icon. */
     val progress: Float? = null,
     val action: TileAction? = null,
+    /** A picture of the data, on half and full tiles. */
+    val chart: TileChart? = null,
+    /** More to read ("Rice", "2 portions"), on half (two) and full (four) tiles. */
+    val lines: List<Pair<String, String>> = emptyList(),
     val onClick: () -> Unit = {}
 ) {
-    val spoken: String get() = listOfNotNull(title, value, detail).joinToString(", ")
+    val spoken: String get() = (listOfNotNull(title, value, detail) + lines.map { "${it.first} ${it.second}" }).joinToString(", ")
 }
 
 /** The home card look: rounded, on the surface container. */
@@ -113,17 +129,27 @@ private fun ActionButton(action: TileAction, accent: Color, container: Color, si
 }
 
 /**
- * A tile that isn't a full card: half width (icon, title, value and detail, and its quick action) or small (icon and
- * value). A full-width face is used where a full card doesn't fit, as in edit mode.
+ * A tile that isn't a full card. The bigger it is, the more it shows:
+ * - small: the icon (with its progress ring) and the number; in a tall row, the detail and title too
+ * - half: title, number and detail, and a chart or two lines of what's behind the number
+ * - full: all of that, a bigger chart and up to four lines
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SummaryTile(face: TileFace, size: TileSize, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null, enabled: Boolean = true) {
+fun SummaryTile(
+    face: TileFace,
+    size: TileSize,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    /** The row's height, so tiles side by side line up; defaults to what [size] needs. */
+    height: Dp = if (size == TileSize.HALF) TILE_TALL else TILE_HEIGHT
+) {
     val cs = MaterialTheme.colorScheme
     val radius = if (size == TileSize.SMALL) 20.dp else TILE_RADIUS
     Box(
         modifier
-            .height(TILE_HEIGHT)
+            .then(if (size == TileSize.FULL) Modifier.heightIn(min = height) else Modifier.height(height))
             .fillMaxWidth()
             .then(if (enabled) Modifier.pressBounce() else Modifier)
             .tileCard(radius)
@@ -131,21 +157,10 @@ fun SummaryTile(face: TileFace, size: TileSize, modifier: Modifier = Modifier, o
             .semantics(mergeDescendants = true) { contentDescription = face.spoken }
     ) {
         when (size) {
-            TileSize.SMALL -> Column(
-                Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                TileBadge(face, 40.dp)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    face.value ?: face.title, color = cs.onSurface, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
-                )
-            }
-            TileSize.HALF -> Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            TileSize.SMALL -> SmallTile(face, tall = height > TILE_HEIGHT)
+            TileSize.HALF -> Column(Modifier.fillMaxSize().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TileBadge(face, 34.dp)
+                    TileBadge(face, 32.dp)
                     Spacer(Modifier.width(8.dp))
                     Text(
                         face.title.uppercase(), color = cs.onSurfaceVariant, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
@@ -153,16 +168,88 @@ fun SummaryTile(face: TileFace, size: TileSize, modifier: Modifier = Modifier, o
                     )
                     if (enabled) face.action?.let { ActionButton(it, face.accent, face.container, 34.dp) }
                 }
-                ValueLine(face, valueSize = 17)
-            }
-            TileSize.FULL -> Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                TileBadge(face, 44.dp)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(face.title.uppercase(), color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, maxLines = 1)
-                    ValueLine(face, valueSize = 19)
+                Spacer(Modifier.height(6.dp))
+                ValueLine(face, valueSize = 20)
+                Spacer(Modifier.height(6.dp))
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.BottomStart) {
+                    TileMore(face, maxLines = 2, large = false)
                 }
-                if (enabled) face.action?.let { Spacer(Modifier.width(8.dp)); ActionButton(it, face.accent, face.container, 40.dp) }
+            }
+            TileSize.FULL -> Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TileBadge(face, 44.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(face.title.uppercase(), color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, maxLines = 1)
+                        ValueLine(face, valueSize = 22)
+                    }
+                    if (enabled) face.action?.let { Spacer(Modifier.width(8.dp)); ActionButton(it, face.accent, face.container, 40.dp) }
+                }
+                face.chart?.let {
+                    val m = when (it) {
+                        is TileChart.Photos -> Modifier.height(110.dp)
+                        is TileChart.Macros, is TileChart.Meter -> Modifier
+                        is TileChart.Glasses -> Modifier.height(30.dp)
+                        else -> Modifier.height(64.dp)
+                    }
+                    TileChartView(it, face.accent, Modifier.fillMaxWidth().then(m), large = true)
+                }
+                if (face.lines.isNotEmpty()) TileLines(face.lines, 4)
+            }
+        }
+    }
+}
+
+/** A small tile: the icon and number, centred; a tall one adds the detail and the title. */
+@Composable
+private fun SmallTile(face: TileFace, tall: Boolean) {
+    val cs = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        if (tall) {
+            Text(face.title.uppercase(), color = cs.onSurfaceVariant, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+        }
+        TileBadge(face, if (tall) 48.dp else 40.dp)
+        Spacer(Modifier.height(5.dp))
+        Text(
+            face.value ?: face.title, color = cs.onSurface, fontSize = if (tall) 14.sp else 12.sp, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
+        )
+        val second = if (face.value != null) face.detail else null
+        if (second != null) {
+            Text(second, color = cs.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+/** Under the number on a half tile: the chart if there is one, else a couple of lines. */
+@Composable
+private fun TileMore(face: TileFace, maxLines: Int, large: Boolean) {
+    val chart = face.chart
+    when {
+        chart != null -> TileChartView(chart, face.accent, Modifier.fillMaxSize(), large)
+        face.lines.isNotEmpty() -> TileLines(face.lines, maxLines)
+    }
+}
+
+@Composable
+private fun TileLines(lines: List<Pair<String, String>>, max: Int) {
+    val cs = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        lines.take(max).forEach { (label, value) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(5.dp).clip(CircleShape).background(cs.onSurfaceVariant.copy(alpha = 0.6f)))
+                Spacer(Modifier.width(6.dp))
+                Text(label, color = cs.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (value.isNotEmpty()) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(value, color = cs.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
             }
         }
     }
@@ -174,12 +261,14 @@ private fun ValueLine(face: TileFace, valueSize: Int) {
     Row(verticalAlignment = Alignment.Bottom) {
         Text(
             face.value ?: face.detail ?: face.title, color = cs.onSurface, fontSize = valueSize.sp, fontWeight = FontWeight.SemiBold,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            // The number keeps its room; the detail beside it gives way
+            modifier = if (face.value != null && face.detail != null) Modifier else Modifier.weight(1f, fill = false)
         )
         if (face.value != null && face.detail != null) {
             Text(
                 "  " + face.detail, color = cs.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 2.dp)
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).padding(bottom = 2.dp)
             )
         }
     }

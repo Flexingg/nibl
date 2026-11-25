@@ -23,6 +23,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.bytelog.app.ui.diary.daySwipe
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import com.bytelog.app.ui.components.homeItem
 import com.bytelog.app.ui.dashboard.longPressToEdit
 import com.bytelog.app.ui.dashboard.tileCard
@@ -168,7 +169,14 @@ fun DiaryScreen(
     onOpenReports: () -> Unit = {},
     onOpenProgressPhotos: () -> Unit = {},
     onOpenMealie: () -> Unit = {},
-    onOpenHealthConnect: () -> Unit = {}
+    onOpenHealthConnect: () -> Unit = {},
+    /** Progress photos for the photos tile, newest first, and a way to load a small picture of one. */
+    progressPhotos: kotlinx.coroutines.flow.StateFlow<List<com.bytelog.app.data.photos.ProgressPhotoItem>>? = null,
+    loadPhoto: (suspend (com.bytelog.app.data.photos.ProgressPhotoItem) -> android.graphics.Bitmap?)? = null,
+    /** The Mealie server, for the Mealie tile. */
+    mealieHost: kotlinx.coroutines.flow.Flow<String?>? = null,
+    /** Health Connect writing, for its tile. */
+    healthSummary: kotlinx.coroutines.flow.Flow<com.bytelog.app.ui.dashboard.HealthSummary>? = null
 ) {
     var copyPlanFrom by remember { mutableStateOf<List<com.bytelog.app.data.local.model.PlannedEntry>?>(null) }
     val family by (familyViewModel?.state ?: remember { kotlinx.coroutines.flow.MutableStateFlow(com.bytelog.app.ui.viewmodel.FamilyState(loading = false)) }).collectAsState()
@@ -477,6 +485,9 @@ fun DiaryScreen(
     val activeFastNow by (fastingRepository?.activeFast ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.bytelog.app.data.fasting.FastingLog?>(null) }).collectAsState()
     val caffeineNow by (caffeineRepository?.status ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.bytelog.app.data.caffeine.CaffeineStatus?>(null) }).collectAsState()
     val tilesOnScreen = shownTiles.map { it.tile }.toSet()
+    val progressPhotoList by (progressPhotos ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<com.bytelog.app.data.photos.ProgressPhotoItem>()) }).collectAsState()
+    val mealieHostNow by (mealieHost ?: remember { kotlinx.coroutines.flow.flowOf<String?>(null) }).collectAsState(initial = null)
+    val healthNow by (healthSummary ?: remember { kotlinx.coroutines.flow.flowOf<com.bytelog.app.ui.dashboard.HealthSummary?>(null) }).collectAsState(initial = null)
     val fastingShown = com.bytelog.app.data.repository.HomeTile.FASTING in tilesOnScreen
     val caffeineShown = com.bytelog.app.data.repository.HomeTile.CAFFEINE in tilesOnScreen
     LaunchedEffect(fastingRepository, fastingShown) { if (fastingShown) fastingRepository?.refresh() }
@@ -491,25 +502,33 @@ fun DiaryScreen(
             waterOz = waterTotalOz,
             waterGoalOz = waterGoalOz,
             drinkOz = defaultContainerOz,
+            drinks = waterLogs.size,
             weight = (currentWeight ?: previousWeight)?.let { com.bytelog.app.ui.components.displayWeight(it, weightUnit) },
             weightUnit = weightUnit,
             weightDelta = com.bytelog.app.ui.components.weightChange(currentWeight, previousWeight, weightUnit),
+            recentWeights = recentWeights,
             weeklyReview = weeklyReview,
             activeFast = activeFastNow,
             sinceLastMealMs = lastMealAt?.let { clock - it }?.takeIf { isToday },
             nowMs = clock,
             caffeine = caffeineNow,
             batches = activeBatches,
-            familyCount = family.members.size,
-            plannedCount = plannedEntries.size,
-            plannedCalories = plannedEntries.sumOf { it.calories.toDouble() }.toFloat(),
-            daysPlanned = weekPlan.count { it.foods > 0 },
+            family = family.members.map { m -> family.today[m.userId].let { t -> Triple(m.displayName, t?.calories ?: 0f, t?.goal) } },
+            planned = plannedEntries,
+            weekPlan = weekPlan,
             shopping = weekShopping.first,
             shoppingChecked = weekShopping.second,
-            fitCount = whatFits.size,
-            tdee = adaptiveCalc.tdee.takeIf { it > 0f },
-            mealsLogged = loggedMealGroups.size,
-            mealsCalories = dailySummary.totalCalories
+            fits = whatFits,
+            days = chartPoints,
+            tdee = adaptiveCalc.takeIf { it.tdee > 0f },
+            meals = loggedMealGroups.map { it.mealName to it.calories },
+            mealNow = (quickLogMeal ?: mealTypes.firstOrNull())?.name?.trim()?.replaceFirstChar { it.titlecase() } ?: "Breakfast",
+            mealShortcuts = mealShortcuts.values.flatMap { sc -> listOfNotNull(sc.yesterday.takeIf { it.isNotEmpty() }) }
+                .map { foods -> foods.first().mealName.trim().replaceFirstChar { it.titlecase() } to foods.joinToString(", ") { it.foodName } },
+            photos = progressPhotoList.map { item -> item.date to suspend { loadPhoto?.invoke(item)?.asImageBitmap() } },
+            recipes = recipeViews.map { it.template.name },
+            mealieHost = mealieHostNow,
+            health = healthNow
         ),
         com.bytelog.app.ui.dashboard.DashboardActions(
             calories = onOpenReports,
@@ -808,7 +827,7 @@ fun DiaryScreen(
     }
 
     // A tile at the top: its full or tile version, and the strip it folds into
-    val foldSpec: (com.bytelog.app.data.repository.PlacedTile, Int, Boolean) -> com.bytelog.app.ui.dashboard.FoldTileSpec = { placed, foldedSpan, isHero ->
+    val foldSpec: (com.bytelog.app.data.repository.PlacedTile, Int, Boolean, androidx.compose.ui.unit.Dp) -> com.bytelog.app.ui.dashboard.FoldTileSpec = { placed, foldedSpan, isHero, tileHeight ->
         val tile = placed.tile
         val face = faceOf(tile)
         val full = placed.size == com.bytelog.app.data.repository.TileSize.FULL
@@ -822,7 +841,7 @@ fun DiaryScreen(
             onLongPress = if (!full || tile == com.bytelog.app.data.repository.HomeTile.WATER) null else startEditing,
             expanded = {
                 when {
-                    !full -> com.bytelog.app.ui.dashboard.SummaryTile(face, placed.size, onLongClick = startEditing)
+                    !full -> com.bytelog.app.ui.dashboard.SummaryTile(face, placed.size, onLongClick = startEditing, height = tileHeight)
                     tile == com.bytelog.app.data.repository.HomeTile.CALORIES -> com.bytelog.app.ui.diary.HeroMacros(dailySummary)
                     tile == com.bytelog.app.data.repository.HomeTile.WATER -> waterExpanded()
                     tile == com.bytelog.app.data.repository.HomeTile.WEIGHT -> weightExpanded()
@@ -891,7 +910,9 @@ fun DiaryScreen(
                 val heroIndex = headerTiles.indexOfFirst { it.tile == com.bytelog.app.data.repository.HomeTile.CALORIES && it.size == com.bytelog.app.data.repository.TileSize.FULL }
                 com.bytelog.app.ui.dashboard.DashboardHeader(
                     fraction = headerFraction,
-                    tiles = headerTiles.mapIndexed { i, placed -> foldSpec(placed, folded[i], i == heroIndex) },
+                    tiles = com.bytelog.app.ui.dashboard.rowHeights(headerTiles.map { it.size }).let { heights ->
+                        headerTiles.mapIndexed { i, placed -> foldSpec(placed, folded[i], i == heroIndex, heights[i]) }
+                    },
                     heroIndex = heroIndex,
                     hero = if (heroIndex >= 0) ({ calorieHero(headerFraction) }) else null,
                     modifier = dayMotion.then(scrollsList)
@@ -1152,7 +1173,8 @@ fun DiaryScreen(
                             val rowKey = "row_" + row.joinToString("_") { it.tile.key }
                             item(key = rowKey) {
                                 com.bytelog.app.ui.dashboard.TileRow(row.map { it.size.span }, Modifier.homeItem(this, listState, rowKey)) {
-                                    row.forEach { t -> com.bytelog.app.ui.dashboard.SummaryTile(faceOf(t.tile), t.size, onLongClick = startEditing) }
+                                    val h = com.bytelog.app.ui.dashboard.rowHeight(row.map { it.size })
+                                    row.forEach { t -> com.bytelog.app.ui.dashboard.SummaryTile(faceOf(t.tile), t.size, onLongClick = startEditing, height = h) }
                                 }
                             }
                         }
