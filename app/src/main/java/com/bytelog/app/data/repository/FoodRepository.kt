@@ -195,11 +195,18 @@ class FoodRepository(
         return true
     }
 
-    /** Sends an edit; if Sparky doesn't know the entry (it never got there), creates it instead. */
+    /**
+     * Sends an edit. Only when Sparky answers that it doesn't have the entry (404: it never got there) is it created
+     * instead; any other failure (no connection, a server error) is tried again later. Creating it then would leave
+     * Sparky with the old entry and a new one.
+     */
     private suspend fun pushUpdate(entry: FoodEntry): Boolean {
         val res = sparkyApiClient.updateFoodEntry(entry)
         if (res.isSuccess) { foodEntryDao.updateSyncStatus(entry.id, FoodEntry.SYNC_STATUS_UPLOADED); return true }
-        return pushCreate(entry)
+        val e = res.exceptionOrNull()
+        if (e is com.bytelog.app.data.remote.SparkyHttpException && e.code == 404) return pushCreate(entry)
+        lastPushError = e?.message
+        return false
     }
 
     private suspend fun pushDelete(entry: FoodEntry): Boolean {
@@ -828,8 +835,9 @@ class FoodRepository(
         val fetchResult = sparkyApiClient.fetchEntriesForDate(cleanDate)
         if (fetchResult.isSuccess) {
             // Food Nibl wrote to Health Connect that Sparky's phone app imported back is already here: skip the copy
-            val serverEntries = fetchResult.getOrNull().orEmpty()
-                .filterNot { com.bytelog.app.health.HealthConnectEcho.isEcho(it.source, it.sourceId) }
+            val serverEntries = com.bytelog.app.health.HealthConnectEcho.dropFoodEchoes(
+                fetchResult.getOrNull().orEmpty(), foodEntryDao.getEntriesForDateOnce(cleanDate)
+            )
             mergeServerEntries(cleanDate, serverEntries)
 
             // 3. Update meal types

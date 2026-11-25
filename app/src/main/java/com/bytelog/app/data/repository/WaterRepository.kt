@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -258,7 +259,7 @@ class WaterRepository(
                     )
                 }
                     // A drink Nibl wrote to Health Connect, imported back into Sparky by its phone app: not a new drink
-                    .filterNot { com.bytelog.app.health.HealthConnectEcho.isEcho(it.source, it.sourceId) }
+                    .let { list -> com.bytelog.app.health.HealthConnectEcho.dropWaterEchoes(list, waterLogDao.getLogsForDate(cleanDate).first()) }
 
                 // Delete only synced entries for this date, preserve any pending ones, and don't bring back
                 // drinks removed on the phone whose removal Sparky hasn't confirmed yet

@@ -654,6 +654,9 @@ class SparkyApiClient(
 
             val payload = buildJsonObject {
                 put("id", entry.id)
+                // Sparky's idempotency key: if this create already got there (an answer lost on the way back), Sparky
+                // returns that entry instead of logging the food a second time. Older Sparky versions ignore it.
+                put("client_id", clientIdFor(entry.id))
                 if (foodId != null && variantId != null) {
                     put("food_id", foodId)
                     put("variant_id", variantId)
@@ -738,7 +741,7 @@ class SparkyApiClient(
                 } else {
                     val errBody = response.body?.string().orEmpty()
                     android.util.Log.e("ByteLog", "Failed to update food entry on Sparky: HTTP ${response.code} $errBody")
-                    Result.failure(IOException("Update food entry failed: HTTP ${response.code} - $errBody"))
+                    Result.failure(SparkyHttpException(response.code, "Update food entry failed: HTTP ${response.code} - $errBody"))
                 }
             }
         } catch (e: Exception) {
@@ -1034,6 +1037,11 @@ internal fun createdEntryId(element: kotlinx.serialization.json.JsonElement?): S
     is kotlinx.serialization.json.JsonArray -> element.firstNotNullOfOrNull { createdEntryId(it) }
     else -> null
 }
+
+/** The idempotency key Sparky takes (a UUID) for an entry: its id when that is one, else a UUID made from it. */
+internal fun clientIdFor(entryId: String): String =
+    runCatching { UUID.fromString(entryId).toString() }.getOrNull()?.takeIf { it.equals(entryId, ignoreCase = true) }
+        ?: UUID.nameUUIDFromBytes("nibl-entry:$entryId".toByteArray()).toString()
 
 /** A repeatable id for a downloaded entry that came without one. */
 internal fun stableEntryId(date: String, obj: kotlinx.serialization.json.JsonObject): String {

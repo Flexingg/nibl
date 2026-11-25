@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.bytelog.app.data.local.db.FoodEntryDao
 import com.bytelog.app.data.local.db.WaterLogDao
+import com.bytelog.app.data.local.model.FoodEntry
+import com.bytelog.app.data.local.model.WaterLogEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,9 +36,40 @@ object HealthConnectEcho {
     }
 
     fun isEcho(source: String?, sourceId: String?): Boolean {
-        if (source == null || sourceId == null || !source.contains("health", ignoreCase = true)) return false
+        if (source == null || sourceId == null || !imported(source)) return false
         val p = prefs ?: return false
         return p.getString(KEY, "").orEmpty().split(',').contains(sourceId)
+    }
+
+    /** Came into Sparky from Health Connect (its phone app's import). */
+    fun imported(source: String?): Boolean = source?.contains("health", ignoreCase = true) == true
+
+    private fun norm(s: String?) = s.orEmpty().trim().lowercase().replace(Regex("\\s+"), " ")
+
+    /**
+     * Sparky's diary for a day without the SparkyFitness app's imports of food that Nibl wrote to Health Connect.
+     *
+     * Nibl writes each food to Health Connect; the SparkyFitness phone app reads Health Connect and imports what other
+     * apps wrote, so each food comes back into Sparky as a second entry (source "Health Connect"). Sparky's diary
+     * list doesn't say which Health Connect record an entry came from, so a copy is recognised by what it is: an
+     * imported entry with the same day and name as one logged in Sparky directly ([server]) or on this phone
+     * ([local]). Imported food with no such twin (from another app) stays.
+     */
+    fun dropFoodEchoes(server: List<FoodEntry>, local: List<FoodEntry> = emptyList()): List<FoodEntry> {
+        val originals = (server + local).filter { !imported(it.source) }
+            .map { it.entryDate.take(10) to norm(it.foodName) }.toSet()
+        return server.filterNot { e ->
+            imported(e.source) && (isEcho(e.source, e.sourceId) || (e.entryDate.take(10) to norm(e.foodName)) in originals)
+        }
+    }
+
+    /** The same for drinks: an imported drink of the same amount (within 1 ml) on the same day as one logged directly. */
+    fun dropWaterEchoes(server: List<WaterLogEntry>, local: List<WaterLogEntry> = emptyList()): List<WaterLogEntry> {
+        val originals = (server + local).filter { !imported(it.source) }
+        return server.filterNot { w ->
+            imported(w.source) && (isEcho(w.source, w.sourceId) ||
+                originals.any { o -> o.entryDate.take(10) == w.entryDate.take(10) && kotlin.math.abs(o.waterMl - w.waterMl) <= 1f })
+        }
     }
 }
 
@@ -103,8 +136,9 @@ class HealthConnectSync(
         val sig = HealthConnectPlan.signature(food, water)
         if (prefs.getString("sig:$date", null) == sig) return food.size + water.size to left
 
-        store.deleteFood(ids("food:$date"))
-        store.deleteWater(ids("water:$date"))
+        // Only records whose food or drink is gone are deleted; the rest are updated in place (same id, newer version)
+        store.deleteFood(ids("food:$date") - food.map { it.clientRecordId }.toSet())
+        store.deleteWater(ids("water:$date") - water.map { it.clientRecordId }.toSet())
         val foodUuids = store.writeFood(food, version, z)
         val waterUuids = store.writeWater(water, version, z)
         HealthConnectEcho.remember(foodUuids + waterUuids)
