@@ -131,6 +131,7 @@ fun FastingScreen(
 
     var showEditStartDialog by remember { mutableStateOf(false) }
     var showPreferencesSheet by remember { mutableStateOf(false) }
+    var editingFast by remember { mutableStateOf<FastingLog?>(null) }
     var pendingDeleteFast by remember { mutableStateOf<FastingLog?>(null) }
     var showEndConfirmDialog by remember { mutableStateOf(false) }
 
@@ -287,6 +288,7 @@ fun FastingScreen(
                 items(history, key = { it.id }) { log ->
                     FastingHistoryRow(
                         log = log,
+                        onEdit = { editingFast = log },
                         onDelete = { pendingDeleteFast = log }
                     )
                 }
@@ -335,6 +337,19 @@ fun FastingScreen(
                 }
             }
         )
+    }
+
+    // Editing a past fast's start and end
+    editingFast?.let { log ->
+        val start = log.startInstant()
+        if (start != null) {
+            EditFastSheet(
+                initialStart = start,
+                initialEnd = log.endInstant() ?: if (log.isActive) null else start.plusSeconds((log.durationMinutes ?: 0) * 60L),
+                onSave = { s, e -> editingFast = null; viewModel.editFast(log, s, e) },
+                onDismiss = { editingFast = null }
+            )
+        } else editingFast = null
     }
 
     // Delete History Confirmation Dialog
@@ -855,6 +870,7 @@ private fun MetabolicZoneTimelineCard(
 @Composable
 private fun FastingHistoryRow(
     log: FastingLog,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     val startInstant = log.startInstant()
@@ -869,6 +885,7 @@ private fun FastingHistoryRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(ByteSurfaceDark)
+            .clickable(onClick = onEdit)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -919,6 +936,14 @@ private fun FastingHistoryRow(
             )
         }
 
+        IconButton(onClick = onEdit) {
+            Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = "Edit fast times",
+                tint = ByteCreamMuted,
+                modifier = Modifier.size(20.dp)
+            )
+        }
         IconButton(onClick = onDelete) {
             Icon(
                 imageVector = Icons.Default.DeleteOutline,

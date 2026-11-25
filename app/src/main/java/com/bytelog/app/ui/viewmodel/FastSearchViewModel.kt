@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import java.util.UUID
+import com.bytelog.app.data.remote.createCustomFood
+import com.bytelog.app.data.remote.scanNutritionLabel
+import com.bytelog.app.data.remote.estimateMealPhoto
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class FastSearchViewModel(
@@ -208,11 +211,27 @@ class FastSearchViewModel(
         }
     }
 
+    /**
+     * When the food in the tray was eaten: the day it's logged to, and a time of day if the user picked one. With no
+     * time picked, food for today is stamped with the time it's logged (see [FoodRepository.commitMultiAdd]).
+     */
+    private val _eatenAt = MutableStateFlow(com.bytelog.app.ui.components.EatenAt(java.time.LocalDate.now(), null))
+    val eatenAt: StateFlow<com.bytelog.app.ui.components.EatenAt> = _eatenAt.asStateFlow()
+
+    /** Logs to another day and/or time. A day ahead turns the tray into planning, as opening the screen on it would. */
+    fun setEatenAt(at: com.bytelog.app.ui.components.EatenAt) {
+        targetDate = at.date.toString()
+        _eatenAt.value = at
+    }
+
+    private fun stampedTime(): String? = com.bytelog.app.ui.components.EatenAtText.stored(_eatenAt.value.time)
+
     fun initContext(mealTypeId: String, mealName: String, date: String) {
         val cleanName = mealName.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
         this.targetMealTypeId = mealTypeId
         this.targetMealName = cleanName
         this.targetDate = date
+        _eatenAt.value = com.bytelog.app.ui.components.EatenAt(runCatching { java.time.LocalDate.parse(date.take(10)) }.getOrDefault(java.time.LocalDate.now()), null)
         this._selectedMealName.value = cleanName
     }
 
@@ -419,7 +438,8 @@ class FastSearchViewModel(
     fun commitStagedTray(onSuccess: () -> Unit) {
         // Always the meal and day this screen is logging to (the ones on the Log button)
         val entriesToCommit = _stagedEntries.value.map {
-            it.copy(mealTypeId = targetMealTypeId, mealName = targetMealName, entryDate = targetDate.ifBlank { it.entryDate })
+            it.copy(mealTypeId = targetMealTypeId, mealName = targetMealName, entryDate = targetDate.ifBlank { it.entryDate },
+                entryTime = stampedTime() ?: it.entryTime)
         }
         if (entriesToCommit.isEmpty()) return
 
@@ -454,6 +474,7 @@ class FastSearchViewModel(
             mealTypeId = targetMealTypeId, mealName = targetMealName, quantity = p.quantity, unit = p.unit,
             calories = m.calories, protein = m.protein, carbs = m.carbs, fat = m.fat,
             entryDate = targetDate.ifBlank { java.time.LocalDate.now().toString() },
+            entryTime = stampedTime(),
             syncStatus = FoodEntry.SYNC_STATUS_PENDING_INSERT
         )
         viewModelScope.launch {

@@ -83,6 +83,8 @@ fun EditFoodEntrySheet(
     }
     var selectedUnit by remember { mutableStateOf(entry.unit) }
     var selectedDate by remember { mutableStateOf(entry.entryDate) }
+    var selectedTime by remember { mutableStateOf(com.bytelog.app.ui.components.EatenAtText.parse(entry.entryTime)) }
+    var showWhenPicker by remember { mutableStateOf(false) }
     var selectedMealTypeId by remember { mutableStateOf(entry.mealTypeId) }
     var selectedMealName by remember { mutableStateOf(entry.mealName) }
 
@@ -178,67 +180,50 @@ fun EditFoodEntrySheet(
 
         // Date Selector Chips & Field (Move to date)
         Text(
-            text = "DATE",
+            text = "WHEN",
             color = ByteCreamMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp
         )
         Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            listOf(
-                "Today" to today,
-                "Tomorrow" to tomorrow,
-                "Yesterday" to yesterday,
-                "Logged Date" to entry.entryDate
-            ).distinctBy { it.second }.forEach { (label, dateVal) ->
-                val isSelected = selectedDate == dateVal
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) ByteTomato else ByteSurfaceVariantDark)
-                        .clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            selectedDate = dateVal
-                        }
-                        .padding(vertical = 7.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label,
-                        color = if (isSelected) ByteOnTomato else ByteCreamMuted,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                    )
-                }
+        // The day and time it was eaten, as one control: tap to change either
+        run {
+            val use24h = android.text.format.DateFormat.is24HourFormat(androidx.compose.ui.platform.LocalContext.current)
+            val day = runCatching { LocalDate.parse(selectedDate.trim().take(10)) }.getOrDefault(LocalDate.now())
+            val at = com.bytelog.app.ui.components.EatenAt(day, selectedTime)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(ByteSurfaceVariantDark)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showWhenPicker = true
+                    }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.CalendarToday, contentDescription = null, tint = ByteTomato, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    com.bytelog.app.ui.components.EatenAtText.label(at, LocalDate.now(), use24h),
+                    color = ByteCream, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
+                )
+                Text(if (selectedTime == null) "Add time" else "Change", color = ByteTomato, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+            if (showWhenPicker) {
+                com.bytelog.app.ui.components.WhenPickerSheet(
+                    initial = at,
+                    onDone = { picked ->
+                        selectedDate = picked.date.format(dateFormatter)
+                        selectedTime = picked.time
+                        showWhenPicker = false
+                    },
+                    onDismiss = { showWhenPicker = false }
+                )
             }
         }
-        Spacer(modifier = Modifier.height(6.dp))
-        OutlinedTextField(
-            value = selectedDate,
-            onValueChange = { selectedDate = it },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.CalendarToday,
-                    contentDescription = null,
-                    tint = ByteCreamMuted,
-                    modifier = Modifier.size(16.dp)
-                )
-            },
-            label = { Text("Date (YYYY-MM-DD)", color = ByteCreamMuted, fontSize = 11.sp) },
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = ByteCream,
-                unfocusedTextColor = ByteCream,
-                focusedBorderColor = ByteTomato,
-                unfocusedBorderColor = ByteSurfaceVariantDark
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
         Spacer(modifier = Modifier.height(14.dp))
 
         // Live Calculated Calories & Macros
@@ -418,6 +403,7 @@ fun EditFoodEntrySheet(
                             quantity = finalQty,
                             unit = selectedUnit,
                             entryDate = selectedDate.trim(),
+                        entryTime = com.bytelog.app.ui.components.EatenAtText.stored(selectedTime),
                             mealTypeId = selectedMealTypeId,
                             mealName = selectedMealName,
                             calories = calculatedCalories,
@@ -462,6 +448,7 @@ fun EditFoodEntrySheet(
                         quantity = finalQty,
                         unit = selectedUnit,
                         entryDate = selectedDate.trim(),
+                        entryTime = com.bytelog.app.ui.components.EatenAtText.stored(selectedTime),
                         mealTypeId = selectedMealTypeId,
                         mealName = selectedMealName,
                         calories = calculatedCalories,

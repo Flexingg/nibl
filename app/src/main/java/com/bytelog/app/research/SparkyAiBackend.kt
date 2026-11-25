@@ -3,6 +3,7 @@ package com.bytelog.app.research
 import com.bytelog.app.data.remote.ChatMessageInput
 import com.bytelog.app.data.remote.SparkyApiClient
 import com.bytelog.app.data.remote.SparkyTools
+import com.bytelog.app.data.remote.sendChatMessage
 
 /** What Sparky's own AI answered, and which of its tools it used. */
 data class SparkyAiReply(

@@ -68,12 +68,32 @@ class SettingsRepository(
         prefs[KEY_SERVER_URL] ?: "http://10.0.2.2:3010"
     }
 
-    val authToken: Flow<String?> = context.dataStore.data.map { prefs ->
-        prefs[KEY_AUTH_TOKEN]
+    /** The Sparky session token. Stored encrypted with a Keystore key; older plain copies are still read (and encrypted on [migrateSecrets]). */
+    val authToken: Flow<String?> = context.dataStore.data.map { prefs -> readSecret(prefs[KEY_AUTH_TOKEN]) }
+
+    /** The Sparky API key, stored encrypted like [authToken]. */
+    val apiKey: Flow<String?> = context.dataStore.data.map { prefs -> readSecret(prefs[KEY_API_KEY]) }
+
+    /** Marks values written encrypted; anything without it is an older plain copy. */
+    private val secretPrefix = "enc1:"
+
+    private fun readSecret(stored: String?): String? = when {
+        stored == null -> null
+        stored.startsWith(secretPrefix) -> cipher.decrypt(stored.removePrefix(secretPrefix))
+        else -> stored
     }
 
-    val apiKey: Flow<String?> = context.dataStore.data.map { prefs ->
-        prefs[KEY_API_KEY]
+    // If the Keystore can't be used on this phone, keep the value as before rather than lose the login
+    private fun sealSecret(plain: String): String = runCatching { secretPrefix + cipher.encrypt(plain) }.getOrDefault(plain)
+
+    /** Encrypts a Sparky token or API key saved in plain text by an earlier version. Safe to call any time. */
+    suspend fun migrateSecrets() {
+        context.dataStore.edit { prefs ->
+            listOf(KEY_AUTH_TOKEN, KEY_API_KEY).forEach { key ->
+                val v = prefs[key]
+                if (v != null && !v.startsWith(secretPrefix)) prefs[key] = sealSecret(v)
+            }
+        }
     }
 
     val userEmail: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -336,13 +356,13 @@ class SettingsRepository(
 
     suspend fun saveAuthToken(token: String?) {
         context.dataStore.edit { prefs ->
-            if (token != null) prefs[KEY_AUTH_TOKEN] = token else prefs.remove(KEY_AUTH_TOKEN)
+            if (token != null) prefs[KEY_AUTH_TOKEN] = sealSecret(token) else prefs.remove(KEY_AUTH_TOKEN)
         }
     }
 
     suspend fun saveAuthTokenAndEmail(token: String?, email: String?) {
         context.dataStore.edit { prefs ->
-            if (token != null) prefs[KEY_AUTH_TOKEN] = token else prefs.remove(KEY_AUTH_TOKEN)
+            if (token != null) prefs[KEY_AUTH_TOKEN] = sealSecret(token) else prefs.remove(KEY_AUTH_TOKEN)
             if (email != null) prefs[KEY_USER_EMAIL] = email else prefs.remove(KEY_USER_EMAIL)
         }
     }
@@ -363,12 +383,12 @@ class SettingsRepository(
         context.dataStore.edit { prefs ->
             prefs[KEY_SERVER_URL] = url
             if (token != null) {
-                prefs[KEY_AUTH_TOKEN] = token
+                prefs[KEY_AUTH_TOKEN] = sealSecret(token)
             } else if (!preserveExistingTokenIfNull) {
                 prefs.remove(KEY_AUTH_TOKEN)
             }
             if (!apiKey.isNullOrBlank()) {
-                prefs[KEY_API_KEY] = apiKey
+                prefs[KEY_API_KEY] = sealSecret(apiKey)
             } else {
                 prefs.remove(KEY_API_KEY)
             }

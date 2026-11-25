@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
+import com.bytelog.app.data.remote.deleteFood
 
 /** The editor's fields as typed. Numbers stay text until saved so a half-typed "1." isn't fought. */
 data class FoodForm(

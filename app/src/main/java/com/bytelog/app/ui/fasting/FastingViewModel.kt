@@ -122,6 +122,20 @@ class FastingViewModel(
         }
     }
 
+    /** Changes a past (or ongoing) fast's start and end; its target end moves with the start. */
+    fun editFast(log: com.bytelog.app.data.fasting.FastingLog, start: Instant, end: Instant?) {
+        viewModelScope.launch {
+            repository.updateFast(
+                id = log.id,
+                startTimeIso = start.toString(),
+                endTimeIso = end?.toString(),
+                targetEndTimeIso = start.plusMillis(log.targetDurationMillis()).toString(),
+                fastingType = log.fastingType
+            ).onSuccess { _statusMessage.value = "Fast updated" }
+                .onFailure { err -> _statusMessage.value = err.message ?: "Could not update the fast" }
+        }
+    }
+
     fun deleteFast(id: String) {
         viewModelScope.launch {
             repository.deleteFast(id)

@@ -1,0 +1,1117 @@
+package com.bytelog.app.ui.screens
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import com.bytelog.app.ui.theme.fluidBackdrop
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.bytelog.app.ui.diary.daySwipe
+import androidx.compose.ui.graphics.graphicsLayer
+import com.bytelog.app.ui.components.homeItem
+import com.bytelog.app.ui.components.popIn
+import com.bytelog.app.ui.components.pressBounce
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.RestaurantMenu
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.bytelog.app.data.local.model.FoodEntry
+import com.bytelog.app.ui.components.BodyweightCard
+import com.bytelog.app.ui.components.CopyMealDialog
+import com.bytelog.app.ui.components.DailyMacroHeader
+import com.bytelog.app.ui.components.DeleteMealConfirmDialog
+import com.bytelog.app.ui.components.EditFoodEntrySheet
+import com.bytelog.app.ui.components.GoalAdjustDialog
+import com.bytelog.app.ui.components.HydrationCard
+import com.bytelog.app.ui.components.HydrationSheet
+import com.bytelog.app.ui.components.MealTemplatesSheet
+import com.bytelog.app.ui.components.MoveCopyItemsDialog
+import com.bytelog.app.ui.components.MoveCopyMode
+import com.bytelog.app.ui.components.RecipeBuilderSheet
+import com.bytelog.app.ui.components.SaveMealTemplateDialog
+import com.bytelog.app.ui.components.WeightLogDialog
+import com.bytelog.app.ui.components.WeightVsCaloriesCard
+import com.bytelog.app.ui.theme.ByteCream
+import com.bytelog.app.ui.theme.blurSource
+import com.bytelog.app.ui.theme.glass
+import androidx.compose.material.icons.filled.Tune
+import com.bytelog.app.ui.theme.ByteCreamMuted
+import com.bytelog.app.ui.theme.ByteInkDark
+import com.bytelog.app.ui.theme.ByteSurfaceDark
+import com.bytelog.app.ui.theme.ByteSurfaceVariantDark
+import com.bytelog.app.ui.theme.ByteTomato
+import com.bytelog.app.ui.theme.ByteOnTomato
+import com.bytelog.app.ui.theme.MacroCarbs
+import com.bytelog.app.ui.theme.MacroFat
+import com.bytelog.app.ui.theme.MacroProtein
+import com.bytelog.app.ui.viewmodel.DiaryViewModel
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
+
+/*
+ * The diary's meal cards and food rows: a meal with its foods, swipe to delete or copy, the inline editor and the
+ * quick "same as yesterday" shortcuts. Split out of DiaryScreen.kt, which uses them.
+ */
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun MealCard(
+    mealName: String,
+    mealCalories: Float,
+    entries: List<FoodEntry>,
+    onAddFood: () -> Unit,
+    onAddFoodLongClick: () -> Unit,
+    onHeaderDoubleClick: () -> Unit,
+    onCopyMeal: () -> Unit,
+    onMoveMeal: () -> Unit,
+    onClearMeal: () -> Unit,
+    onSaveTemplate: () -> Unit,
+    onOpenTemplates: () -> Unit,
+    onShare: (() -> Unit)? = null,
+    onEditEntry: (FoodEntry) -> Unit,
+    onMoveEntry: (FoodEntry) -> Unit,
+    onCopyEntry: (FoodEntry) -> Unit,
+    onDuplicateEntry: (FoodEntry) -> Unit,
+    onQuickIncrementEntry: (FoodEntry) -> Unit,
+    onDeleteEntry: (FoodEntry) -> Unit,
+    onBatchMove: (List<FoodEntry>) -> Unit,
+    onBatchCopy: (List<FoodEntry>) -> Unit,
+    onBatchDelete: (List<FoodEntry>) -> Unit,
+    /** Amount editor opened under a food by tapping it: (entry, close, delete). Null opens [onEditEntry] instead. */
+    inlineEditor: (@Composable (FoodEntry, () -> Unit, () -> Unit) -> Unit)? = null
+) {
+    val haptic = LocalHapticFeedback.current
+    var isSelectionMode by remember { mutableStateOf(false) }
+    // Keyed by when the entry was made, which survives Sparky giving it a new id
+    var expandedKey by remember { mutableStateOf<String?>(null) }
+    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(entries.isEmpty()) {
+        if (entries.isEmpty()) {
+            isSelectionMode = false
+            selectedIds = emptySet()
+        }
+    }
+
+    // Expressive segmented group: the header and each food are separate rounded pieces with small gaps.
+    val hasBottom = entries.isNotEmpty()
+    val segOuter = 24.dp
+    val segInner = 6.dp
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+      Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(
+                if (hasBottom) RoundedCornerShape(topStart = segOuter, topEnd = segOuter, bottomStart = segInner, bottomEnd = segInner)
+                else RoundedCornerShape(segOuter)
+            )
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(14.dp)
+      ) {
+        if (isSelectionMode) {
+            // Selection Mode Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(ByteSurfaceVariantDark)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedIds = if (selectedIds.size == entries.size) {
+                                    emptySet()
+                                } else {
+                                    entries.map { it.id }.toSet()
+                                }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (selectedIds.size == entries.size) "Deselect All" else "Select All",
+                            color = ByteCream,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Text(
+                        text = "${selectedIds.size} / ${entries.size} selected",
+                        color = ByteCreamMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(ByteTomato.copy(alpha = 0.2f))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            isSelectionMode = false
+                            selectedIds = emptySet()
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "Done",
+                        color = ByteTomato,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        } else {
+            // Meal Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .combinedClickable(
+                            onClick = onCopyMeal,
+                            onDoubleClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onHeaderDoubleClick()
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuExpanded = true
+                            }
+                        )
+                ) {
+                    Text(
+                        text = mealName,
+                        color = ByteCream,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${mealCalories.roundToInt()} kcal",
+                        color = ByteCreamMuted,
+                        fontSize = 12.sp
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    if (entries.isNotEmpty() && onShare != null) {
+                        IconButton(
+                            onClick = onShare,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Groups,
+                                contentDescription = "Share $mealName with family",
+                                tint = ByteCreamMuted,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    if (entries.isNotEmpty()) {
+                        IconButton(
+                            onClick = onSaveTemplate,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.BookmarkAdd,
+                                contentDescription = "Save $mealName as Template",
+                                tint = ByteCreamMuted,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onCopyMeal,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy $mealName",
+                            tint = ByteCreamMuted,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onOpenTemplates,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.RestaurantMenu,
+                            contentDescription = "Templates & Recipes",
+                            tint = ByteCreamMuted,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(ByteSurfaceVariantDark)
+                            .combinedClickable(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onAddFood()
+                                },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onAddFoodLongClick()
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add food to $mealName (Hold for Barcode)",
+                            tint = ByteTomato,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // 3-dots Menu for Full Meal Actions
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Meal Options",
+                                tint = ByteCreamMuted,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                            modifier = Modifier.background(ByteSurfaceDark)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Move Meal...", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                                        contentDescription = null,
+                                        tint = ByteTomato,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onMoveMeal()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Copy Meal...", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = null,
+                                        tint = MacroProtein,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onCopyMeal()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Copy Yesterday's $mealName", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.History,
+                                        contentDescription = null,
+                                        tint = ByteCreamMuted,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onHeaderDoubleClick()
+                                }
+                            )
+
+                            if (entries.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Select Items...", color = ByteCream) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.SelectAll,
+                                            contentDescription = null,
+                                            tint = ByteCreamMuted,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        isSelectionMode = true
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text("Save as Template", color = ByteCream) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.BookmarkAdd,
+                                            contentDescription = null,
+                                            tint = ByteCreamMuted,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onSaveTemplate()
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = { Text("Clear Meal", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = null,
+                                            tint = Color(0xFFEF4444),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onClearMeal()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+      }
+
+        // Entries List
+        if (entries.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                entries.forEachIndexed { index, entry ->
+                    val isLast = index == entries.lastIndex && !isSelectionMode
+                    val entryKey = "${entry.createdAt}|${entry.foodName}"
+                    val expanded = inlineEditor != null && !isSelectionMode && expandedKey == entryKey
+                    key(entry.id) {
+                      Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        SwipeableFoodEntryRow(
+                            shape = if (isLast && !expanded) RoundedCornerShape(topStart = segInner, topEnd = segInner, bottomStart = segOuter, bottomEnd = segOuter)
+                                else RoundedCornerShape(segInner),
+                            entry = entry,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = selectedIds.contains(entry.id),
+                            onToggleSelection = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedIds = if (selectedIds.contains(entry.id)) {
+                                    selectedIds - entry.id
+                                } else {
+                                    selectedIds + entry.id
+                                }
+                            },
+                            onStartSelection = {
+                                isSelectionMode = true
+                                selectedIds = setOf(entry.id)
+                            },
+                            onEdit = {
+                                if (inlineEditor != null) expandedKey = if (expanded) null else entryKey else onEditEntry(entry)
+                            },
+                            onEditFull = { expandedKey = null; onEditEntry(entry) },
+                            onMove = { onMoveEntry(entry) },
+                            onCopy = { onCopyEntry(entry) },
+                            onDuplicate = { onDuplicateEntry(entry) },
+                            onQuickIncrement = { onQuickIncrementEntry(entry) },
+                            onDelete = { onDeleteEntry(entry) }
+                        )
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = expanded,
+                            enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                            exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+                        ) {
+                            // Scrolled into view as it opens, so it isn't hidden under the toolbar at the bottom
+                            val bring = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+                            LaunchedEffect(Unit) {
+                                kotlinx.coroutines.delay(220)
+                                runCatching { bring.bringIntoView() }
+                            }
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .bringIntoViewRequester(bring)
+                                    .clip(
+                                        if (isLast) RoundedCornerShape(topStart = segInner, topEnd = segInner, bottomStart = segOuter, bottomEnd = segOuter)
+                                        else RoundedCornerShape(segInner)
+                                    )
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .padding(14.dp)
+                            ) {
+                                inlineEditor?.invoke(entry, { expandedKey = null }, { expandedKey = null; onDeleteEntry(entry) })
+                            }
+                        }
+                      }
+                    }
+                }
+            }
+        }
+
+        // Batch Action Bar when in Selection Mode
+        if (isSelectionMode && entries.isNotEmpty()) {
+            val selectedEntries = entries.filter { selectedIds.contains(it.id) }
+            val count = selectedEntries.size
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = segInner, topEnd = segInner, bottomStart = segOuter, bottomEnd = segOuter))
+                    .background(ByteSurfaceVariantDark)
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Move button
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (count > 0) ByteTomato else ByteSurfaceDark)
+                        .clickable(enabled = count > 0) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onBatchMove(selectedEntries)
+                            isSelectionMode = false
+                            selectedIds = emptySet()
+                        }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                            contentDescription = null,
+                            tint = if (count > 0) ByteOnTomato else ByteCreamMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = if (count > 0) "Move ($count)" else "Move",
+                            color = if (count > 0) ByteOnTomato else ByteCreamMuted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Copy button
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (count > 0) MacroProtein else ByteSurfaceDark)
+                        .clickable(enabled = count > 0) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onBatchCopy(selectedEntries)
+                            isSelectionMode = false
+                            selectedIds = emptySet()
+                        }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = null,
+                            tint = if (count > 0) ByteInkDark else ByteCreamMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = if (count > 0) "Copy ($count)" else "Copy",
+                            color = if (count > 0) ByteInkDark else ByteCreamMuted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Delete button
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (count > 0) Color(0xFFEF4444) else ByteSurfaceDark)
+                        .clickable(enabled = count > 0) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onBatchDelete(selectedEntries)
+                            isSelectionMode = false
+                            selectedIds = emptySet()
+                        }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = if (count > 0) ByteCream else ByteCreamMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = if (count > 0) "Delete ($count)" else "Delete",
+                            color = if (count > 0) ByteCream else ByteCreamMuted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun SwipeableFoodEntryRow(
+    entry: FoodEntry,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelection: () -> Unit = {},
+    onStartSelection: () -> Unit = {},
+    onEdit: () -> Unit,
+    onMove: () -> Unit,
+    onCopy: () -> Unit,
+    onDuplicate: () -> Unit,
+    onQuickIncrement: () -> Unit,
+    onDelete: () -> Unit,
+    /** The full edit sheet, from the item menu (a tap opens the amount editor in place). */
+    onEditFull: () -> Unit = onEdit
+) {
+    val haptic = LocalHapticFeedback.current
+    var itemMenuExpanded by remember { mutableStateOf(false) }
+
+    if (isSelectionMode) {
+        // Selection Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(if (isSelected) ByteTomato.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainer)
+                .clickable { onToggleSelection() }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                    contentDescription = null,
+                    tint = if (isSelected) ByteTomato else ByteCreamMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+
+                Column {
+                    Text(
+                        text = entry.foodName,
+                        color = ByteCream,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = eatenTimePrefix(entry.entryTime, android.text.format.DateFormat.is24HourFormat(androidx.compose.ui.platform.LocalContext.current)) +
+                            "${entry.quantity.roundToInt()}${entry.unit} • P: ${entry.protein.roundToInt()}g  C: ${entry.carbs.roundToInt()}g  F: ${entry.fat.roundToInt()}g",
+                        color = ByteCreamMuted,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Text(
+                text = "${entry.calories.roundToInt()} kcal",
+                color = ByteTomato,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    } else {
+        // Normal Swipeable Row with 3-dots Menu
+        val dismissState = rememberSwipeToDismissBoxState(
+            confirmValueChange = { value ->
+                when (value) {
+                    SwipeToDismissBoxValue.StartToEnd -> {
+                        onDuplicate()
+                        false
+                    }
+                    SwipeToDismissBoxValue.EndToStart -> {
+                        onDelete()
+                        false
+                    }
+                    else -> false
+                }
+            }
+        )
+
+        LaunchedEffect(entry.id) {
+            if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+                dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+            }
+        }
+
+        SwipeToDismissBox(
+            state = dismissState,
+            backgroundContent = {
+                val color = when (dismissState.targetValue) {
+                    SwipeToDismissBoxValue.StartToEnd -> ByteTomato
+                    SwipeToDismissBoxValue.EndToStart -> Color(0xFFEF4444)
+                    else -> Color.Transparent
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(shape)
+                        .background(color)
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = if (dismissState.targetValue == SwipeToDismissBoxValue.StartToEnd)
+                        Alignment.CenterStart else Alignment.CenterEnd
+                ) {
+                    if (dismissState.targetValue == SwipeToDismissBoxValue.StartToEnd) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Duplicate", tint = ByteOnTomato)
+                    } else {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
+                    }
+                }
+            }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .combinedClickable(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onEdit()
+                        },
+                        onDoubleClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onQuickIncrement()
+                        },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            itemMenuExpanded = true
+                        }
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = entry.foodName,
+                        color = ByteCream,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    // Saved on this phone but not on Sparky yet; it is sent on the next sync
+                    if (entry.syncStatus == FoodEntry.SYNC_STATUS_PENDING_INSERT || entry.syncStatus == FoodEntry.SYNC_STATUS_PENDING_UPDATE) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Default.CloudOff,
+                            contentDescription = "Not on Sparky yet",
+                            tint = ByteCreamMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                  }
+                    Text(
+                        text = eatenTimePrefix(entry.entryTime, android.text.format.DateFormat.is24HourFormat(androidx.compose.ui.platform.LocalContext.current)) +
+                            "${entry.quantity.roundToInt()}${entry.unit} • P: ${entry.protein.roundToInt()}g  C: ${entry.carbs.roundToInt()}g  F: ${entry.fat.roundToInt()}g",
+                        color = ByteCreamMuted,
+                        fontSize = 11.sp
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "${entry.calories.roundToInt()} kcal",
+                        color = ByteTomato,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // 3-dots Menu for Food Item Actions
+                    Box {
+                        IconButton(
+                            onClick = { itemMenuExpanded = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Item Options",
+                                tint = ByteCreamMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = itemMenuExpanded,
+                            onDismissRequest = { itemMenuExpanded = false },
+                            modifier = Modifier.background(ByteSurfaceDark)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Edit details…", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        tint = ByteCream,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    itemMenuExpanded = false
+                                    onEditFull()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Move to...", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                                        contentDescription = null,
+                                        tint = ByteTomato,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    itemMenuExpanded = false
+                                    onMove()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Copy to...", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = null,
+                                        tint = MacroProtein,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    itemMenuExpanded = false
+                                    onCopy()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Duplicate Here", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = ByteCreamMuted,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    itemMenuExpanded = false
+                                    onDuplicate()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("+1 Serving", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = ByteCreamMuted,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    itemMenuExpanded = false
+                                    onQuickIncrement()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Select Items...", color = ByteCream) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.SelectAll,
+                                        contentDescription = null,
+                                        tint = ByteCreamMuted,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    itemMenuExpanded = false
+                                    onStartSelection()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = Color(0xFFEF4444),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    itemMenuExpanded = false
+                                    onDelete()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One-tap shortcuts for an empty meal: yesterday's foods, and the usual when it differs. */
+@Composable
+internal fun MealShortcutRow(
+    mealName: String,
+    shortcuts: com.bytelog.app.data.repository.MealShortcuts,
+    onLog: (List<FoodEntry>) -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(mealName, color = cs.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(72.dp), maxLines = 1)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+            if (shortcuts.yesterday.isNotEmpty()) item(key = "y") {
+                ShortcutChip(Icons.Default.History, "Same as yesterday", shortcuts.yesterday, cs.secondaryContainer, cs.onSecondaryContainer) { onLog(shortcuts.yesterday) }
+            }
+            if (shortcuts.showUsual) item(key = "u") {
+                val usual = shortcuts.usual.orEmpty()
+                ShortcutChip(Icons.Default.Star, "Your usual", usual, cs.tertiaryContainer, cs.onTertiaryContainer) { onLog(usual) }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ShortcutChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    entries: List<FoodEntry>,
+    container: Color,
+    content: Color,
+    onClick: () -> Unit
+) {
+    val kcal = entries.sumOf { it.calories.toDouble() }.roundToInt()
+    val what = if (entries.size == 1) entries[0].foodName else "${entries.size} foods"
+    Row(
+        Modifier
+            .pressBounce(0.95f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(container)
+            .clickable(onClickLabel = "Log $label") { onClick() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+        Column {
+            Text(label, color = content, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text("$what · $kcal kcal", color = content.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp))
+        }
+    }
+}
+
+/**
+ * The amount editor opened under a logged food: − / + , units and quick amounts, saved as you go (after a short
+ * pause, and when it closes). "More" opens the full edit sheet.
+ */
+@Composable
+internal fun InlineEntryEditor(
+    entry: FoodEntry,
+    viewModel: DiaryViewModel,
+    onDelete: () -> Unit,
+    onMore: () -> Unit,
+    onDone: () -> Unit
+) {
+    val key = "${entry.createdAt}|${entry.foodName}"
+    var food by remember(key) { mutableStateOf<com.bytelog.app.data.local.model.FoodItem?>(null) }
+    LaunchedEffect(key) { food = viewModel.foodForEntry(entry) }
+    var portion by remember(key) { mutableStateOf(com.bytelog.app.ui.logging.Portion(entry.quantity, entry.unit)) }
+    var saved by remember(key) { mutableStateOf(portion) }
+    val f = food
+    if (f != null) {
+        LaunchedEffect(portion) {
+            if (portion != saved) {
+                kotlinx.coroutines.delay(700)
+                viewModel.setEntryPortion(entry, f, portion)
+                saved = portion
+            }
+        }
+    }
+    // Closing straight after a change still saves it
+    val latest = androidx.compose.runtime.rememberUpdatedState(Triple(portion, saved, f))
+    androidx.compose.runtime.DisposableEffect(key) {
+        onDispose {
+            val (p, s, ff) = latest.value
+            if (ff != null && p != s) viewModel.setEntryPortion(entry, ff, p)
+        }
+    }
+    val cs = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (f == null) {
+            Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                com.bytelog.app.ui.diary.LoadingSpinner(modifier = Modifier.size(20.dp), color = cs.primary, strokeWidth = 2.dp)
+            }
+        } else {
+            com.bytelog.app.ui.logging.QuickPortionEditor(
+                food = f,
+                portion = portion,
+                units = com.bytelog.app.ui.logging.Portions.unitOptions(f),
+                onChange = { portion = it },
+                onRemove = onDelete
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.TextButton(onClick = onMore) { Text("More options", fontWeight = FontWeight.SemiBold) }
+            Spacer(Modifier.weight(1f))
+            androidx.compose.material3.FilledTonalButton(onClick = onDone) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Done", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/** "8:15 AM • " before a food's details when it has a time of day, else nothing. */
+internal fun eatenTimePrefix(entryTime: String?, use24h: Boolean): String =
+    com.bytelog.app.ui.components.EatenAtText.parse(entryTime)?.let { com.bytelog.app.ui.components.EatenAtText.time(it, use24h) + " • " }.orEmpty()
+

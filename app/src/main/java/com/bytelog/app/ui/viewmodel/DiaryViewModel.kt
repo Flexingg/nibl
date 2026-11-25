@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -50,6 +51,11 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
+import com.bytelog.app.data.remote.deleteWaterLog
+import com.bytelog.app.data.remote.copyMealFromYesterday
+import com.bytelog.app.data.remote.copyMeal
+import com.bytelog.app.data.remote.copyAllFromYesterday
+import com.bytelog.app.data.remote.fetchAdaptiveTdee
 
 private data class GoalSettingsData(
     val autoAdjust: Boolean,
@@ -103,8 +109,23 @@ class DiaryViewModel(
         .flatMapLatest { date -> foodRepository.getEntriesForDate(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val allEntries: StateFlow<List<FoodEntry>> = foodRepository.getAllEntries()
+    /**
+     * The food the calculations around the selected day need, not the whole history: the adaptive TDEE looks back
+     * [TDEE_WINDOW_DAYS] days and the weight vs calories chart up to its range. Reading only this window keeps the
+     * home screen quick however long the diary gets.
+     */
+    val allEntries: StateFlow<List<FoodEntry>> = combine(_selectedDate, _selectedChartRangeDays) { date, range ->
+        val end = runCatching { LocalDate.parse(date, dateFormatter) }.getOrElse { LocalDate.now() }
+        end.minusDays(maxOf(range, TDEE_WINDOW_DAYS).toLong()).format(dateFormatter) to end.format(dateFormatter)
+    }.distinctUntilChanged()
+        .flatMapLatest { (start, end) -> foodRepository.getEntriesInRange(start, end) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** The last few weeks up to today, for the recent meals list (which is about now, whatever day is open). */
+    private val recentEntries: StateFlow<List<FoodEntry>> = kotlinx.coroutines.flow.flow {
+        val today = LocalDate.now()
+        emitAll(foodRepository.getEntriesInRange(today.minusDays(RECENT_MEALS_DAYS.toLong()).format(dateFormatter), today.format(dateFormatter)))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allWeights: StateFlow<List<WeightEntry>> = weightRepository.getAllWeights()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -225,7 +246,7 @@ class DiaryViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val recentMealsHistory: StateFlow<List<RecentMealItem>> = combine(
-        allEntries,
+        recentEntries,
         _selectedDate,
         mealTypes
     ) { entries, _, mTypes ->
@@ -828,3 +849,9 @@ class DiaryViewModel(
         }
     }
 }
+
+/** Days of food the adaptive TDEE looks back over (matches [com.bytelog.app.data.analytics.AdaptiveTdeeEngine]). */
+private const val TDEE_WINDOW_DAYS = 28
+
+/** How far back the recent meals list looks. */
+private const val RECENT_MEALS_DAYS = 45

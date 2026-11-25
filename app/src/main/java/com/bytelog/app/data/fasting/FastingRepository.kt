@@ -228,6 +228,10 @@ class FastingRepository(
             _stats.value = computeStatsFromHistory(next)
         }
         persistCache()
+        // Sparky didn't take it: say so, since its copy wins at the next refresh
+        remote.exceptionOrNull()?.takeIf { !id.startsWith("local_") }?.let { e ->
+            return@withContext Result.failure(IllegalStateException("Sparky didn't save the change: ${e.message}"))
+        }
         Result.success(updated)
     }
 
