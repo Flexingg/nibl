@@ -3,7 +3,11 @@ package com.bytelog.app.ui.dashboard
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -88,6 +92,8 @@ data class TileFace(
     val action: TileAction? = null,
     /** A picture of the data, on half and full tiles. */
     val chart: TileChart? = null,
+    /** The tile is a glass filled this far (0..1) with gently moving water: the water tile. */
+    val fill: Float? = null,
     /** More to read ("Rice", "2 portions"), on half (two) and full (four) tiles. */
     val lines: List<Pair<String, String>> = emptyList(),
     val onClick: () -> Unit = {}
@@ -153,6 +159,7 @@ fun SummaryTile(
             .fillMaxWidth()
             .then(if (enabled) Modifier.pressBounce() else Modifier)
             .tileCard(radius)
+            .then(face.fill?.let { Modifier.waterFill(it, face.accent, face.container) } ?: Modifier)
             .then(if (enabled) Modifier.combinedClickable(onClick = face.onClick, onLongClick = onLongClick) else Modifier)
             .semantics(mergeDescendants = true) { contentDescription = face.spoken }
     ) {
@@ -189,7 +196,6 @@ fun SummaryTile(
                     val m = when (it) {
                         is TileChart.Photos -> Modifier.height(110.dp)
                         is TileChart.Macros, is TileChart.Meter -> Modifier
-                        is TileChart.Glasses -> Modifier.height(30.dp)
                         else -> Modifier.height(64.dp)
                     }
                     TileChartView(it, face.accent, Modifier.fillMaxWidth().then(m), large = true)
@@ -350,6 +356,39 @@ fun Modifier.longPressToEdit(enabled: Boolean, onLongPress: () -> Unit): Modifie
                     if (ev.changes.none { it.pressed }) break
                 }
             }
+        }
+    }
+}
+
+/** Grows in from a little smaller, as a small tile opens out to full width. */
+@Composable
+fun growIn(): Modifier {
+    val reduce = com.bytelog.app.ui.theme.LocalReduceMotion.current
+    val a = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (reduce) 1f else 0f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        a.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = 380f))
+    }
+    return Modifier.graphicsLayer {
+        val s = 0.82f + 0.18f * a.value
+        scaleX = s; scaleY = s
+        alpha = 0.4f + 0.6f * a.value.coerceIn(0f, 1f)
+        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
+    }
+}
+
+/** "Show less" under a tile that was opened out from small. */
+@Composable
+fun ShowLessButton(onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).background(cs.surfaceContainerHigh)
+                .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.ExpandLess, contentDescription = null, tint = cs.onSurfaceVariant, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Show less", color = cs.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

@@ -56,6 +56,7 @@ class TileGalleryTest {
     private val data = DashboardData(
         summary = DailySummary(today.toString(), totalCalories = 1340f, totalProtein = 96f, totalCarbs = 140f, totalFat = 42f),
         waterOz = 48f, waterGoalOz = 96f, drinkOz = 16f, drinks = 3,
+        waterWeek = (6 downTo 0).map { today.minusDays(it.toLong()).toString() to listOf(80f, 96f, 104f, 64f, 88f, 100f, 48f)[6 - it] },
         weight = 182.4f, weightUnit = "lbs", weightDelta = -0.6f,
         recentWeights = listOf(185.2f, 184.6f, 184.9f, 183.8f, 183.4f, 183.0f, 182.4f),
         weeklyReview = WeeklyReview(today.minusDays(7), today.minusDays(1),

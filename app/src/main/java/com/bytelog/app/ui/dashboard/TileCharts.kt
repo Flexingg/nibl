@@ -1,6 +1,7 @@
 package com.bytelog.app.ui.dashboard
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -27,6 +28,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -54,8 +56,6 @@ sealed interface TileChart {
     data class Spark(val points: List<Float>) : TileChart
     /** How full, 0..1, with [caption] beside it. */
     data class Meter(val fraction: Float, val caption: String? = null) : TileChart
-    /** [filled] of [total] glasses (at most 12 drawn). */
-    data class Glasses(val filled: Int, val total: Int) : TileChart
     /** Protein, carbs and fat: label, how far to goal (0..1), grams, colour. */
     data class Macros(val parts: List<MacroPart>) : TileChart
     /** Pictures, newest first, loaded when shown. */
@@ -72,7 +72,6 @@ fun TileChartView(chart: TileChart, accent: Color, modifier: Modifier = Modifier
         is TileChart.Bars -> BarsView(chart, accent, modifier)
         is TileChart.Spark -> SparkView(chart.points, accent, modifier)
         is TileChart.Meter -> MeterView(chart, accent, modifier)
-        is TileChart.Glasses -> GlassesView(chart, accent, modifier)
         is TileChart.Macros -> MacrosView(chart, modifier, large)
         is TileChart.Photos -> PhotosView(chart, modifier, if (large) 4 else 2)
     }
@@ -81,7 +80,7 @@ fun TileChartView(chart: TileChart, accent: Color, modifier: Modifier = Modifier
 @Composable
 private fun BarsView(chart: TileChart.Bars, accent: Color, modifier: Modifier) {
     val cs = MaterialTheme.colorScheme
-    val track = cs.surfaceContainerHighest
+    val track = cs.surfaceContainerHighest.copy(alpha = 0.7f)
     val grow = rememberEntrance()
     Column(modifier) {
         Canvas(Modifier.fillMaxWidth().weight(1f)) {
@@ -170,24 +169,6 @@ private fun MeterView(chart: TileChart.Meter, accent: Color, modifier: Modifier)
 }
 
 @Composable
-private fun GlassesView(chart: TileChart.Glasses, accent: Color, modifier: Modifier) {
-    val cs = MaterialTheme.colorScheme
-    val total = chart.total.coerceIn(1, 12)
-    val filled = chart.filled.coerceIn(0, total)
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) {
-        repeat(total) { i ->
-            val on = i < filled
-            Canvas(Modifier.weight(1f).height(22.dp)) {
-                // A tumbler: wider at the top
-                val w = size.width; val h = size.height; val inset = w * 0.14f
-                val glass = Path().apply { moveTo(0f, 0f); lineTo(w, 0f); lineTo(w - inset, h); lineTo(inset, h); close() }
-                if (on) drawPath(glass, accent) else drawPath(glass, cs.surfaceContainerHighest)
-            }
-        }
-    }
-}
-
-@Composable
 private fun MacrosView(chart: TileChart.Macros, modifier: Modifier, large: Boolean) {
     val cs = MaterialTheme.colorScheme
     Column(modifier, verticalArrangement = Arrangement.spacedBy(if (large) 8.dp else 2.dp, Alignment.Bottom)) {
@@ -228,4 +209,43 @@ private fun rememberEntrance(): Float {
     val a = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (reduce) 1f else 0f) }
     androidx.compose.runtime.LaunchedEffect(Unit) { a.animateTo(1f, spring(dampingRatio = 0.75f, stiffness = 140f)) }
     return a.value
+}
+
+/**
+ * The tile as a glass: water rising from the bottom to [level] (0..1), its surface two waves rolling opposite ways over
+ * a gentle bob, like the home screen water widget. Still with reduced motion. Drawn behind the tile's content.
+ */
+@Composable
+fun Modifier.waterFill(level: Float, color: Color, deep: Color): Modifier {
+    val reduce = com.bytelog.app.ui.theme.LocalReduceMotion.current
+    val lv by animateFloatAsState(level.coerceIn(0f, 1f), spring(dampingRatio = 0.6f, stiffness = 60f), label = "water_level")
+    val phase = if (reduce) androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) } else
+        androidx.compose.animation.core.rememberInfiniteTransition(label = "water_wave").animateFloat(
+            0f, (2 * Math.PI).toFloat(),
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(3200, easing = androidx.compose.animation.core.LinearEasing)),
+            label = "water_phase"
+        )
+    fun lerp(a: Color, b: Color, t: Float) = androidx.compose.ui.graphics.lerp(a, b, t)
+    val light = lerp(color, Color.White, 0.15f)
+    return this.drawBehind {
+        if (lv <= 0f) return@drawBehind
+        val ph = phase.value
+        val w = size.width; val h = size.height; val u = 1.dp.toPx()
+        val tau = (2 * Math.PI).toFloat()
+        val top = h - lv * h - (if (lv >= 1f) 8f * u else 0f) + 1.2f * u * kotlin.math.sin(ph)
+        val path = Path().apply {
+            moveTo(-6f, h + 6f)
+            var x = -6f
+            while (true) {
+                val t = x / w
+                lineTo(x, top + 3.2f * u * kotlin.math.sin(tau * 2f * t + ph) + 1.4f * u * kotlin.math.sin(tau * 3f * t - 2f * ph))
+                if (x >= w + 6f) break
+                x = (x + 3f * u).coerceAtMost(w + 6f)
+            }
+            lineTo(w + 6f, h + 6f); close()
+        }
+        // Soft enough that the text over it stays easy to read
+        drawPath(path, Brush.verticalGradient(listOf(lerp(deep, color, 0.35f).copy(alpha = 0.85f), deep.copy(alpha = 0.9f)), startY = top, endY = h))
+        drawPath(path, light.copy(alpha = 0.7f), style = Stroke(1.6f * u))
+    }
 }

@@ -191,6 +191,7 @@ fun DiaryScreen(
     val defaultContainerOz by viewModel.defaultContainerOz.collectAsState()
     val defaultContainerName by viewModel.defaultContainerName.collectAsState()
     val waterLogs by viewModel.waterLogsForDate.collectAsState()
+    val waterWeekOz by viewModel.waterWeek.collectAsState()
     val waterContainers by viewModel.waterContainers.collectAsState()
 
     val currentWeight by viewModel.currentWeight.collectAsState()
@@ -357,7 +358,13 @@ fun DiaryScreen(
     // ----- Home tiles: which show (a tile with nothing to show stays out of the way), and which fold at the top -----
     var editingHome by remember { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = editingHome) { editingHome = false }
-    val shownTiles = homeTiles.visible.filter { placed ->
+    // A small tile tapped opens out to full width in place, until "Show less" (or another day, or editing)
+    var expandedTile by remember { mutableStateOf<com.bytelog.app.data.repository.HomeTile?>(null) }
+    LaunchedEffect(selectedDate, editingHome) { expandedTile = null }
+    androidx.activity.compose.BackHandler(enabled = expandedTile != null && !editingHome) { expandedTile = null }
+    val shownTiles = homeTiles.visible.map { placed ->
+        if (placed.tile == expandedTile && placed.size == com.bytelog.app.data.repository.TileSize.SMALL) placed.copy(size = com.bytelog.app.data.repository.TileSize.FULL) else placed
+    }.filter { placed ->
         when (placed.tile) {
             com.bytelog.app.data.repository.HomeTile.WEEKLY_REVIEW -> weeklyReview != null
             com.bytelog.app.data.repository.HomeTile.FASTING -> fastingRepository != null
@@ -503,6 +510,7 @@ fun DiaryScreen(
             waterGoalOz = waterGoalOz,
             drinkOz = defaultContainerOz,
             drinks = waterLogs.size,
+            waterWeek = waterWeekOz,
             weight = (currentWeight ?: previousWeight)?.let { com.bytelog.app.ui.components.displayWeight(it, weightUnit) },
             weightUnit = weightUnit,
             weightDelta = com.bytelog.app.ui.components.weightChange(currentWeight, previousWeight, weightUnit),
@@ -826,6 +834,21 @@ fun DiaryScreen(
         }
     }
 
+    // A small tile's tap opens it out; other sizes go where the tile goes
+    val tileFaceFor: (com.bytelog.app.data.repository.PlacedTile) -> com.bytelog.app.ui.dashboard.TileFace = { placed ->
+        val f = faceOf(placed.tile)
+        if (placed.size != com.bytelog.app.data.repository.TileSize.SMALL) f
+        else f.copy(onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); expandedTile = placed.tile })
+    }
+    // A full-width tile in the list; one opened out from small grows in and has "Show less" under it
+    val expandableTile: @Composable (com.bytelog.app.data.repository.HomeTile) -> Unit = { tile ->
+        if (tile == expandedTile) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(Modifier.then(com.bytelog.app.ui.dashboard.growIn())) { fullTile(tile) }
+                com.bytelog.app.ui.dashboard.ShowLessButton { expandedTile = null }
+            }
+        } else fullTile(tile)
+    }
     // A tile at the top: its full or tile version, and the strip it folds into
     val foldSpec: (com.bytelog.app.data.repository.PlacedTile, Int, Boolean, androidx.compose.ui.unit.Dp) -> com.bytelog.app.ui.dashboard.FoldTileSpec = { placed, foldedSpan, isHero, tileHeight ->
         val tile = placed.tile
@@ -841,12 +864,13 @@ fun DiaryScreen(
             onLongPress = if (!full || tile == com.bytelog.app.data.repository.HomeTile.WATER) null else startEditing,
             expanded = {
                 when {
-                    !full -> com.bytelog.app.ui.dashboard.SummaryTile(face, placed.size, onLongClick = startEditing, height = tileHeight)
+                    !full -> com.bytelog.app.ui.dashboard.SummaryTile(tileFaceFor(placed), placed.size, onLongClick = startEditing, height = tileHeight)
                     tile == com.bytelog.app.data.repository.HomeTile.CALORIES -> com.bytelog.app.ui.diary.HeroMacros(dailySummary)
                     tile == com.bytelog.app.data.repository.HomeTile.WATER -> waterExpanded()
                     tile == com.bytelog.app.data.repository.HomeTile.WEIGHT -> weightExpanded()
                     else -> fullTile(tile)
                 }
+                if (tile == expandedTile) com.bytelog.app.ui.dashboard.ShowLessButton { expandedTile = null }
             },
             compact = { span ->
                 when {
@@ -1165,7 +1189,7 @@ fun DiaryScreen(
                                 Box(
                                     Modifier.homeItem(this, listState, first.tile.key)
                                         .longPressToEdit(first.tile != com.bytelog.app.data.repository.HomeTile.WATER, startEditing)
-                                ) { fullTile(first.tile) }
+                                ) { expandableTile(first.tile) }
                             }
                         }
                         else -> {
@@ -1174,7 +1198,7 @@ fun DiaryScreen(
                             item(key = rowKey) {
                                 com.bytelog.app.ui.dashboard.TileRow(row.map { it.size.span }, Modifier.homeItem(this, listState, rowKey)) {
                                     val h = com.bytelog.app.ui.dashboard.rowHeight(row.map { it.size })
-                                    row.forEach { t -> com.bytelog.app.ui.dashboard.SummaryTile(faceOf(t.tile), t.size, onLongClick = startEditing, height = h) }
+                                    row.forEach { t -> com.bytelog.app.ui.dashboard.SummaryTile(tileFaceFor(t), t.size, onLongClick = startEditing, height = h) }
                                 }
                             }
                         }

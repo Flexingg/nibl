@@ -51,6 +51,8 @@ class DashboardData(
     val drinkOz: Float,
     /** Drinks logged today. */
     val drinks: Int,
+    /** The last seven days of water, oldest first: "yyyy-MM-dd" and ounces. */
+    val waterWeek: List<Pair<String, Float>> = emptyList(),
     val weight: Float?,
     val weightUnit: String,
     val weightDelta: Float?,
@@ -172,8 +174,9 @@ internal class FaceColors(
 internal fun tileFace(tile: HomeTile, d: DashboardData, a: DashboardActions, c: FaceColors): TileFace {
     fun face(
         colors: Pair<Color, Color>, icon: androidx.compose.ui.graphics.vector.ImageVector, value: String?, detail: String?, onClick: () -> Unit,
-        progress: Float? = null, action: TileAction? = null, chart: TileChart? = null, lines: List<Pair<String, String>> = emptyList()
-    ) = TileFace(tile.title, icon, colors.first, colors.second, value, detail, progress, action, chart, lines, onClick)
+        progress: Float? = null, action: TileAction? = null, chart: TileChart? = null, lines: List<Pair<String, String>> = emptyList(),
+        fill: Float? = null
+    ) = TileFace(tile.title, icon, colors.first, colors.second, value, detail, progress, action, chart, fill, lines, onClick)
     val s = d.summary
     val week = d.days.takeLast(7)
     return when (tile) {
@@ -192,17 +195,17 @@ internal fun tileFace(tile: HomeTile, d: DashboardData, a: DashboardActions, c: 
             )
         }
         HomeTile.WATER -> {
-            val glasses = if (d.drinkOz > 0f) (d.waterGoalOz / d.drinkOz).roundToInt().coerceIn(1, 12) else 8
-            val filled = if (d.drinkOz > 0f) (d.waterOz / d.drinkOz).toInt() else 0
+            val drunk = d.waterWeek.filter { it.second > 0f }
             val left = (d.waterGoalOz - d.waterOz).coerceAtLeast(0f)
             face(
                 c.water, Icons.Default.WaterDrop, "${d.waterOz.roundToInt()} oz", "of ${d.waterGoalOz.roundToInt()}", a.water,
-                progress = if (d.waterGoalOz > 0f) d.waterOz / d.waterGoalOz else 0f,
                 action = TileAction("+${d.drinkOz.roundToInt()}", "Log ${d.drinkOz.roundToInt()} oz", a.logDrink),
-                chart = TileChart.Glasses(filled, glasses),
-                lines = listOf(
-                    "${d.drinks} drink${if (d.drinks == 1) "" else "s"} today" to "",
-                    (if (left > 0f) "${left.roundToInt()} oz to go" else "Goal reached") to ""
+                fill = if (d.waterGoalOz > 0f) d.waterOz / d.waterGoalOz else 0f,
+                chart = d.waterWeek.takeIf { it.isNotEmpty() }?.let { w -> TileChart.Bars(w.map { it.second }, d.waterGoalOz, w.map { dayLetter(it.first) }) },
+                lines = listOfNotNull(
+                    "${d.drinks} drink${if (d.drinks == 1) "" else "s"} today" to (if (left > 0f) "${left.roundToInt()} oz to go" else "goal reached"),
+                    drunk.takeIf { it.size >= 2 }?.let { "Average this week" to "${(it.sumOf { p -> p.second.toDouble() } / it.size).roundToInt()} oz" },
+                    d.waterWeek.takeIf { it.isNotEmpty() }?.let { w -> "Days at goal" to "${w.count { it.second >= d.waterGoalOz && d.waterGoalOz > 0f }}/${w.size}" }
                 )
             )
         }

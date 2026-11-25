@@ -16,6 +16,10 @@ interface WaterLogDao {
     @Query("SELECT COALESCE(SUM(waterMl), 0.0) FROM water_log_entries WHERE entryDate = :date AND syncStatus != 2")
     fun getTotalWaterForDate(date: String): Flow<Float>
 
+    /** Water drunk each day from [from] to [to] (inclusive, "yyyy-MM-dd"), in ml; days with none are left out. */
+    @Query("SELECT entryDate, COALESCE(SUM(waterMl), 0.0) AS ml FROM water_log_entries WHERE entryDate >= :from AND entryDate <= :to AND syncStatus != 2 GROUP BY entryDate")
+    fun getDailyTotals(from: String, to: String): Flow<List<DayWater>>
+
     @Query("SELECT * FROM water_log_entries WHERE entryDate = :date AND syncStatus != 2 ORDER BY loggedAt DESC, id DESC LIMIT 1")
     suspend fun getLatestLogForDate(date: String): WaterLogEntry?
 
@@ -49,3 +53,6 @@ interface WaterLogDao {
     @Query("DELETE FROM water_log_entries")
     suspend fun clearAllLogs()
 }
+
+/** One day's water, in ml. */
+data class DayWater(val entryDate: String, val ml: Float)

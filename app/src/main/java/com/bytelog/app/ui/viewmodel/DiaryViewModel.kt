@@ -302,6 +302,18 @@ class DiaryViewModel(
         .flatMapLatest { date -> waterRepository.getTotalWaterOzForDate(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
 
+    /** The week of water up to the day shown, oldest first: date and ounces. Days not yet on this phone are fetched once. */
+    private val fetchedWaterDays = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    val waterWeek: StateFlow<List<Pair<String, Float>>> = _selectedDate
+        .flatMapLatest { date ->
+            val end = runCatching { java.time.LocalDate.parse(date.substringBefore('T')) }.getOrElse { java.time.LocalDate.now() }
+            val days = (6 downTo 0).map { end.minusDays(it.toLong()).toString() }
+            val missing = days.dropLast(1).filter { fetchedWaterDays.add(it) }
+            if (missing.isNotEmpty()) viewModelScope.launch { waterRepository.fetchDays(missing) }
+            waterRepository.dailyTotalsOz(days.first(), days.last()).map { totals -> days.map { it to (totals[it] ?: 0f) } }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val waterLogsForDate: StateFlow<List<WaterLogEntry>> = _selectedDate
         .flatMapLatest { date -> waterRepository.getLogsForDate(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

@@ -49,6 +49,15 @@ class WaterRepository(
         return waterLogDao.getLogsForDate(cleanDate)
     }
 
+    /** Ounces drunk each day from [from] to [to] ("yyyy-MM-dd"), by date; days with none are missing. */
+    fun dailyTotalsOz(from: String, to: String): Flow<Map<String, Float>> =
+        waterLogDao.getDailyTotals(from, to).map { days -> days.associate { it.entryDate to it.ml / ML_PER_FL_OZ } }
+
+    /** Downloads the drinks of [dates] that this phone hasn't seen yet, for the water tile's history. Quiet on failure. */
+    suspend fun fetchDays(dates: List<String>) = withContext(Dispatchers.IO) {
+        dates.forEach { runCatching { syncWaterLogs(it) } }
+    }
+
     fun getTotalWaterOzForDate(date: String): Flow<Float> {
         val cleanDate = if (date.contains("T")) date.substringBefore("T") else date
         return waterLogDao.getTotalWaterForDate(cleanDate).map { ml -> ml / ML_PER_FL_OZ }
