@@ -228,6 +228,20 @@ class HomeLayoutUiTest {
     }
 
     @Test
+    fun tappingASmallTileOpensItOutAndShowLessPutsItBack() {
+        saveTiles(HomeTiles.DEFAULT)
+        diary()
+        waitFor { compose.onAllNodesWithText("Reports").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Reports").performClick()
+        waitFor { compose.onAllNodesWithText("Show less").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue("the full version shows more", compose.onAllNodesWithText("Days logged this week", substring = true).fetchSemanticsNodes().isNotEmpty())
+        shot("home_tiles_10_small_opened")
+        compose.onNodeWithText("Show less").performClick()
+        waitFor { compose.onAllNodesWithText("Show less").fetchSemanticsNodes().isEmpty() }
+        assertEquals(TileSize.SMALL, diaryVm.homeTiles.value.sizeOf(HomeTile.REPORTS))
+    }
+
+    @Test
     fun aLongPressStartsEditingAndDoneKeepsTheChanges() {
         saveTiles(HomeTiles.DEFAULT)
         diary()
