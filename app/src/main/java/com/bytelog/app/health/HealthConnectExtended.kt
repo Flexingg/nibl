@@ -209,7 +209,9 @@ class HealthConnectExtendedSync(
     private val context: Context,
     private val sparkyApiClient: SparkyApiClient,
     private val weightRepository: WeightRepository,
-    private val zone: () -> ZoneId = { ZoneId.systemDefault() }
+    private val zone: () -> ZoneId = { ZoneId.systemDefault() },
+    /** The SparkyFitness app sends Health Connect data to Sparky and writes weight there itself: Nibl only reads. */
+    private val leaveToSparkyApp: suspend () -> Boolean = { false }
 ) {
     companion object {
         private const val SNAPSHOT_FILE_NAME = "hc_snapshots.json"
@@ -655,7 +657,8 @@ class HealthConnectExtendedSync(
                                 date = dateStr,
                                 weight = displayWeight,
                                 unit = preferredUnit,
-                                bodyFatPercentage = bfPct ?: existingWeight?.bodyFatPercentage
+                                bodyFatPercentage = bfPct ?: existingWeight?.bodyFatPercentage,
+                                fromHealthConnect = true
                             )
                             weightsImported++
                         }
@@ -665,7 +668,8 @@ class HealthConnectExtendedSync(
                 // 8. Upload to SparkyFitness POST /api/health-data in chunks of <= 500
                 var recordsUploaded = 0
                 var uploadError: String? = null
-                if (uploadToSparky && sparkyPayloads.isNotEmpty()) {
+                // With the SparkyFitness app sending the same records, a second upload would store sleep and workouts twice
+                if (uploadToSparky && sparkyPayloads.isNotEmpty() && !runCatching { leaveToSparkyApp() }.getOrDefault(false)) {
                     val uploadResult = uploadToSparky(sparkyPayloads)
                     uploadResult.onSuccess { count -> recordsUploaded = count }
                         .onFailure { err -> uploadError = err.message ?: err.javaClass.simpleName }
@@ -707,6 +711,8 @@ class HealthConnectExtendedSync(
     ): Boolean = withContext(Dispatchers.IO) {
         if (!isAvailable() || weightKg <= 0.0) return@withContext false
         if (!_config.value.writeWeightToHealthConnect) return@withContext false
+        // The SparkyFitness app writes Sparky's weigh-ins (this one included, once it's there) to Health Connect
+        if (runCatching { leaveToSparkyApp() }.getOrDefault(false)) return@withContext false
         val granted = getGrantedPermissions()
         val z = zone()
         val day = runCatching { LocalDate.parse(date) }.getOrElse { LocalDate.now(z) }

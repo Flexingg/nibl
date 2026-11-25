@@ -90,7 +90,16 @@ class DashboardData(
     val health: HealthSummary? = null
 )
 
-data class HealthSummary(val on: Boolean, val lastRun: Long, val written: Int, val fromSparky: Int, val error: String?)
+data class HealthSummary(
+    val on: Boolean, val lastRun: Long, val written: Int, val fromSparky: Int, val error: String?,
+    /** Today from Health Connect (what Nibl last read), null where nothing was there. */
+    val steps: Long? = null, val activeKcal: Double? = null, val sleepMinutes: Int? = null,
+    val restingHr: Int? = null, val distanceMeters: Double? = null,
+    /** The SparkyFitness app does the writing; Nibl only reads. */
+    val leftToSparkyApp: Boolean = false
+) {
+    val hasToday: Boolean get() = (steps ?: 0L) > 0L || (activeKcal ?: 0.0) > 0.0 || (sleepMinutes ?: 0) > 0 || restingHr != null
+}
 
 /** Where each tile goes when tapped. */
 class DashboardActions(
@@ -313,17 +322,44 @@ internal fun tileFace(tile: HomeTile, d: DashboardData, a: DashboardActions, c: 
         )
         HomeTile.HEALTH_CONNECT -> {
             val h = d.health
-            face(
-                if (h?.on == true) c.success to c.muted.second else c.warn to c.muted.second, Icons.Default.Favorite,
-                when { h == null || !h.on -> "Off"; h.lastRun > 0 -> "On"; else -> "On" },
-                when { h == null || !h.on -> "Tap to set up"; h.error != null -> "Couldn't write"; h.lastRun > 0 -> "synced ${ago(h.lastRun, d.nowMs)}"; else -> "Not synced yet" },
-                a.health,
-                lines = listOfNotNull(
-                    h?.takeIf { it.on }?.let { "Written by Nibl" to "${it.written}" },
-                    h?.takeIf { it.on && it.fromSparky > 0 }?.let { "Already from SparkyFitness" to "${it.fromSparky}" },
-                    h?.error?.let { it to "" }
-                ).ifEmpty { listOf("Share food and water" to "") }
-            )
+            val stepGoal = 10_000L
+            val status = when {
+                h == null -> "Tap to set up"
+                h.leftToSparkyApp -> "via SparkyFitness app"
+                !h.on -> "reading only"
+                h.error != null -> "couldn't write"
+                h.lastRun > 0 -> "synced ${ago(h.lastRun, d.nowMs)}"
+                else -> "not synced yet"
+            }
+            if (h != null && h.hasToday) {
+                // Today's summary: steps up front, the rest as lines
+                face(
+                    c.green, Icons.Default.Favorite,
+                    h.steps?.takeIf { it > 0 }?.let { String.format(Locale.getDefault(), "%,d", it) } ?: "Today",
+                    if ((h.steps ?: 0) > 0) "steps" else status,
+                    a.health,
+                    progress = h.steps?.let { it.toFloat() / stepGoal },
+                    chart = h.steps?.takeIf { it > 0 }?.let { TileChart.Meter(it.toFloat() / stepGoal, "of ${String.format(Locale.getDefault(), "%,d", stepGoal)} · $status") },
+                    lines = listOfNotNull(
+                        h.activeKcal?.takeIf { it > 0 }?.let { "Active calories" to "${int(it.toFloat())} kcal" },
+                        h.sleepMinutes?.takeIf { it > 0 }?.let { "Sleep" to hoursMinutes(it * 60_000L) },
+                        h.restingHr?.let { "Resting heart rate" to "$it bpm" },
+                        h.distanceMeters?.takeIf { it > 0 }?.let { "Distance" to String.format(Locale.US, "%.1f km", it / 1000) }
+                    )
+                )
+            } else {
+                face(
+                    if (h?.on == true || h?.leftToSparkyApp == true) c.success to c.muted.second else c.warn to c.muted.second, Icons.Default.Favorite,
+                    when { h == null -> "Off"; h.on || h.leftToSparkyApp -> "On"; else -> "Off" },
+                    status,
+                    a.health,
+                    lines = listOfNotNull(
+                        h?.takeIf { it.on && !it.leftToSparkyApp }?.let { "Written by Nibl" to "${it.written}" },
+                        h?.takeIf { it.on && it.fromSparky > 0 }?.let { "Already from SparkyFitness" to "${it.fromSparky}" },
+                        h?.error?.let { it to "" }
+                    ).ifEmpty { listOf("Steps, sleep and heart rate" to "", "show here once read" to "") }
+                )
+            }
         }
         HomeTile.LEFTOVERS -> face(
             c.pink, Icons.Default.Kitchen,

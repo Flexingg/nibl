@@ -358,13 +358,11 @@ fun DiaryScreen(
     // ----- Home tiles: which show (a tile with nothing to show stays out of the way), and which fold at the top -----
     var editingHome by remember { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = editingHome) { editingHome = false }
-    // A small tile tapped opens out to full width in place, until "Show less" (or another day, or editing)
+    // A small tile tapped opens its full version in a panel under its row, until tapped again, "Show less", another day or editing
     var expandedTile by remember { mutableStateOf<com.bytelog.app.data.repository.HomeTile?>(null) }
     LaunchedEffect(selectedDate, editingHome) { expandedTile = null }
     androidx.activity.compose.BackHandler(enabled = expandedTile != null && !editingHome) { expandedTile = null }
-    val shownTiles = homeTiles.visible.map { placed ->
-        if (placed.tile == expandedTile && placed.size == com.bytelog.app.data.repository.TileSize.SMALL) placed.copy(size = com.bytelog.app.data.repository.TileSize.FULL) else placed
-    }.filter { placed ->
+    val shownTiles = homeTiles.visible.filter { placed ->
         when (placed.tile) {
             com.bytelog.app.data.repository.HomeTile.WEEKLY_REVIEW -> weeklyReview != null
             com.bytelog.app.data.repository.HomeTile.FASTING -> fastingRepository != null
@@ -838,16 +836,17 @@ fun DiaryScreen(
     val tileFaceFor: (com.bytelog.app.data.repository.PlacedTile) -> com.bytelog.app.ui.dashboard.TileFace = { placed ->
         val f = faceOf(placed.tile)
         if (placed.size != com.bytelog.app.data.repository.TileSize.SMALL) f
-        else f.copy(onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); expandedTile = placed.tile })
+        else f.copy(onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            expandedTile = if (expandedTile == placed.tile) null else placed.tile
+        })
     }
-    // A full-width tile in the list; one opened out from small grows in and has "Show less" under it
-    val expandableTile: @Composable (com.bytelog.app.data.repository.HomeTile) -> Unit = { tile ->
-        if (tile == expandedTile) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Box(Modifier.then(com.bytelog.app.ui.dashboard.growIn())) { fullTile(tile) }
-                com.bytelog.app.ui.dashboard.ShowLessButton { expandedTile = null }
-            }
-        } else fullTile(tile)
+    // The panel under a row: the opened small tile's full version, growing down out of the row, and "Show less"
+    val openPanel: @Composable (com.bytelog.app.data.repository.HomeTile) -> Unit = { tile ->
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(Modifier.then(com.bytelog.app.ui.dashboard.growIn())) { fullTile(tile) }
+            com.bytelog.app.ui.dashboard.ShowLessButton { expandedTile = null }
+        }
     }
     // A tile at the top: its full or tile version, and the strip it folds into
     val foldSpec: (com.bytelog.app.data.repository.PlacedTile, Int, Boolean, androidx.compose.ui.unit.Dp) -> com.bytelog.app.ui.dashboard.FoldTileSpec = { placed, foldedSpan, isHero, tileHeight ->
@@ -864,13 +863,12 @@ fun DiaryScreen(
             onLongPress = if (!full || tile == com.bytelog.app.data.repository.HomeTile.WATER) null else startEditing,
             expanded = {
                 when {
-                    !full -> com.bytelog.app.ui.dashboard.SummaryTile(tileFaceFor(placed), placed.size, onLongClick = startEditing, height = tileHeight)
+                    !full -> com.bytelog.app.ui.dashboard.SummaryTile(tileFaceFor(placed), placed.size, onLongClick = startEditing, height = tileHeight, selected = tile == expandedTile)
                     tile == com.bytelog.app.data.repository.HomeTile.CALORIES -> com.bytelog.app.ui.diary.HeroMacros(dailySummary)
                     tile == com.bytelog.app.data.repository.HomeTile.WATER -> waterExpanded()
                     tile == com.bytelog.app.data.repository.HomeTile.WEIGHT -> weightExpanded()
                     else -> fullTile(tile)
                 }
-                if (tile == expandedTile) com.bytelog.app.ui.dashboard.ShowLessButton { expandedTile = null }
             },
             compact = { span ->
                 when {
@@ -955,6 +953,12 @@ fun DiaryScreen(
                     .then(foldScroll),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // A small tile at the top opened: its panel comes first, just under the top
+                headerTiles.firstOrNull { it.tile == expandedTile && it.size == com.bytelog.app.data.repository.TileSize.SMALL }?.let { open ->
+                    item(key = "open_${open.tile.key}") {
+                        Box(Modifier.homeItem(this, listState, "open_${open.tile.key}")) { openPanel(open.tile) }
+                    }
+                }
                 com.bytelog.app.data.repository.TileGrid.rows(listTiles).forEach { row ->
                     val first = row.first()
                     when {
@@ -1189,7 +1193,7 @@ fun DiaryScreen(
                                 Box(
                                     Modifier.homeItem(this, listState, first.tile.key)
                                         .longPressToEdit(first.tile != com.bytelog.app.data.repository.HomeTile.WATER, startEditing)
-                                ) { expandableTile(first.tile) }
+                                ) { fullTile(first.tile) }
                             }
                         }
                         else -> {
@@ -1198,7 +1202,15 @@ fun DiaryScreen(
                             item(key = rowKey) {
                                 com.bytelog.app.ui.dashboard.TileRow(row.map { it.size.span }, Modifier.homeItem(this, listState, rowKey)) {
                                     val h = com.bytelog.app.ui.dashboard.rowHeight(row.map { it.size })
-                                    row.forEach { t -> com.bytelog.app.ui.dashboard.SummaryTile(tileFaceFor(t), t.size, onLongClick = startEditing, height = h) }
+                                    row.forEach { t ->
+                                        com.bytelog.app.ui.dashboard.SummaryTile(tileFaceFor(t), t.size, onLongClick = startEditing, height = h, selected = t.tile == expandedTile)
+                                    }
+                                }
+                            }
+                            // A small tile in this row opened: its panel goes under the row
+                            row.firstOrNull { it.tile == expandedTile && it.size == com.bytelog.app.data.repository.TileSize.SMALL }?.let { open ->
+                                item(key = "open_${open.tile.key}") {
+                                    Box(Modifier.homeItem(this, listState, "open_${open.tile.key}")) { openPanel(open.tile) }
                                 }
                             }
                         }

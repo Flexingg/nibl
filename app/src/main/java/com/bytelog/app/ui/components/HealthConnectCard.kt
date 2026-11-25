@@ -105,13 +105,29 @@ fun HealthConnectCard(settings: SettingsRepository) {
                 "Nibl writes while it's open, a few seconds after the diary changes.",
             color = cs.onSurfaceVariant, fontSize = 12.sp
         )
-        if (enabled && granted) {
-            Text(
-                "If the SparkyFitness phone app also syncs Nutrition from Health Connect, it copies this food back into Sparky. " +
-                    "Nibl hides those copies, but Sparky's website counts them: turn off Nutrition in that app's Health Connect sync " +
-                    "(or this switch) to keep Sparky's totals right.",
-                color = cs.onSurfaceVariant, fontSize = 12.sp
-            )
+        // The SparkyFitness app does both Health Connect jobs for the Sparky diary; doing them here too counts things twice
+        val sparkyApp = remember { com.bytelog.app.health.SparkyFitnessApp.installed(context) }
+        if (sparkyApp) {
+            val leave by settings.hcLeaveToSparkyApp.collectAsState(initial = true)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable {
+                    scope.launch { settings.saveHcLeaveToSparkyApp(!leave); app?.requestHealthSync(0) }
+                }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Leave it to the SparkyFitness app", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (leave) "The SparkyFitness app is on this phone. It writes your Sparky diary (food logged in Nibl too) to Health " +
+                            "Connect and sends steps, sleep and workouts to Sparky, so Nibl only reads. Nothing is counted twice."
+                        else "Nibl writes too. The SparkyFitness app may import Nibl's food back into Sparky (Nibl hides those copies, " +
+                            "but Sparky's website counts them) and sleep and workouts can reach Sparky twice.",
+                        color = cs.onSurfaceVariant, fontSize = 12.sp
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Switch(checked = leave, onCheckedChange = { on -> scope.launch { settings.saveHcLeaveToSparkyApp(on); app?.requestHealthSync(0) } })
+            }
         }
         if (enabled && granted && status != null && status.lastRun > 0L) {
             val ago = DateUtils.getRelativeTimeSpanString(status.lastRun, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)

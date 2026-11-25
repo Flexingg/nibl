@@ -86,12 +86,14 @@ class HealthConnectSync(
     private val foodEntryDao: FoodEntryDao,
     private val waterLogDao: WaterLogDao,
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
-    private val clock: () -> Instant = { Instant.now() }
+    private val clock: () -> Instant = { Instant.now() },
+    /** The SparkyFitness app writes the diary to Health Connect itself: Nibl writes nothing and takes back its own. */
+    private val leaveToSparkyApp: suspend () -> Boolean = { false }
 ) {
     private val prefs = context.getSharedPreferences("health_connect", Context.MODE_PRIVATE)
     private val lock = Mutex()
 
-    data class Status(val lastRun: Long = 0L, val written: Int = 0, val leftToSparky: Int = 0, val error: String? = null)
+    data class Status(val lastRun: Long = 0L, val written: Int = 0, val leftToSparky: Int = 0, val error: String? = null, val leftToSparkyApp: Boolean = false)
 
     private val _status = MutableStateFlow(Status(lastRun = prefs.getLong("last_run", 0L)))
     val status: StateFlow<Status> = _status.asStateFlow()
@@ -104,19 +106,20 @@ class HealthConnectSync(
 
     suspend fun syncDays(dates: List<String> = recentDays()): Status = lock.withLock {
         var written = 0; var left = 0; var error: String? = null
+        val leave = runCatching { leaveToSparkyApp() }.getOrDefault(false)
         for (date in dates) {
-            runCatching { syncDay(date) }
+            runCatching { syncDay(date, leave) }
                 .onSuccess { (w, l) -> written += w; left += l }
                 .onFailure { error = it.message ?: it.javaClass.simpleName }
         }
-        val s = Status(clock().toEpochMilli(), written, left, error)
+        val s = Status(clock().toEpochMilli(), written, left, error, leftToSparkyApp = leave)
         prefs.edit().putLong("last_run", s.lastRun).apply()
         _status.value = s
         s
     }
 
     /** One day: returns (records Nibl now has there, entries left to the SparkyFitness app). */
-    private suspend fun syncDay(date: String): Pair<Int, Int> {
+    private suspend fun syncDay(date: String, leave: Boolean = false): Pair<Int, Int> {
         val z = zone()
         val day = LocalDate.parse(date)
         val from = day.atStartOfDay(z).toInstant()
@@ -129,8 +132,8 @@ class HealthConnectSync(
         val nutrition = store.readNutrition(from, to)
         val hydration = store.readHydration(from, to)
         val version = now.toEpochMilli()
-        val food = HealthConnectPlan.foodToWrite(entries, nutrition, z, now, version)
-        val water = HealthConnectPlan.waterToWrite(logs, hydration, z, now, version)
+        val food = if (leave) emptyList() else HealthConnectPlan.foodToWrite(entries, nutrition, z, now, version)
+        val water = if (leave) emptyList() else HealthConnectPlan.waterToWrite(logs, hydration, z, now, version)
         val left = entries.count { it.source == null } - food.size
 
         val sig = HealthConnectPlan.signature(food, water)
