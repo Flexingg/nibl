@@ -65,6 +65,9 @@ class SyncKeepsPhoneDataTest {
         /** Save the next new entries, then drop the connection before answering. */
         val dropAnswers = AtomicInteger(0)
         val entryCreates = AtomicInteger(0)
+        /** Idempotency keys Sparky has seen, to the entry each made. */
+        val clientIds = ConcurrentHashMap<String, String>()
+        @Volatile var failEdits = false
     }
     private val sparky = FakeSparky()
     private lateinit var server: MockWebServer
@@ -75,7 +78,9 @@ class SyncKeepsPhoneDataTest {
 
     private fun entryJson(id: String, e: Map<String, Any?>) = buildString {
         append("{\"id\":\"$id\",\"food_name\":\"${e["food_name"]}\",\"meal_type\":\"${e["meal_type"]}\",\"entry_date\":\"${e["entry_date"]}\",")
-        append("\"quantity\":${e["quantity"]},\"unit\":\"g\",\"calories\":${e["calories"]},\"protein\":1,\"carbs\":1,\"fat\":1}")
+        append("\"quantity\":${e["quantity"]},\"unit\":\"g\",\"calories\":${e["calories"]},\"protein\":1,\"carbs\":1,\"fat\":1")
+        e["source"]?.let { append(",\"source\":\"$it\"") }
+        append("}")
     }
 
     @Before
@@ -116,7 +121,12 @@ class SyncKeepsPhoneDataTest {
                             return MockResponse().setResponseCode(500)
                                 .setBody("{\"error\":\"new row violates row-level security policy for table \\\"food_entries\\\"\"}")
                         }
+                        // A replayed request (same client_id) gets the entry it made the first time
+                        o["client_id"]?.jsonPrimitive?.contentOrNull?.let { key ->
+                            sparky.clientIds[key]?.let { made -> return MockResponse().setResponseCode(201).setBody(entryJson(made, sparky.entries[made]!!)) }
+                        }
                         val id = "srv-${sparky.ids.incrementAndGet()}"
+                        o["client_id"]?.jsonPrimitive?.contentOrNull?.let { sparky.clientIds[it] = id }
                         sparky.entryCreates.incrementAndGet()
                         sparky.entries[id] = mapOf(
                             "food_id" to foodId,
@@ -136,6 +146,7 @@ class SyncKeepsPhoneDataTest {
                     }
                     request.method == "PUT" && path.startsWith("/api/food-entries/") -> {
                         val id = path.removePrefix("/api/food-entries/")
+                        if (sparky.failEdits) return MockResponse().setResponseCode(500).setBody("{\"error\":\"Internal Server Error\"}")
                         val existing = sparky.entries[id] ?: return MockResponse().setResponseCode(404)
                         val o = json.parseToJsonElement(request.body.readUtf8()).jsonObject
                         sparky.entries[id] = existing + mapOf("quantity" to (o["quantity"]?.jsonPrimitive?.content ?: existing["quantity"]))
@@ -389,5 +400,50 @@ class SyncKeepsPhoneDataTest {
         assertEquals(listOf("Soup", "Toast"), names())
         assertEquals(2, sparky.entries.size)
     }
-}
 
+    @Test fun sparkysHealthConnectCopiesOfFoodLoggedHereDoNotDoubleTheDay() = runBlocking {
+        food.commitMultiAdd(listOf(entry("l1", "Oatmeal"), entry("l2", "Banana", kcal = 105f)))
+        until { sparky.entries.size == 2 }
+        settle()
+        food.syncDateWithServer(today)
+        // The SparkyFitness app imported what Nibl wrote to Health Connect (twice over, from older rewrites)
+        listOf("hc1" to "Oatmeal", "hc2" to "Banana", "hc3" to "Oatmeal").forEach { (id, name) ->
+            sparky.entries[id] = mapOf("food_name" to name, "meal_type" to "Lunch", "entry_date" to today, "quantity" to "1", "calories" to "300", "source" to "Health Connect")
+        }
+        // Food another app put in Health Connect is real food, though
+        sparky.entries["hc4"] = mapOf("food_name" to "Protein bar", "meal_type" to "Snack", "entry_date" to today, "quantity" to "1", "calories" to "200", "source" to "Health Connect")
+        food.syncDateWithServer(today)
+        assertEquals(listOf("Banana", "Oatmeal", "Protein bar"), names())
+        food.syncDateWithServer(today)
+        assertEquals(listOf("Banana", "Oatmeal", "Protein bar"), names())
+    }
+
+    @Test fun aRetriedUploadCarriesTheSameKeySoSparkyKeepsOneCopy() = runBlocking {
+        sparky.dropAnswers.set(1)                 // saved, but the answer is lost
+        food.commitMultiAdd(listOf(entry("3f2504e0-4f89-41d3-9a0c-0305e82c3301", "Soup")))
+        settle()
+        food.syncDateWithServer(today)
+        food.syncDateWithServer(today)
+        assertEquals(1, sparky.entries.size)
+        assertEquals(listOf("3f2504e0-4f89-41d3-9a0c-0305e82c3301"), sparky.clientIds.keys.toList())
+        assertEquals(listOf("Soup"), names())
+    }
+
+    @Test fun anEditSparkyFailsToSaveIsTriedAgainNotLoggedAsANewEntry() = runBlocking {
+        sparky.entries["srv-a"] = mapOf("food_name" to "Pasta", "meal_type" to "Dinner", "entry_date" to today, "quantity" to "100", "calories" to "350")
+        food.syncDateWithServer(today)
+        val pasta = db.foodEntryDao().getEntriesForDateOnce(today).single()
+        sparky.failEdits = true
+        food.updateEntry(pasta.copy(quantity = 150f))
+        settle()
+        food.syncDateWithServer(today)
+        assertEquals("no second entry on Sparky", 1, sparky.entries.size)
+        assertEquals(listOf("Pasta"), names())
+        assertEquals(1, food.countPendingSync())        // still waiting to be sent
+        sparky.failEdits = false
+        food.syncDateWithServer(today)
+        assertEquals(1, sparky.entries.size)
+        assertEquals(150f, sparky.entries["srv-a"]!!["quantity"].toString().toFloat(), 0.01f)
+        assertEquals(0, food.countPendingSync())
+    }
+}

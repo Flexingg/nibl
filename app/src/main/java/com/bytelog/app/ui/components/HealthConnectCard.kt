@@ -105,6 +105,14 @@ fun HealthConnectCard(settings: SettingsRepository) {
                 "Nibl writes while it's open, a few seconds after the diary changes.",
             color = cs.onSurfaceVariant, fontSize = 12.sp
         )
+        if (enabled && granted) {
+            Text(
+                "If the SparkyFitness phone app also syncs Nutrition from Health Connect, it copies this food back into Sparky. " +
+                    "Nibl hides those copies, but Sparky's website counts them: turn off Nutrition in that app's Health Connect sync " +
+                    "(or this switch) to keep Sparky's totals right.",
+                color = cs.onSurfaceVariant, fontSize = 12.sp
+            )
+        }
         if (enabled && granted && status != null && status.lastRun > 0L) {
             val ago = DateUtils.getRelativeTimeSpanString(status.lastRun, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
             Text(

@@ -47,7 +47,8 @@ class FamilyRepository(
     suspend fun memberDay(member: FamilyMember, date: String): Result<MemberDay> = coroutineScope {
         val entries = async { api.fetchEntriesForDate(date, member.userId) }
         val goals = async { api.fetchGoalsForDate(date, actingAs = member.userId) }
-        entries.await().map { MemberDay(member, date, it, goals.await().getOrNull()) }
+        // Without the SparkyFitness app's Health Connect copies of food logged in Nibl (they'd count twice)
+        entries.await().map { MemberDay(member, date, com.bytelog.app.health.HealthConnectEcho.dropFoodEchoes(it), goals.await().getOrNull()) }
     }
 
     /** Calories for the [days] days ending on [endDate], oldest first (null where a day couldn't be loaded). */
@@ -55,7 +56,8 @@ class FamilyRepository(
         val end = LocalDate.parse(endDate)
         (days - 1 downTo 0).map { back ->
             val d = end.minusDays(back.toLong()).toString()
-            async { d to api.fetchEntriesForDate(d, member.userId).getOrNull()?.sumOf { it.calories.toDouble() }?.toFloat() }
+            async { d to api.fetchEntriesForDate(d, member.userId).getOrNull()
+                ?.let { com.bytelog.app.health.HealthConnectEcho.dropFoodEchoes(it) }?.sumOf { it.calories.toDouble() }?.toFloat() }
         }.map { it.await() }
     }
 

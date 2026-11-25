@@ -74,8 +74,39 @@ class HealthConnectTest {
         val plan = HealthConnectPlan.foodToWrite(entries, existing, zone, now, version = 7)
         // "b" isn't matched by name: its twin has an entry id, so ids decide, and "zz" isn't "b"
         assertEquals(listOf("b", "f"), plan.map { it.entry.id })
-        assertEquals("nibl-nutrition-f-7", plan.last().clientRecordId)
+        assertEquals("nibl-nutrition-f", plan.last().clientRecordId)   // the same every time, so it's updated in place
         assertEquals(Instant.parse("2026-11-01T15:00:00Z"), plan.last().start)   // snacks: 3 pm, as Sparky does
+    }
+
+    @Test fun foodIsWrittenOnlyOnceSparkyHasIt() {
+        // Its id changes when Sparky takes it; written before, the record would be orphaned and imported twice
+        val entries = listOf(food("new", "Bagel", 280f, status = FoodEntry.SYNC_STATUS_PENDING_INSERT), food("up", "Banana", 105f, status = FoodEntry.SYNC_STATUS_UPLOADED))
+        assertEquals(listOf("up"), HealthConnectPlan.foodToWrite(entries, emptyList(), zone, now, 1).map { it.entry.id })
+    }
+
+    @Test fun sparkysImportsOfWhatNiblWroteAreRecognisedWithoutTheirRecordId() {
+        // Sparky's diary list doesn't say which Health Connect record an import came from
+        val server = listOf(
+            food("s1", "Oatmeal", 300f, "Breakfast"),
+            food("s2", "Banana", 105f),
+            food("hc1", "oatmeal ", 300f, "Breakfast", source = "Health Connect"),   // the app's copy of s1
+            food("hc2", "Oatmeal", 300f, "Breakfast", source = "Health Connect"),    // an older copy of it
+            food("hc3", "Bagel", 280f, source = "Health Connect"),                   // the copy of one not uploaded yet
+            food("hc4", "Protein bar", 200f, "Snacks", source = "Health Connect")    // from another app: stays
+        )
+        val local = listOf(food("l1", "Bagel", 280f, status = FoodEntry.SYNC_STATUS_PENDING_INSERT))
+        assertEquals(listOf("s1", "s2", "hc4"), HealthConnectEcho.dropFoodEchoes(server, local).map { it.id })
+        // A family member's day, with nothing on this phone: the list alone is enough
+        assertEquals(listOf("s1", "s2", "hc3", "hc4"), HealthConnectEcho.dropFoodEchoes(server).map { it.id })
+    }
+
+    @Test fun drinksImportedBackAreRecognisedToo() {
+        val server = listOf(
+            WaterLogEntry(id = "w1", entryDate = day, waterMl = 591f),
+            WaterLogEntry(id = "w2", entryDate = day, waterMl = 591.4f, source = "Health Connect"),
+            WaterLogEntry(id = "w3", entryDate = day, waterMl = 350f, source = "Health Connect")
+        )
+        assertEquals(listOf("w1", "w3"), HealthConnectEcho.dropWaterEchoes(server).map { it.id })
     }
 
     @Test fun recordsFromSparkyWithoutAnEntryIdMatchByNameAndCalories() {

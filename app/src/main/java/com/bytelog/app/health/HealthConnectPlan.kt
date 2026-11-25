@@ -91,11 +91,13 @@ object HealthConnectPlan {
         val unmatched = sparky.filter { sparkyEntryId(it.clientRecordId) == null }.toMutableList()
         return entries.mapNotNull { e ->
             if (e.syncStatus == FoodEntry.SYNC_STATUS_PENDING_DELETE || e.source != null) return@mapNotNull null
+            // Not until Sparky has it: its id changes then, and a record under the old id would be a second record
+            if (e.syncStatus == FoodEntry.SYNC_STATUS_PENDING_INSERT) return@mapNotNull null
             if (e.id in coveredIds) return@mapNotNull null
             val twin = unmatched.firstOrNull { r -> sameName(r.name, e.foodName) && abs((r.kcal ?: -1.0) - e.calories) <= 1.0 }
             if (twin != null) { unmatched.remove(twin); return@mapNotNull null }
             val at = foodTime(e, zone, now) ?: return@mapNotNull null
-            FoodRecord(e, at, "${NIBL_PREFIX}nutrition-${e.id}-$version")
+            FoodRecord(e, at, foodRecordId(e.id))
         }
     }
 
@@ -106,13 +108,23 @@ object HealthConnectPlan {
         val unmatched = sparky.filter { sparkyWaterId(it.clientRecordId) == null && it.clientRecordId?.startsWith("sparky-water-2") != true }.toMutableList()
         return logs.mapNotNull { w ->
             if (w.syncStatus == WaterLogEntry.SYNC_STATUS_PENDING_DELETE || (w.source != null && !w.source.equals("manual", ignoreCase = true))) return@mapNotNull null
+            if (w.syncStatus == WaterLogEntry.SYNC_STATUS_PENDING_INSERT) return@mapNotNull null   // its id changes once Sparky has it
             if (w.id in coveredIds) return@mapNotNull null
             val at = waterTime(w, zone, now) ?: return@mapNotNull null
             val twin = unmatched.firstOrNull { r -> abs((r.ml ?: -1.0) - w.waterMl) <= 1.0 && abs(r.start.epochSecond - at.epochSecond) <= 120 }
             if (twin != null) { unmatched.remove(twin); return@mapNotNull null }
-            WaterRecord(w, at, "${NIBL_PREFIX}water-${w.id}-$version")
+            WaterRecord(w, at, waterRecordId(w.id))
         }
     }
+
+    /**
+     * A food's record id, the same every time it's written, so Health Connect updates the record in place (keeping
+     * its id) instead of Nibl replacing it with a new one. The SparkyFitness app imports Health Connect records by
+     * their id: a new record each time became a new entry in Sparky each time.
+     */
+    fun foodRecordId(entryId: String) = "${NIBL_PREFIX}nutrition-$entryId"
+
+    fun waterRecordId(logId: String) = "${NIBL_PREFIX}water-$logId"
 
     /** Content of what would be written, so an unchanged day isn't rewritten (Health Connect limits writes). */
     fun signature(food: List<FoodRecord>, water: List<WaterRecord>): String =
