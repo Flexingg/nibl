@@ -142,42 +142,34 @@ class AppUpdaterTest {
         assertEquals("\"abc\"", server.takeRequest().getHeader("If-None-Match"))
     }
 
-    @Test fun checksEveryHalfHourAtMost() {
-        assertEquals(30 * 60 * 1000L, AppUpdater.CHECK_EVERY_MS)
+    @Test fun checksAtMostEveryTenMinutes() {
+        assertEquals(10 * 60 * 1000L, AppUpdater.CHECK_EVERY_MS)
     }
 
-    // --- A private repository: GitHub answers 404 without sign-in ---
-
-    @Test fun aPrivateRepositoryAsksForATokenInsteadOfSayingUpToDate() = runBlocking {
+    @Test fun releasesThatArentPublicAreNotUpToDate() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(404).setBody("""{"message":"Not Found"}"""))
         val u = updater()
         assertTrue(u.check().isFailure)
         val s = u.state.value
-        assertTrue("not 'up to date': $s", s is UpdateState.NeedsToken)
-        assertTrue((s as UpdateState.NeedsToken).message.contains("private"))
+        assertTrue("not 'up to date': $s", s is UpdateState.Failed)
+        assertTrue((s as UpdateState.Failed).message.contains("public"))
         assertFalse("tried again next time", u.lastCheckComplete)
+        assertEquals("no token is sent", null, server.takeRequest().getHeader("Authorization"))
     }
 
-    @Test fun aSavedTokenIsSentAndFindsTheUpdate() = runBlocking {
-        server.enqueue(MockResponse().setBody(release()))
-        val u = AppUpdater(ApplicationProvider.getApplicationContext(), "1.26.0", false,
-            token = { "github_pat_test" }, apiBase = server.url("").toString().trimEnd('/'))
-        assertEquals("1.27.0", u.check().getOrThrow()!!.version)
-        assertEquals("Bearer github_pat_test", server.takeRequest().getHeader("Authorization"))
-    }
-
-    @Test fun aRefusedTokenSaysSo() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(401).setBody("{}"))
-        val u = AppUpdater(ApplicationProvider.getApplicationContext(), "1.26.0", false,
-            token = { "bad" }, apiBase = server.url("").toString().trimEnd('/'))
-        u.check()
-        assertTrue((u.state.value as UpdateState.NeedsToken).message.contains("refused"))
-    }
-
-    @Test fun theApkCanBeFetchedThroughTheApiForAPrivateRepository() {
-        val info = AppUpdater.parseRelease(Json.parseToJsonElement(
-            """{"tag_name":"v2.0.0","assets":[{"name":"Nibl-v2.0.0.apk","size":1,"url":"https://api.github.com/repos/x/y/releases/assets/7","browser_download_url":"https://github.com/x/y/releases/download/v2.0.0/Nibl-v2.0.0.apk"}]}""") as JsonObject, false)!!
-        assertEquals("https://api.github.com/repos/x/y/releases/assets/7", info.apkApiUrl)
+    @Test fun anUpdateIsDownloadedInTheBackgroundThenReadyAndNotFetchedTwice() = runBlocking {
+        val apk = ByteArray(40) { it.toByte() }
+        val url = server.url("/dl/release.apk").toString()
+        server.enqueue(MockResponse().setBody(release().replace("https://dl/release.apk", url)))
+        server.enqueue(MockResponse().setBody(okio.Buffer().write(apk)))
+        val u = updater()
+        val info = u.check().getOrThrow()!!
+        assertTrue(u.prepare(info))
+        val ready = u.state.value as UpdateState.Ready
+        assertEquals(40L, ready.apk.length())
+        // Asked again (say, the next time the app opens): the download on the phone is used
+        assertTrue(u.prepare(info))
+        assertEquals(2, server.requestCount)
     }
 }
 

@@ -16,6 +16,13 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         val updater = (context.applicationContext as? com.bytelog.app.ByteLogApplication)?.appUpdater
         when (val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                // Started as the user left the app and Android wants a confirmation: don't pop it up over whatever
+                // they're doing; the update stays ready and the home screen offers Install next time
+                val app = context.applicationContext as? com.bytelog.app.ByteLogApplication
+                if (updater?.installingQuietly == true && app?.inForeground != true) {
+                    updater.onConfirmationNeededWhileAway()
+                    return
+                }
                 val confirm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                 else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
                 if (confirm != null) context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

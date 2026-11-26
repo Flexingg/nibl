@@ -24,8 +24,7 @@ class ByteLogApplication : Application() {
     /** Updates the app from its GitHub releases. */
     val appUpdater by lazy {
         com.bytelog.app.data.update.AppUpdater(
-            this, BuildConfig.VERSION_NAME, debugBuild = BuildConfig.DEBUG,
-            token = { settingsRepository.githubToken.first() }
+            this, BuildConfig.VERSION_NAME, debugBuild = BuildConfig.DEBUG
         )
     }
 

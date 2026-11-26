@@ -93,13 +93,36 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
-    /** Looks for a new version on GitHub when the user lets it, at most every half hour. */
+    override fun onStop() {
+        super.onStop()
+        // Leaving the app with an update downloaded: install it now, while it can't interrupt anything. Android 12+
+        // installs an app's own update without asking (once the app has installed it before); if it does ask,
+        // the update stays ready and the home screen offers Install next time.
+        val app = application as ByteLogApplication
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+            app.appUpdater.state.value is com.bytelog.app.data.update.UpdateState.Ready
+        ) {
+            app.applicationScope.launch {
+                if (app.settingsRepository.autoInstallUpdates.first() && !app.inForeground) app.appUpdater.installReady(quietly = true)
+            }
+        }
+    }
+
+    /**
+     * On opening (at most every ten minutes): looks for a new version on GitHub and, when there is one, downloads it
+     * in the background so the home screen can offer it ready to install.
+     */
     private fun checkForUpdate() {
         val app = application as ByteLogApplication
         app.applicationScope.launch {
             val settings = app.settingsRepository
+            runCatching { settings.clearOldGithubToken() }
             if (!settings.autoCheckUpdates.first()) return@launch
             if (app.appUpdater.checkIfDue(settings.lastUpdateCheck.first())) settings.saveLastUpdateCheck(System.currentTimeMillis())
+            val available = app.appUpdater.state.value as? com.bytelog.app.data.update.UpdateState.Available ?: return@launch
+            if (settings.autoInstallUpdates.first() && available.info.version != settings.dismissedUpdate.first()) {
+                app.appUpdater.prepare(available.info)
+            }
         }
     }
 

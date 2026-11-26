@@ -57,7 +57,10 @@ private fun startUpdate(context: android.content.Context, updater: AppUpdater, i
         scope.launch { updater.downloadAndInstall(info) }
         return
     }
-    scope.launch { updater.downloadAndInstall(info) }
+    scope.launch {
+        // Downloaded already: straight to installing
+        if (updater.state.value is UpdateState.Ready) updater.installReady(quietly = false) else updater.downloadAndInstall(info)
+    }
 }
 
 /**
@@ -79,8 +82,10 @@ fun UpdateBanner(updater: AppUpdater, settings: SettingsRepository, modifier: Mo
         is UpdateState.Installing -> s.info
         is UpdateState.NeedsPermission -> s.info
         is UpdateState.Failed -> s.info
+        is UpdateState.Ready -> s.info.takeIf { it.version != dismissed }
         else -> null
     }
+    val ready = state is UpdateState.Ready
     AnimatedVisibility(info != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut(), modifier = modifier) {
         val i = info ?: return@AnimatedVisibility
         Column(
@@ -91,7 +96,7 @@ fun UpdateBanner(updater: AppUpdater, settings: SettingsRepository, modifier: Mo
                 Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = cs.onPrimaryContainer, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Nibl ${i.version} is available", color = cs.onPrimaryContainer, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (ready) "Nibl ${i.version} is ready to install" else "Nibl ${i.version} is available", color = cs.onPrimaryContainer, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Text(statusLine(state, i), color = cs.onPrimaryContainer.copy(alpha = 0.8f), fontSize = 12.sp, maxLines = 2)
                 }
             }
@@ -101,14 +106,14 @@ fun UpdateBanner(updater: AppUpdater, settings: SettingsRepository, modifier: Mo
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 if (i.notes.isNotBlank()) TextButton(onClick = { showNotes = i }) { Text("What's new", color = cs.onPrimaryContainer) }
-                if (state is UpdateState.Available || state is UpdateState.Failed) {
+                if (state is UpdateState.Available || state is UpdateState.Failed || ready) {
                     TextButton(onClick = { scope.launch { settings.saveDismissedUpdate(i.version) }; if (state is UpdateState.Failed) updater.onBannerDismissed(i) }) {
                         Text("Later", color = cs.onPrimaryContainer)
                     }
                 }
                 if (state !is UpdateState.Downloading && state !is UpdateState.Installing) {
                     TextButton(onClick = { startUpdate(context, updater, i, scope) }) {
-                        Text(if (state is UpdateState.Failed) "Try again" else "Update", color = cs.primary, fontWeight = FontWeight.Bold)
+                        Text(when { state is UpdateState.Failed -> "Try again"; ready -> "Install"; else -> "Update" }, color = cs.primary, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -122,6 +127,7 @@ private fun statusLine(state: UpdateState, info: UpdateInfo): String = when (sta
     is UpdateState.Installing -> "Confirm the install when Android asks."
     is UpdateState.NeedsPermission -> "Allow Nibl to install apps, then tap Update again."
     is UpdateState.Failed -> state.message
+    is UpdateState.Ready -> "Downloaded. " + (if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) "It installs when you leave the app, or now." else "Tap Install.") + " Keeps all your data."
     else -> "You're on ${BuildConfig.VERSION_NAME}. Updating keeps all your data." + if (info.apkSize > 0) " (${info.apkSize / 1_000_000} MB)" else ""
 }
 
@@ -144,6 +150,7 @@ private fun ReleaseNotesDialog(info: UpdateInfo, onDismiss: () -> Unit) {
 fun AppUpdateCard(updater: AppUpdater, settings: SettingsRepository, modifier: Modifier = Modifier) {
     val state by updater.state.collectAsState()
     val auto by settings.autoCheckUpdates.collectAsState(initial = true)
+    val autoInstall by settings.autoInstallUpdates.collectAsState(initial = true)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cs = MaterialTheme.colorScheme
@@ -167,19 +174,22 @@ fun AppUpdateCard(updater: AppUpdater, settings: SettingsRepository, modifier: M
                         is UpdateState.Installing -> "Confirm the install when Android asks."
                         is UpdateState.NeedsPermission -> "Allow Nibl to install apps, then tap Update again."
                         is UpdateState.Failed -> s.message
-                        is UpdateState.NeedsToken -> s.message
+                        is UpdateState.Ready -> "Version ${s.info.version} is downloaded and ready to install."
                     },
-                    color = if (state is UpdateState.Failed || state is UpdateState.NeedsToken) cs.error else cs.onSurfaceVariant, fontSize = 12.sp
+                    color = if (state is UpdateState.Failed) cs.error else cs.onSurfaceVariant, fontSize = 12.sp
                 )
             }
             val info = when (val s = state) {
                 is UpdateState.Available -> s.info
                 is UpdateState.NeedsPermission -> s.info
                 is UpdateState.Failed -> s.info
+                is UpdateState.Ready -> s.info
                 else -> null
             }
             when {
-                info != null -> TextButton(onClick = { startUpdate(context, updater, info, scope) }) { Text("Update", fontWeight = FontWeight.Bold) }
+                info != null -> TextButton(onClick = { startUpdate(context, updater, info, scope) }) {
+                    Text(if (state is UpdateState.Ready) "Install" else "Update", fontWeight = FontWeight.Bold)
+                }
                 state is UpdateState.Checking || state is UpdateState.Downloading || state is UpdateState.Installing -> Box(Modifier.size(48.dp))
                 else -> TextButton(onClick = {
                     scope.launch {
@@ -196,37 +206,23 @@ fun AppUpdateCard(updater: AppUpdater, settings: SettingsRepository, modifier: M
         (state as? UpdateState.Available)?.info?.takeIf { it.notes.isNotBlank() }?.let { i ->
             TextButton(onClick = { showNotes = i }, modifier = Modifier.padding(start = 0.dp)) { Text("What's new in ${i.version}") }
         }
-        // A token, while the repository is private
-        val savedToken by settings.githubToken.collectAsState(initial = null)
-        if (state is UpdateState.NeedsToken || !savedToken.isNullOrBlank()) {
-            var draft by remember { mutableStateOf("") }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("GitHub token", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (savedToken.isNullOrBlank()) "Nibl's repository is private, so GitHub needs a token to show its releases. Create a fine-grained token with access to only the Nibl repository and \"Contents: read\", and paste it here. It's stored encrypted on this phone."
-                    else "A token is saved (encrypted). Replace it below, or remove it if the repository is public now.",
-                    color = cs.onSurfaceVariant, fontSize = 11.sp
-                )
-                androidx.compose.material3.OutlinedTextField(
-                    value = draft, onValueChange = { draft = it.trim() }, singleLine = true,
-                    placeholder = { Text("github_pat_…", fontSize = 13.sp) },
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(enabled = draft.isNotBlank(), onClick = {
-                        scope.launch { settings.saveGithubToken(draft); draft = ""; updater.check() }
-                    }) { Text("Save and check") }
-                    if (!savedToken.isNullOrBlank()) TextButton(onClick = { scope.launch { settings.saveGithubToken(null) } }) { Text("Remove") }
-                }
-            }
-        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Check automatically", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Looks for a new version when you open the app (at most every half hour) and shows it on the home screen. Nothing installs without you.", color = cs.onSurfaceVariant, fontSize = 11.sp)
+                Text("Looks for a new version when you open the app and tells you on the home screen.", color = cs.onSurfaceVariant, fontSize = 11.sp)
             }
             Switch(checked = auto, onCheckedChange = { scope.launch { settings.saveAutoCheckUpdates(it) } })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Update automatically", color = cs.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Downloads a new version in the background and installs it when you leave the app, so it never interrupts you. " +
+                        "Android may ask you to confirm the first time; after that it updates by itself.",
+                    color = cs.onSurfaceVariant, fontSize = 11.sp
+                )
+            }
+            Switch(checked = autoInstall && auto, enabled = auto, onCheckedChange = { scope.launch { settings.saveAutoInstallUpdates(it) } })
         }
     }
     showNotes?.let { ReleaseNotesDialog(it) { showNotes = null } }
