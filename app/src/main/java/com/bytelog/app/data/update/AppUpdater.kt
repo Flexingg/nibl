@@ -30,8 +30,6 @@ data class UpdateInfo(
     /** What changed, from the release notes, as plain text. */
     val notes: String,
     val apkUrl: String,
-    /** The same APK through GitHub's API, which works for a private repository when a token is given. */
-    val apkApiUrl: String? = null,
     val apkSize: Long,
     val pageUrl: String
 )
@@ -48,8 +46,8 @@ sealed interface UpdateState {
     /** Android needs the user to let Nibl install apps before it can update itself. */
     data class NeedsPermission(val info: UpdateInfo) : UpdateState
     data class Failed(val message: String, val info: UpdateInfo? = null) : UpdateState
-    /** GitHub won't show the releases without signing in (the repository is private, or the token was refused). */
-    data class NeedsToken(val message: String) : UpdateState
+    /** Downloaded and waiting to install: one tap, or by itself when the user leaves the app. */
+    data class Ready(val info: UpdateInfo, val apk: File) : UpdateState
 }
 
 /**
@@ -62,8 +60,6 @@ class AppUpdater(
     private val currentVersion: String,
     /** True for a debug build, which updates from the release's debug APK so it stays a debug build. */
     private val debugBuild: Boolean,
-    /** A GitHub token, needed while the repository is private (read-only access to it is enough). */
-    private val token: suspend () -> String? = { null },
     private val repo: String = REPO,
     private val apiBase: String = "https://api.github.com",
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -84,30 +80,26 @@ class AppUpdater(
 
     /** Asks GitHub for the latest release. Returns the update when it's newer than this build, else null. */
     suspend fun check(): Result<UpdateInfo?> {
-        if (_state.value is UpdateState.Downloading || _state.value is UpdateState.Installing) {
-            return Result.success((_state.value as? UpdateState.Downloading)?.info ?: (_state.value as? UpdateState.Installing)?.info)
+        when (val s = _state.value) {
+            is UpdateState.Downloading -> return Result.success(s.info)
+            is UpdateState.Installing -> return Result.success(s.info)
+            is UpdateState.Ready -> return Result.success(s.info)
+            else -> {}
         }
         _state.value = UpdateState.Checking
         lastCheckComplete = false
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                val auth = token()?.trim()?.takeIf { it.isNotEmpty() }
                 val request = Request.Builder().url("$apiBase/repos/$repo/releases/latest")
                     .header("Accept", "application/vnd.github+json")
                     .header("User-Agent", "Nibl-Android")
-                    .apply { auth?.let { header("Authorization", "Bearer $it") } }
                     // An unchanged answer comes back as 304, which GitHub doesn't count against the rate limit
                     .apply { etag?.let { header("If-None-Match", it) } }
                     .build()
                 client.newCall(request).execute().use { r ->
                     val body = if (r.code == 304) lastBody.orEmpty() else r.body?.string().orEmpty()
-                    // GitHub answers 404 for a private repository it won't show: that's not "up to date"
-                    if (r.code == 404 || r.code == 401 || (r.code == 403 && auth != null && r.header("X-RateLimit-Remaining") != "0")) {
-                        throw TokenNeeded(
-                            if (auth == null) "GitHub won't show Nibl's releases without signing in: the repository is private. Add a GitHub token below, or make the repository public."
-                            else "GitHub refused the token (HTTP ${r.code}). Check it can read the Nibl repository's contents."
-                        )
-                    }
+                    // GitHub answers 404 when it won't show the releases (the repository isn't public): that's not "up to date"
+                    if (r.code == 404) throw IllegalStateException("GitHub doesn't show Nibl's releases. The repository may not be public.")
                     if (!r.isSuccessful && r.code != 304) throw IllegalStateException(if (r.code == 403) "GitHub is limiting requests right now. Try again later." else "GitHub answered HTTP ${r.code}.")
                     if (r.code == 200) { etag = r.header("ETag"); lastBody = body }
                     val release = Json.parseToJsonElement(body) as? JsonObject ?: throw IllegalStateException("GitHub sent an unreadable answer.")
@@ -125,25 +117,62 @@ class AppUpdater(
                 else UpdateState.UpToDate(info?.version)
             },
             onFailure = {
-                _state.value = if (it is TokenNeeded) UpdateState.NeedsToken(it.message.orEmpty())
-                else UpdateState.Failed("Couldn't check for updates: ${it.message ?: it.javaClass.simpleName}")
+                _state.value = UpdateState.Failed("Couldn't check for updates: ${it.message ?: it.javaClass.simpleName}")
             }
         )
         return result.map { info -> info?.takeIf { isNewer(it.version, currentVersion) } }
     }
 
-    /** Downloads [info]'s APK and starts the install. Android shows its own confirmation. */
-    suspend fun downloadAndInstall(info: UpdateInfo) {
-        if (!canInstall()) { _state.value = UpdateState.NeedsPermission(info); return }
+    /**
+     * Downloads [info]'s APK in the background so the update is ready to install. Returns true when it is. A copy
+     * downloaded before (complete, same version) is used again.
+     */
+    suspend fun prepare(info: UpdateInfo): Boolean {
+        (_state.value as? UpdateState.Ready)?.let { if (it.info.version == info.version && it.apk.exists()) return true }
         _state.value = UpdateState.Downloading(info, null)
         val apk = runCatching { download(info) }.getOrElse {
             _state.value = UpdateState.Failed("The download failed: ${it.message ?: it.javaClass.simpleName}", info)
-            return
+            return false
         }
-        _state.value = UpdateState.Installing(info)
-        runCatching { withContext(Dispatchers.IO) { install(apk) } }.onFailure {
-            _state.value = UpdateState.Failed("Couldn't start the install: ${it.message ?: it.javaClass.simpleName}", info)
-        }
+        _state.value = UpdateState.Ready(info, apk)
+        return true
+    }
+
+    /** Downloads [info]'s APK (unless it's ready already) and starts the install. */
+    suspend fun downloadAndInstall(info: UpdateInfo) {
+        if (!canInstall()) { _state.value = UpdateState.NeedsPermission(info); return }
+        if (!prepare(info)) return
+        installReady(quietly = false)
+    }
+
+    /** True while an install was started without the user there: Android's confirmation, if it wants one, waits. */
+    @Volatile internal var installingQuietly = false
+        private set
+
+    /**
+     * Installs the ready update. [quietly]: started by Nibl itself as the user leaves the app. Android 12 and later
+     * install an app's own update without asking once that app has installed it before; otherwise the update
+     * stays ready and the user taps Install next time.
+     */
+    suspend fun installReady(quietly: Boolean): Boolean {
+        val ready = _state.value as? UpdateState.Ready ?: return false
+        if (!canInstall()) { if (!quietly) _state.value = UpdateState.NeedsPermission(ready.info); return false }
+        installingQuietly = quietly
+        _state.value = UpdateState.Installing(ready.info)
+        return runCatching { withContext(Dispatchers.IO) { install(ready.apk) } }.fold(
+            onSuccess = { true },
+            onFailure = {
+                _state.value = UpdateState.Failed("Couldn't start the install: ${it.message ?: it.javaClass.simpleName}", ready.info)
+                false
+            }
+        )
+    }
+
+    /** A quiet install needed the user to confirm: it stays ready for when they're back. */
+    internal fun onConfirmationNeededWhileAway() {
+        val info = (_state.value as? UpdateState.Installing)?.info ?: return
+        val apk = File(File(context.cacheDir, "updates"), "Nibl-${info.tag}.apk")
+        _state.value = if (apk.exists()) UpdateState.Ready(info, apk) else UpdateState.Available(info)
     }
 
     /** True when Android lets Nibl install packages (the user allowed "Install unknown apps" for it). */
@@ -169,6 +198,7 @@ class AppUpdater(
         if (_state.value is UpdateState.Failed) _state.value = UpdateState.Available(info)
     }
 
+
     /**
      * Looks for an update unless a complete check happened in the last [CHECK_EVERY_MS]. Returns true only when this
      * check completed, so the caller records it: a failed check, or a release still uploading, is tried again next time.
@@ -180,22 +210,15 @@ class AppUpdater(
     }
 
     /** Back to the available update after the user cancelled Android's confirmation. */
-    internal fun onInstallCancelled() {
-        val info = (_state.value as? UpdateState.Installing)?.info ?: return
-        _state.value = UpdateState.Available(info)
-    }
+    internal fun onInstallCancelled() = onConfirmationNeededWhileAway()
 
     private suspend fun download(info: UpdateInfo): File = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-        dir.listFiles()?.forEach { it.delete() }   // older downloads
         val target = File(dir, "Nibl-${info.tag}.apk")
-        // With a token, through the API (works for a private repository; GitHub redirects to the file and OkHttp
-        // drops the Authorization header when it leaves github.com). Without one, the public download link.
-        val auth = token()?.trim()?.takeIf { it.isNotEmpty() }
-        val request = if (auth != null && info.apkApiUrl != null) {
-            Request.Builder().url(info.apkApiUrl).header("User-Agent", "Nibl-Android")
-                .header("Accept", "application/octet-stream").header("Authorization", "Bearer $auth").build()
-        } else Request.Builder().url(info.apkUrl).header("User-Agent", "Nibl-Android").build()
+        // Downloaded already (all of it): no need to fetch it again
+        if (target.exists() && info.apkSize > 0 && target.length() == info.apkSize) return@withContext target
+        dir.listFiles()?.forEach { it.delete() }   // older or partial downloads
+        val request = Request.Builder().url(info.apkUrl).header("User-Agent", "Nibl-Android").build()
         client.newCall(request).execute().use { r ->
             if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}")
             val body = r.body ?: throw IllegalStateException("empty download")
@@ -240,14 +263,12 @@ class AppUpdater(
         }
     }
 
-    /** GitHub wouldn't show the releases without (valid) sign-in. */
-    private class TokenNeeded(message: String) : Exception(message)
 
     companion object {
         const val REPO = "Flexingg/nibl"
 
         /** How often the app looks for an update by itself. */
-        const val CHECK_EVERY_MS = 30 * 60 * 1000L
+        const val CHECK_EVERY_MS = 10 * 60 * 1000L
 
         /** Reads a GitHub release: its version and the APK this build should update from. Null when it has none. */
         fun parseRelease(release: JsonObject, debugBuild: Boolean): UpdateInfo? {
@@ -262,7 +283,6 @@ class AppUpdater(
                 tag = tag,
                 notes = plainNotes(release.text("body").orEmpty()),
                 apkUrl = asset.text("browser_download_url") ?: return null,
-                apkApiUrl = asset.text("url"),
                 apkSize = (asset["size"] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull ?: 0L,
                 pageUrl = release.text("html_url") ?: "https://github.com/$REPO/releases/latest"
             )

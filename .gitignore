@@ -13,3 +13,9 @@
 *.aab
 test_logo.png
 .kotlin
+
+# Signing key and its passwords: never committed (CI uses GitHub secrets)
+keystore.properties
+keystore/
+*.jks
+*.keystore

@@ -55,6 +55,7 @@ class SettingsRepository(
         val KEY_FAB_MENU = stringPreferencesKey("fab_menu_layout")
         val KEY_UNANSWERED_CREATES = stringPreferencesKey("sync_unanswered_creates")
         val KEY_GITHUB_TOKEN = stringPreferencesKey("update_github_token")
+        val KEY_UPDATE_AUTO_INSTALL = androidx.datastore.preferences.core.booleanPreferencesKey("update_auto_install")
         val KEY_UPDATE_AUTO = androidx.datastore.preferences.core.booleanPreferencesKey("update_auto_check")
         val KEY_UPDATE_LAST_CHECK = androidx.datastore.preferences.core.longPreferencesKey("update_last_check")
         val KEY_UPDATE_DISMISSED = stringPreferencesKey("update_dismissed_version")
@@ -301,17 +302,19 @@ class SettingsRepository(
         context.dataStore.edit { it[KEY_FAB_MENU] = layout.encode() }
     }
 
-    /** A read-only GitHub token for updates while the repository is private. Stored encrypted. */
-    val githubToken: Flow<String?> = context.dataStore.data.map { readSecret(it[KEY_GITHUB_TOKEN]) }
-
-    suspend fun saveGithubToken(token: String?) {
-        context.dataStore.edit { prefs ->
-            val t = token?.trim().orEmpty()
-            if (t.isEmpty()) prefs.remove(KEY_GITHUB_TOKEN) else prefs[KEY_GITHUB_TOKEN] = sealSecret(t)
-        }
+    /** Forgets the GitHub token older versions asked for (releases are public now). */
+    suspend fun clearOldGithubToken() {
+        context.dataStore.edit { it.remove(KEY_GITHUB_TOKEN) }
     }
 
-    /** Look for a new version on GitHub by itself (at most every half hour). On by default. */
+    /** Download a new version by itself and install it when the user leaves the app. On by default. */
+    val autoInstallUpdates: Flow<Boolean> = context.dataStore.data.map { it[KEY_UPDATE_AUTO_INSTALL] ?: true }
+
+    suspend fun saveAutoInstallUpdates(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_UPDATE_AUTO_INSTALL] = enabled }
+    }
+
+    /** Look for a new version on GitHub when the app opens (at most every ten minutes). On by default. */
     val autoCheckUpdates: Flow<Boolean> = context.dataStore.data.map { it[KEY_UPDATE_AUTO] ?: true }
 
     suspend fun saveAutoCheckUpdates(enabled: Boolean) {

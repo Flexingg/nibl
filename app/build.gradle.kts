@@ -8,10 +8,16 @@ plugins {
 
 import java.util.Properties
 
+// The release signing key is never in the repository: CI gets it from GitHub secrets (as environment variables),
+// a developer's machine from an untracked keystore.properties next to this project
 val keystoreProperties = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.exists()) load(f.inputStream())
 }
+fun signing(env: String, prop: String): String? = System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProperties.getProperty(prop)
+val releaseStoreFile: File? = signing("NIBL_KEYSTORE_FILE", "STORE_FILE")?.let { project.file(it) }
+    ?: rootProject.file("keystore/release.jks").takeIf { it.exists() }
+val hasReleaseKey = releaseStoreFile?.exists() == true && signing("NIBL_STORE_PASSWORD", "STORE_PASSWORD") != null
 
 android {
     namespace = "com.bytelog.app"
@@ -21,8 +27,8 @@ android {
         applicationId = "com.bytelog.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 63
-        versionName = "1.34.0"
+        versionCode = 64
+        versionName = "1.35.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -32,11 +38,11 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file(keystoreProperties.getProperty("STORE_FILE") ?: "../keystore/release.jks")
-            storePassword = keystoreProperties.getProperty("STORE_PASSWORD")
-            keyAlias = keystoreProperties.getProperty("KEY_ALIAS")
-            keyPassword = keystoreProperties.getProperty("KEY_PASSWORD")
+        if (hasReleaseKey) create("release") {
+            storeFile = releaseStoreFile
+            storePassword = signing("NIBL_STORE_PASSWORD", "STORE_PASSWORD")
+            keyAlias = signing("NIBL_KEY_ALIAS", "KEY_ALIAS")
+            keyPassword = signing("NIBL_KEY_PASSWORD", "KEY_PASSWORD")
         }
     }
 
@@ -45,14 +51,16 @@ android {
             // R8 removes the library code the app never uses (most of the APK); the app's own classes are kept whole
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            // Without the key (a fork, a fresh clone) the release build is unsigned rather than failing
+            if (hasReleaseKey) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
         debug {
-            signingConfig = signingConfigs.getByName("release")
+            // Signed like releases when the key is here, so a debug build updates in place; else Android's debug key
+            if (hasReleaseKey) signingConfig = signingConfigs.getByName("release")
         }
     }
 
