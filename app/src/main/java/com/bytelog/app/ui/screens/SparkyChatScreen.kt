@@ -1,5 +1,7 @@
 package com.bytelog.app.ui.screens
 
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Check
 import android.graphics.Bitmap
 import com.bytelog.app.ui.theme.fluidBackdrop
 import android.net.Uri
@@ -698,7 +700,7 @@ fun ChatMessageBubble(
                     .clip(CircleShape)
                     .background(ByteTomato.copy(alpha = 0.2f))
                     .border(1.dp, ByteTomato, CircleShape)
-                    .align(Alignment.Bottom),
+                    .align(Alignment.Top),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -712,21 +714,21 @@ fun ChatMessageBubble(
         }
 
         Column(
-            modifier = Modifier.fillMaxWidth(0.85f),
+            modifier = if (isUser) Modifier.fillMaxWidth(0.85f) else Modifier.weight(1f),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
         ) {
             Box(
                 modifier = Modifier
                     .clip(
                         RoundedCornerShape(
-                            topStart = 24.dp,
-                            topEnd = 24.dp,
-                            bottomStart = if (isUser) 24.dp else 6.dp,
-                            bottomEnd = if (isUser) 6.dp else 24.dp
+                            topStart = if (isUser) 22.dp else 6.dp,
+                            topEnd = 22.dp,
+                            bottomStart = 22.dp,
+                            bottomEnd = if (isUser) 6.dp else 22.dp
                         )
                     )
                     .background(if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .padding(horizontal = if (isUser) 14.dp else 16.dp, vertical = if (isUser) 10.dp else 12.dp)
             ) {
                 Column {
                     // Display attached image if present in message
@@ -743,13 +745,15 @@ fun ChatMessageBubble(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    if (displayContent.isNotBlank()) {
+                    if (displayContent.isNotBlank() && isUser) {
                         Text(
                             text = displayContent,
-                            color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else ByteCream,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontSize = 14.5.sp,
+                            lineHeight = 21.sp
                         )
+                    } else if (displayContent.isNotBlank()) {
+                        com.bytelog.app.ui.components.MarkdownText(displayContent, color = ByteCream)
                     } else if (message.askUserPrompt?.question != null) {
                         Text(
                             text = message.askUserPrompt.question,
@@ -816,77 +820,85 @@ fun ChatMessageBubble(
                 }
             }
 
-            // Action row below message (Copy & Edit)
-            Row(
-                modifier = Modifier
-                    .padding(top = 2.dp, start = if (isUser) 0.dp else 4.dp, end = if (isUser) 4.dp else 0.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Copy Action
+            // Copy (and Edit on the user's messages): under a question, and at the very end of an answer
+            val actionRow: @Composable () -> Unit = {
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onCopy(message.content) }
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        .padding(top = 2.dp, start = if (isUser) 0.dp else 4.dp, end = if (isUser) 4.dp else 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "Copy message",
-                        tint = ByteCreamMuted,
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Text(
-                        text = "Copy",
-                        color = ByteCreamMuted,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // Edit Action (User messages only)
-                if (isUser) {
+                    // Copy Action
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { onEdit(message) }
+                            .clickable { onCopy(if (isUser) message.content else com.bytelog.app.ui.components.Markdown.plain(displayContent)) }
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit message",
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy message",
                             tint = ByteCreamMuted,
                             modifier = Modifier.size(12.dp)
                         )
                         Text(
-                            text = "Edit",
+                            text = "Copy",
                             color = ByteCreamMuted,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium
                         )
                     }
+
+                    // Edit Action (User messages only)
+                    if (isUser) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onEdit(message) }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit message",
+                                tint = ByteCreamMuted,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "Edit",
+                                color = ByteCreamMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
             }
+            if (isUser) actionRow()
 
             // Pages the web research assistant used
             if (!isUser && message.webSources.isNotEmpty()) {
                 val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
                 Spacer(modifier = Modifier.height(6.dp))
-                Text("Sources", color = ByteCreamMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                message.webSources.take(8).forEach { src ->
-                    Text(
-                        text = "🔗 ${src.title.take(70)}",
-                        color = MacroProtein,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .padding(vertical = 2.dp)
-                            .clickable { runCatching { uriHandler.openUri(src.url) } }
-                    )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    message.webSources.take(8).forEach { src ->
+                        val host = remember(src.url) { runCatching { java.net.URI(src.url).host?.removePrefix("www.") }.getOrNull() ?: src.title }
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(MacroProtein.copy(alpha = 0.12f))
+                                .clickable { runCatching { uriHandler.openUri(src.url) } }
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Language, contentDescription = null, tint = MacroProtein, modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text(host.take(32), color = MacroProtein, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                        }
+                    }
                 }
             }
 
@@ -906,37 +918,36 @@ fun ChatMessageBubble(
                 )
             }
 
-            // Executed tool execution badges (excluding sparky_ask_user which renders interactive chips)
-            val visibleTools = message.executedTools.filter { it != "sparky_ask_user" }
-            if (!isUser && (visibleTools.isNotEmpty() || !message.action.isNullOrBlank())) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    visibleTools.forEach { tool ->
-                        val friendlyTool = when {
-                            tool.startsWith("sparky_ai:") -> "Sparky AI · " + tool.removePrefix("sparky_ai:").removePrefix("sparky_").replace('_', ' ')
-                            tool.contains("food") -> if (message.viaWeb) "Used food data" else "Logged Food"
-                            tool.contains("checkin") -> "Weight Updated"
-                            tool.contains("exercise") -> "Exercise Logged"
-                            else -> tool
-                        }
-                        Box(
+            // What the assistant did: one chip per kind of action ("Logged food ×4"), changes first
+            val chips = remember(message.executedTools) { com.bytelog.app.ui.components.ChatToolChips.summarize(message.executedTools) }
+            if (!isUser && chips.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    chips.forEach { chip ->
+                        val tint = if (chip.wrote) MacroCarbs else ByteCreamMuted
+                        Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MacroCarbs.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(tint.copy(alpha = if (chip.wrote) 0.14f else 0.10f))
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Icon(
+                                if (chip.wrote) Icons.Default.Check else Icons.Default.Search,
+                                contentDescription = null, tint = tint, modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
                             Text(
-                                text = "✓ $friendlyTool",
-                                color = MacroCarbs,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
+                                chip.label + if (chip.count > 1) " ×${chip.count}" else "",
+                                color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false
                             )
                         }
                     }
                 }
+            }
+            if (!isUser) {
+                Spacer(modifier = Modifier.height(2.dp))
+                actionRow()
             }
         }
     }
@@ -960,7 +971,7 @@ fun SparkyThinkingIndicator(status: String? = null, partialAnswer: String? = nul
                     .border(1.dp, ByteSurfaceVariantDark, RoundedCornerShape(24.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                Text(partialAnswer, color = ByteCream, fontSize = 14.sp)
+                com.bytelog.app.ui.components.MarkdownText(partialAnswer, color = ByteCream)
                 Spacer(Modifier.height(6.dp))
                 com.bytelog.app.ui.diary.LoadingSpinner(modifier = Modifier.size(12.dp), color = ByteTomato, strokeWidth = 2.dp)
             }

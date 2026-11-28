@@ -79,10 +79,8 @@ fun HealthConnectCard(settings: SettingsRepository) {
         } else scope.launch { settings.saveHealthConnectWrite(true); app?.requestHealthSync(0) }
     }
 
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    CollapsibleCard("Health Connect", Icons.Default.FavoriteBorder,
+        summary = when { !available -> "Not installed"; enabled && granted -> "On · sharing food and water"; else -> "Off" }, spacing = 8.dp) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { turn(!(enabled && granted)) },
             verticalAlignment = Alignment.CenterVertically

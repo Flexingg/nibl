@@ -1,5 +1,6 @@
 package com.bytelog.app.ui.components
 
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -62,15 +63,8 @@ fun ResearchAssistantCard(settings: SettingsRepository, modifier: Modifier = Mod
     var testOk by remember(provider) { mutableStateOf(false) }
     var models by remember(provider) { mutableStateOf<List<String>>(emptyList()) }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(ByteSurfaceDark)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text("WEB RESEARCH ASSISTANT", color = ByteTomato, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+    CollapsibleCard("Web research assistant", androidx.compose.material.icons.Icons.Default.Language, modifier,
+        summary = if (config.isConfigured) "${provider.label} · ${config.modelFor(provider)}" else "Not set up · add an API key") {
         Text(
             "In Sparky chat, switch on \"Web search\" to let a model search the internet and read your Sparky food library and diary. " +
                 "It can log what it finds straight into your diary (you approve each change), or pass the job to Sparky's own AI. " +

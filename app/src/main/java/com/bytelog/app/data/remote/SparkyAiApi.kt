@@ -201,7 +201,10 @@ suspend fun SparkyApiClient.sendChatMessage(
                     if (el is kotlinx.serialization.json.JsonObject) {
                         val toolName = el["name"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.jsonPrimitive?.content.orEmpty()
                         if (toolName.isNotBlank()) {
-                            executedToolsList.add(toolName)
+                            // "tool#action" (sparky_manage_food#log_food), so the chat can say what was done
+                            val action = (el["args"] as? kotlinx.serialization.json.JsonObject)?.get("action")
+                                ?.let { runCatching { it.jsonPrimitive.content }.getOrNull() }?.takeIf { it.isNotBlank() && toolName != "sparky_ask_user" }
+                            executedToolsList.add(if (action != null) "$toolName#$action" else toolName)
                         }
                         if (toolName == "sparky_ask_user") {
                             val argsObj = el["args"]?.takeIf { it is kotlinx.serialization.json.JsonObject }?.jsonObject

@@ -1,5 +1,10 @@
 package com.bytelog.app.ui.screens
 
+import androidx.compose.material.icons.filled.TrackChanges
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.foundation.background
 import com.bytelog.app.ui.theme.fluidBackdrop
 import androidx.compose.foundation.border
@@ -268,221 +273,207 @@ fun SettingsScreen(
             // Health Connect: food and water out to the phone's health data
             com.bytelog.app.ui.components.HealthConnectCard(settingsRepository)
 
-            // Your food library on Sparky
-            if (onOpenMyFoods != null) {
-                val cs = MaterialTheme.colorScheme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(cs.surfaceContainer)
-                        .clickable(onClick = onOpenMyFoods)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Restaurant, contentDescription = null, tint = cs.onPrimaryContainer) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("My foods", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Edit names, servings and nutrition on Sparky", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+            // Other screens: the food library, family, Health Connect details, Mealie, reports…
+            com.bytelog.app.ui.components.CollapsibleCard("More in Nibl", androidx.compose.material.icons.Icons.Default.Apps,
+                summary = "My foods, family, Health Connect, Mealie, reports and more", spacing = 8.dp) {
+                // Your food library on Sparky
+                if (onOpenMyFoods != null) {
+                    val cs = MaterialTheme.colorScheme
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .clickable(onClick = onOpenMyFoods)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.Restaurant, contentDescription = null, tint = cs.onPrimaryContainer) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("My foods", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Edit names, servings and nutrition on Sparky", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
-            }
 
-            if (onOpenFamily != null) {
-                val cs = MaterialTheme.colorScheme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(cs.surfaceContainer)
-                        .clickable(onClick = onOpenFamily)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.tertiaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Groups, contentDescription = null, tint = cs.onTertiaryContainer) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Family", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("See their diets, split and share meals", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                if (onOpenFamily != null) {
+                    val cs = MaterialTheme.colorScheme
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .clickable(onClick = onOpenFamily)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.tertiaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.Groups, contentDescription = null, tint = cs.onTertiaryContainer) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Family", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("See their diets, split and share meals", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
-            }
 
-            if (onOpenHealthConnectDetail != null) {
-                val cs = MaterialTheme.colorScheme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(cs.surfaceContainer)
-                        .clickable(onClick = onOpenHealthConnectDetail)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.MonitorHeart, contentDescription = null, tint = cs.onPrimaryContainer) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Health Connect & History", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Extended metrics, Sparky sync, background & backfill", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                if (onOpenHealthConnectDetail != null) {
+                    val cs = MaterialTheme.colorScheme
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .clickable(onClick = onOpenHealthConnectDetail)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.MonitorHeart, contentDescription = null, tint = cs.onPrimaryContainer) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Health Connect & History", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Extended metrics, Sparky sync, background & backfill", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
-            }
 
-            if (onOpenMealie != null) {
-                val cs = MaterialTheme.colorScheme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(cs.surfaceContainer)
-                        .clickable(onClick = onOpenMealie)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.secondaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.MenuBook, contentDescription = null, tint = cs.onSecondaryContainer) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Mealie Instance", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Recipes, meal plans, shopping lists & nutrition sync", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                if (onOpenMealie != null) {
+                    val cs = MaterialTheme.colorScheme
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .clickable(onClick = onOpenMealie)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.secondaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.MenuBook, contentDescription = null, tint = cs.onSecondaryContainer) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Mealie Instance", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Recipes, meal plans, shopping lists & nutrition sync", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
-            }
 
-            if (onOpenReports != null) {
-                val cs = MaterialTheme.colorScheme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(cs.surfaceContainer)
-                        .clickable(onClick = onOpenReports)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.tertiaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.BarChart, contentDescription = null, tint = cs.onTertiaryContainer) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Detailed Reports", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Customizable charts, micronutrients, sleep & compare", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                if (onOpenReports != null) {
+                    val cs = MaterialTheme.colorScheme
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .clickable(onClick = onOpenReports)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.tertiaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.BarChart, contentDescription = null, tint = cs.onTertiaryContainer) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Detailed Reports", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Customizable charts, micronutrients, sleep & compare", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
-            }
 
-            if (onOpenProgressPhotos != null) {
-                val cs = MaterialTheme.colorScheme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(cs.surfaceContainer)
-                        .clickable(onClick = onOpenProgressPhotos)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = cs.onPrimaryContainer) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Progress Photos", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Ghost overlay camera, side-by-side & time-lapse", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                if (onOpenProgressPhotos != null) {
+                    val cs = MaterialTheme.colorScheme
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .clickable(onClick = onOpenProgressPhotos)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = cs.onPrimaryContainer) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Progress Photos", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Ghost overlay camera, side-by-side & time-lapse", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
-            }
 
-            if (onOpenFasting != null) {
-                val cs = MaterialTheme.colorScheme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(cs.surfaceContainer)
-                        .clickable(onClick = onOpenFasting)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.secondaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.Timer, contentDescription = null, tint = cs.onSecondaryContainer) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Fasting", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Protocols, metabolic zones, history & preferences", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                if (onOpenFasting != null) {
+                    val cs = MaterialTheme.colorScheme
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .clickable(onClick = onOpenFasting)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.secondaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.Timer, contentDescription = null, tint = cs.onSecondaryContainer) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Fasting", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Protocols, metabolic zones, history & preferences", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
-            }
 
-            if (onOpenCaffeine != null) {
-                val cs = MaterialTheme.colorScheme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(cs.surfaceContainer)
-                        .clickable(onClick = onOpenCaffeine)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.tertiaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Default.LocalCafe, contentDescription = null, tint = cs.onTertiaryContainer) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Caffeine", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Decay curve, bedtime cutoff & half-life settings", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                if (onOpenCaffeine != null) {
+                    val cs = MaterialTheme.colorScheme
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(cs.surfaceContainerHigh)
+                            .clickable(onClick = onOpenCaffeine)
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(cs.tertiaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.LocalCafe, contentDescription = null, tint = cs.onTertiaryContainer) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Caffeine", color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Decay curve, bedtime cutoff & half-life settings", color = cs.onSurfaceVariant, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = cs.onSurfaceVariant)
                 }
+
             }
 
             // 1. Sparky Fitness Backend & Diagnostic Connection Test
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(ByteSurfaceDark)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "SPARKY FITNESS SERVER",
-                        color = ByteTomato,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.5.sp
-                    )
-                }
+            com.bytelog.app.ui.components.CollapsibleCard("Sparky Fitness server", androidx.compose.material.icons.Icons.Default.Dns,
+                summary = serverUrlPref.removePrefix("https://").removePrefix("http://").ifBlank { "Not set" }, spacing = 12.dp) {
 
                 OutlinedTextField(
                     value = serverUrl,
@@ -642,21 +633,9 @@ fun SettingsScreen(
             }
 
             // 2. Authentication Section: Fast Sign-In or API Key
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(ByteSurfaceDark)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "AUTHENTICATION",
-                    color = ByteTomato,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp
-                )
+            com.bytelog.app.ui.components.CollapsibleCard("Sign-in", androidx.compose.material.icons.Icons.Default.Key,
+                summary = when { !authTokenPref.isNullOrBlank() -> savedEmailPref?.let { "Signed in as $it" } ?: "Signed in"; !apiKeyPref.isNullOrBlank() -> "Using an API key"; else -> "Not signed in" },
+                spacing = 12.dp) {
 
                 if (!authTokenPref.isNullOrBlank()) {
                     Row(
@@ -836,21 +815,7 @@ fun SettingsScreen(
             }
 
             // 3. Data & Cache Management
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(ByteSurfaceDark)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = "DATA & CACHE",
-                    color = ByteTomato,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp
-                )
+            com.bytelog.app.ui.components.CollapsibleCard("Data & cache", androidx.compose.material.icons.Icons.Default.Storage, summary = "Clear cached foods and starter data") {
 
                 Text(
                     text = "Purge cached search foods and starter data so only your genuine Sparky Fitness entries remain.",
@@ -890,21 +855,8 @@ fun SettingsScreen(
             com.bytelog.app.ui.components.ResearchAssistantCard(settings = settingsRepository)
 
             // 4. Macro Targets Section
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(ByteSurfaceDark)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "DAILY MACRO GOALS",
-                    color = ByteTomato,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp
-                )
+            com.bytelog.app.ui.components.CollapsibleCard("Daily goals", androidx.compose.material.icons.Icons.Default.TrackChanges,
+                summary = "${calPref.roundToInt()} kcal · P ${pPref.roundToInt()} · C ${cPref.roundToInt()} · F ${fPref.roundToInt()} g", spacing = 12.dp) {
 
                 OutlinedTextField(
                     value = targetCalories,
@@ -1076,14 +1028,8 @@ fun SettingsScreen(
             }
 
             // 5. Daily Logging Reminders Section
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(ByteSurfaceDark)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
+            com.bytelog.app.ui.components.CollapsibleCard("Reminders", androidx.compose.material.icons.Icons.Default.Notifications,
+                summary = if (notifEnabledPref) "Daily at ${formatReminderTime(reminderHourPref, reminderMinutePref)}" else "Off", spacing = 14.dp) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

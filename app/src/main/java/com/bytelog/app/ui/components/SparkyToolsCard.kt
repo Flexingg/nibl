@@ -1,5 +1,6 @@
 package com.bytelog.app.ui.components
 
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,15 +34,12 @@ fun SparkyToolsCard(
     onChange: (Set<String>) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(ByteSurfaceDark)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text("SPARKY AI TOOLS", color = ByteTomato, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+    CollapsibleCard("Sparky AI tools", androidx.compose.material.icons.Icons.Default.Build, modifier,
+        summary = when {
+            enabled.isEmpty() -> "Server defaults"
+            enabled == SparkyTools.allSlugs -> "All tools on"
+            else -> "${enabled.size} of ${SparkyTools.allSlugs.size} groups on"
+        }) {
         Text(
             "What Sparky can do when you chat with it or import a recipe. Tools run on your Sparky server and can read and change your data.",
             color = ByteCreamMuted, fontSize = 12.sp

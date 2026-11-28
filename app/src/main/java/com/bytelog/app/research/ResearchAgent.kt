@@ -233,7 +233,7 @@ class ResearchAgent(
                 doneChanges += headline(call)
             }
             if (call.name in sparkyNames && !r.isError && r.ran) {
-                sparkyRun += call.name
+                sparkyRun += call.name + (call.args.str("action")?.takeIf { it.isNotBlank() }?.let { "#$it" } ?: "")
                 if (r.wrote) {
                     wroteData = true
                     touched += datesIn(call.args).ifEmpty { setOf(today()) }

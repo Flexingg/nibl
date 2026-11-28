@@ -156,11 +156,13 @@ fun AppUpdateCard(updater: AppUpdater, settings: SettingsRepository, modifier: M
     val cs = MaterialTheme.colorScheme
     var showNotes by remember { mutableStateOf<UpdateInfo?>(null) }
 
-    Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text("APP UPDATES", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+    CollapsibleCard("App updates", androidx.compose.material.icons.Icons.Default.SystemUpdate, modifier,
+        summary = when (val s = state) {
+            is UpdateState.Available -> "Version ${s.info.version} is available"
+            is UpdateState.Ready -> "Version ${s.info.version} is ready to install"
+            is UpdateState.Downloading -> "Downloading ${s.info.version}…"
+            else -> "Nibl ${BuildConfig.VERSION_NAME}" + if (autoInstall) " · updates automatically" else ""
+        }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Nibl ${BuildConfig.VERSION_NAME}", color = cs.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)

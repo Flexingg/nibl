@@ -1,5 +1,6 @@
 package com.bytelog.app.ui.components
 
+import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,13 +54,10 @@ fun FabMenuOrderCard(saved: FabMenuLayout, onChange: (FabMenuLayout) -> Unit, mo
     fun update(next: FabMenuLayout) { layout = next; onChange(next) }
     fun move(from: Int, to: Int) { update(layout.move(from, to)); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
 
-    Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
+    CollapsibleCard("Add menu", androidx.compose.material.icons.Icons.Default.AddCircleOutline, modifier,
+        summary = if (layout.isDefault) "The + button's menu, as it comes" else "The + button's menu, your order", spacing = 6.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("ADD MENU", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
                 Text("The + button's menu, top to bottom. The last one sits next to the + button.", color = cs.onSurfaceVariant, fontSize = 12.sp)
             }
             if (!layout.isDefault) {
