@@ -261,13 +261,13 @@ class AnthropicProvider(
 
     override val readsImages = true
 
-    override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject): String {
+    override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject, ask: String, maxTokens: Int): String {
         var structured = true
         var effort = supportsEffort(model)
         while (true) {
             val body = buildJsonObject {
                 put("model", JsonPrimitive(model))
-                put("max_tokens", JsonPrimitive(8000))
+                put("max_tokens", JsonPrimitive(maxTokens))
                 put("system", JsonPrimitive(instructions))
                 put("messages", buildJsonArray {
                     add(buildJsonObject {
@@ -285,7 +285,7 @@ class AnthropicProvider(
                             }
                             add(buildJsonObject {
                                 put("type", JsonPrimitive("text"))
-                                put("text", JsonPrimitive(if (structured) "Estimate this meal." else "Estimate this meal. Reply with only the JSON object, no other text."))
+                                put("text", JsonPrimitive(if (structured) ask else "$ask Reply with only the JSON object, no other text."))
                             })
                         })
                     })

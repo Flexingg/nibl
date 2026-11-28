@@ -68,7 +68,7 @@ class MealPhotoGuesserTest {
             override val readsImages = true
             override fun newSession(system: String, history: List<ChatTurn>, userText: String, tools: List<ToolSpec>) = error("unused")
             override suspend fun listModels() = Result.success(emptyList<String>())
-            override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject): String {
+            override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject, ask: String, maxTokens: Int): String {
                 seen = images
                 return """{"summary":"Toast","items":[{"guesses":[{"name":"Toast","grams":30,"calories":80}]}]}"""
             }
@@ -78,7 +78,7 @@ class MealPhotoGuesserTest {
         assertEquals("Gemini", est.estimatedBy)
 
         val garbled = object : LlmProvider by provider {
-            override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject) = "no idea"
+            override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject, ask: String, maxTokens: Int) = "no idea"
         }
         assertTrue(MealPhotoGuesser(garbled).estimate(emptyList(), null).exceptionOrNull() is ProviderException)
     }

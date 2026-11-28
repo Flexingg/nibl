@@ -455,7 +455,7 @@ fun SparkyChatScreen(
                     modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val canUseWeb = attachedBitmap == null
+                    val canUseWeb = attachedBitmap == null || researchConfig.provider.readsImages
                     val active = webMode && canUseWeb
                     Row(
                         modifier = Modifier
@@ -481,8 +481,9 @@ fun SparkyChatScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = when {
-                            !canUseWeb -> "Not available with a photo"
+                            !canUseWeb -> "${researchConfig.provider.shortName} can't read photos"
                             active && !researchConfig.isConfigured -> "Add an API key in Settings first"
+                            active && attachedBitmap != null -> "Can read foods off this photo"
                             active -> "Uses your ${researchConfig.provider.label.substringBefore(' ')} key"
                             else -> ""
                         },
@@ -561,7 +562,11 @@ fun SparkyChatScreen(
                             .clickable(interactionSource = sendSource, indication = androidx.compose.material3.ripple(), enabled = canSend) {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 val textToSend = inputText
-                                val base64ToSend = attachedBitmap?.let { ImageUtils.convertBitmapToBase64(it) }
+                                // The assistant may read a nutrition table off the photo, so it gets a sharper copy
+                                val base64ToSend = attachedBitmap?.let {
+                                    if (webMode && researchConfig.provider.readsImages) ImageUtils.convertBitmapToBase64(it, maxDim = 2048, quality = 90)
+                                    else ImageUtils.convertBitmapToBase64(it)
+                                }
 
                                 inputText = ""
                                 attachedBitmap = null

@@ -115,7 +115,7 @@ class GeminiProvider(
 
     override val readsImages = true
 
-    override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject): String {
+    override suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject, ask: String, maxTokens: Int): String {
         val body = buildJsonObject {
             put("systemInstruction", buildJsonObject { put("parts", buildJsonArray { add(buildJsonObject { put("text", JsonPrimitive(instructions)) }) }) })
             put("contents", buildJsonArray {
@@ -130,7 +130,7 @@ class GeminiProvider(
                                 })
                             })
                         }
-                        add(buildJsonObject { put("text", JsonPrimitive("Estimate this meal. Reply with only the JSON object.")) })
+                        add(buildJsonObject { put("text", JsonPrimitive("$ask Reply with only the JSON object.")) })
                     })
                 })
             })
