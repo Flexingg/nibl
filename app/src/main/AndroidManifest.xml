@@ -113,6 +113,11 @@
                 <action android:name="com.bytelog.app.action.FIND_FOOD" />
                 <action android:name="com.bytelog.app.action.SEARCH" />
                 <action android:name="com.bytelog.app.action.CHAT" />
+                <action android:name="com.bytelog.app.action.WATER" />
+                <action android:name="com.bytelog.app.action.WEIGHT" />
+                <action android:name="com.bytelog.app.action.FAST" />
+                <action android:name="com.bytelog.app.action.CAFFEINE" />
+                <action android:name="com.bytelog.app.action.TODAY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>

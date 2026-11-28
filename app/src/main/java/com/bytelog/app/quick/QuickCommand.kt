@@ -18,11 +18,59 @@ import java.net.URLDecoder
  * Asking runs Sparky's tools, which can change your diary, so it needs the key shown in Settings. Any app can open a
  * nibl:// link; without the key, a question opens the chat with it typed in for you to send.
  */
+@kotlinx.serialization.Serializable
 sealed class QuickCommand {
-    data class Ask(val text: String, val web: Boolean = false) : QuickCommand()
+    /** Whether running it changes your data straight away (so it needs the key, or a tap on a notification). */
+    open val changesData: Boolean get() = false
+
+    @kotlinx.serialization.Serializable
+    data class Ask(val text: String, val web: Boolean = false) : QuickCommand() {
+        override val changesData get() = true
+    }
+    @kotlinx.serialization.Serializable
     data class FindFood(val query: String) : QuickCommand()
+    @kotlinx.serialization.Serializable
     data class OpenSearch(val query: String) : QuickCommand()
+    @kotlinx.serialization.Serializable
     data class OpenChat(val draft: String) : QuickCommand()
+
+    /** Adds a drink: [oz], or your usual container when null. */
+    @kotlinx.serialization.Serializable
+    data class AddWater(val oz: Float? = null) : QuickCommand() {
+        override val changesData get() = true
+    }
+    /** Takes back today's last drink. */
+    @kotlinx.serialization.Serializable
+    data object UndoWater : QuickCommand() {
+        override val changesData get() = true
+    }
+    /** A weigh-in for today; [unit] "kg" or "lbs" (null: your unit in Settings). */
+    @kotlinx.serialization.Serializable
+    data class LogWeight(val weight: Float, val unit: String? = null, val bodyFat: Float? = null) : QuickCommand() {
+        override val changesData get() = true
+    }
+    /** Starts a fast; [protocol] like "16-8" (null: your default). */
+    @kotlinx.serialization.Serializable
+    data class StartFast(val protocol: String? = null) : QuickCommand() {
+        override val changesData get() = true
+    }
+    @kotlinx.serialization.Serializable
+    data object EndFast : QuickCommand() {
+        override val changesData get() = true
+    }
+    /** How the fast is going, with a button to start or end one. */
+    @kotlinx.serialization.Serializable
+    data object FastStatus : QuickCommand()
+    @kotlinx.serialization.Serializable
+    data class LogCaffeine(val name: String, val mg: Float) : QuickCommand() {
+        override val changesData get() = true
+    }
+    /** Today at a glance: calories, macros, water, the fast and your weight. */
+    @kotlinx.serialization.Serializable
+    data object Today : QuickCommand()
+    /** A command whose text couldn't be read; [hint] says what was expected. */
+    @kotlinx.serialization.Serializable
+    data class Unclear(val hint: String) : QuickCommand()
 }
 
 /** A command and the key it came with (null when none was given). */
@@ -34,6 +82,11 @@ object QuickCommands {
     const val ACTION_FIND_FOOD = "com.bytelog.app.action.FIND_FOOD"
     const val ACTION_SEARCH = "com.bytelog.app.action.SEARCH"
     const val ACTION_CHAT = "com.bytelog.app.action.CHAT"
+    const val ACTION_WATER = "com.bytelog.app.action.WATER"
+    const val ACTION_WEIGHT = "com.bytelog.app.action.WEIGHT"
+    const val ACTION_FAST = "com.bytelog.app.action.FAST"
+    const val ACTION_CAFFEINE = "com.bytelog.app.action.CAFFEINE"
+    const val ACTION_TODAY = "com.bytelog.app.action.TODAY"
     const val EXTRA_QUERY = "q"
     const val EXTRA_KEY = "key"
     const val EXTRA_WEB = "web"
@@ -50,10 +103,11 @@ object QuickCommands {
         val queryStart = rest.indexOf('?').let { if (it < 0) rest.length else it }
         val hostAndPath = rest.substring(0, queryStart).trimEnd('/')
         val host = hostAndPath.substringBefore('/').lowercase()
-        // "nibl://ask/what's for dinner" works as well as "nibl://ask?q=…"
-        val pathText = hostAndPath.substringAfter('/', "").let { decode(it) }
+        // "nibl://ask/what's for dinner" works as well as "nibl://ask?q=…"; "nibl://fast/start?q=18:6" reads "start 18:6"
+        val pathText = hostAndPath.substringAfter('/', "").let { decode(it) }.replace('/', ' ')
         val params = parseQuery(rest.substring(queryStart).removePrefix("?"))
-        val text = params["q"] ?: params["query"] ?: params["text"] ?: pathText
+        val given = params["q"] ?: params["query"] ?: params["text"] ?: params["oz"] ?: params["amount"] ?: params["mg"]
+        val text = listOf(pathText, given.orEmpty()).filter { it.isNotBlank() }.joinToString(" ")
         return build(host, text, params["key"], truthy(params["web"]))
     }
 
@@ -64,6 +118,11 @@ object QuickCommands {
             ACTION_FIND_FOOD -> "food"
             ACTION_SEARCH -> "search"
             ACTION_CHAT -> "chat"
+            ACTION_WATER -> "water"
+            ACTION_WEIGHT -> "weight"
+            ACTION_FAST -> "fast"
+            ACTION_CAFFEINE -> "caffeine"
+            ACTION_TODAY -> "today"
             else -> return null
         }
         return build(kind, text.orEmpty(), key, web)
@@ -76,6 +135,12 @@ object QuickCommands {
             "food", "find", "log" -> if (text.isEmpty()) QuickCommand.OpenSearch("") else QuickCommand.FindFood(text)
             "search" -> QuickCommand.OpenSearch(text)
             "chat" -> QuickCommand.OpenChat(text)
+            "water", "drink" -> QuickParse.water(text)
+            "unwater" -> QuickCommand.UndoWater
+            "weight", "weigh" -> QuickParse.weight(text)
+            "fast", "fasting" -> QuickParse.fast(text)
+            "caffeine", "coffee" -> QuickParse.caffeine(text, defaultName = if (kind == "coffee") "Coffee" else "Caffeine")
+            "today", "status", "summary" -> QuickCommand.Today
             else -> return null
         }
         return QuickRequest(command, key?.trim()?.ifEmpty { null })
@@ -85,12 +150,23 @@ object QuickCommands {
      * What actually runs: a question goes to Sparky only with the right key; otherwise it opens the chat with the
      * question typed in. The other commands need no key (they only show results; logging is a button you press).
      */
+    /**
+     * What actually runs. A command that changes your data runs only with the right key. Without it a question
+     * opens the chat with it typed in, and anything else waits for you to confirm it on a notification
+     * ([needsConfirm]). Commands that only show something need no key.
+     */
     fun authorize(request: QuickRequest, expectedKey: String?): QuickCommand {
         val cmd = request.command
-        if (cmd !is QuickCommand.Ask) return cmd
-        val ok = !expectedKey.isNullOrBlank() && request.key != null && constantTimeEquals(request.key, expectedKey)
-        return if (ok) cmd else QuickCommand.OpenChat(cmd.text)
+        if (!cmd.changesData || keyMatches(request.key, expectedKey)) return cmd
+        return if (cmd is QuickCommand.Ask) QuickCommand.OpenChat(cmd.text) else cmd
     }
+
+    /** True when [authorize] let [cmd] through without the key, so it should be confirmed first. */
+    fun needsConfirm(request: QuickRequest, expectedKey: String?): Boolean =
+        request.command.changesData && request.command !is QuickCommand.Ask && !keyMatches(request.key, expectedKey)
+
+    private fun keyMatches(given: String?, expected: String?) =
+        !expected.isNullOrBlank() && given != null && constantTimeEquals(given, expected)
 
     /** Collapses whitespace and trims; launchers sometimes leave the unfilled "%s" in. */
     fun clean(text: String): String {
