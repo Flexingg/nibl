@@ -52,6 +52,8 @@ class SettingsRepository(
         val KEY_HOME_LAYOUT = stringPreferencesKey("home_layout")
         val KEY_HOME_TILES = stringPreferencesKey("home_tiles")
         val KEY_HC_LEAVE_TO_SPARKY_APP = androidx.datastore.preferences.core.booleanPreferencesKey("hc_leave_to_sparky_app")
+        /** The key launcher commands need to ask Sparky in the background (nibl://ask?…&key=…). */
+        val KEY_QUICK_COMMAND_KEY = stringPreferencesKey("quick_command_key")
         val KEY_FAB_MENU = stringPreferencesKey("fab_menu_layout")
         val KEY_UNANSWERED_CREATES = stringPreferencesKey("sync_unanswered_creates")
         val KEY_GITHUB_TOKEN = stringPreferencesKey("update_github_token")
@@ -183,6 +185,22 @@ class SettingsRepository(
     val sparkyToolCategories: Flow<Set<String>> = context.dataStore.data.map { prefs ->
         prefs[KEY_SPARKY_TOOLS]?.let { stored -> stored.intersect(com.bytelog.app.data.remote.SparkyTools.allSlugs) }
             ?: com.bytelog.app.data.remote.SparkyTools.allSlugs
+    }
+
+    /** The key a launcher command needs to ask Sparky in the background; null until one is made in Settings. */
+    val quickCommandKey: Flow<String?> = context.dataStore.data.map { it[KEY_QUICK_COMMAND_KEY]?.ifBlank { null } }
+
+    /** Makes a new key (the old one stops working) and returns it. */
+    suspend fun newQuickCommandKey(): String {
+        val alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
+        val rnd = java.security.SecureRandom()
+        val key = (1..20).map { alphabet[rnd.nextInt(alphabet.length)] }.joinToString("")
+        context.dataStore.edit { it[KEY_QUICK_COMMAND_KEY] = key }
+        return key
+    }
+
+    suspend fun clearQuickCommandKey() {
+        context.dataStore.edit { it.remove(KEY_QUICK_COMMAND_KEY) }
     }
 
     suspend fun saveSparkyToolCategories(slugs: Set<String>) {

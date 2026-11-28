@@ -854,6 +854,9 @@ fun SettingsScreen(
             // Web research assistant (own API key, web search + Sparky tools)
             com.bytelog.app.ui.components.ResearchAssistantCard(settings = settingsRepository)
 
+            // Launcher / search bar commands (nibl:// links, intents for Shizuku and gesture apps)
+            com.bytelog.app.ui.components.QuickCommandsCard(settings = settingsRepository)
+
             // 4. Macro Targets Section
             com.bytelog.app.ui.components.CollapsibleCard("Daily goals", androidx.compose.material.icons.Icons.Default.TrackChanges,
                 summary = "${calPref.roundToInt()} kcal · P ${pPref.roundToInt()} · C ${cPref.roundToInt()} · F ${fPref.roundToInt()} g", spacing = 12.dp) {

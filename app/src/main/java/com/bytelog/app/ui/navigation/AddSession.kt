@@ -7,7 +7,7 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 
 /** The search screen's route; the scanner and others opened from it share its tray. */
-const val SEARCH_ROUTE = "search/{mealTypeId}/{mealName}/{date}?photo={photo}&plan={plan}"
+const val SEARCH_ROUTE = "search/{mealTypeId}/{mealName}/{date}?photo={photo}&plan={plan}&q={q}"
 
 /**
  * Whose view model holds the tray for [entry]: the search screen it was opened from if there is one (so searching and

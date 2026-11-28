@@ -272,14 +272,7 @@ class FastSearchViewModel(
     }
 
     /** What a tap logs: the amount last logged of this food when its unit still fits, else one serving. */
-    fun portionFor(food: FoodItem): Portion {
-        val last = _lastPortions.value[food.id] ?: return Portions.defaultFor(food)
-        // "100 g" logged back when that was all a tap offered: a household serving reads better now
-        val reference = last.quantity == food.servingSize && last.unit.equals(food.servingUnit, ignoreCase = true)
-        if (reference && com.bytelog.app.recipes.HouseholdServings.isPer100(food)) Portions.defaultFor(food).let { if (it != last) return it }
-        val fits = Portions.unitOptions(food).any { it.equals(last.unit, ignoreCase = true) } || last.unit.equals(food.servingUnit, ignoreCase = true)
-        return if (fits && last.quantity > 0f) last else Portions.defaultFor(food)
-    }
+    fun portionFor(food: FoodItem): Portion = Portions.repeatOrDefault(food, _lastPortions.value[food.id])
 
     /** Staged entries backed by a library food (not quick add or voice), which can open the food editor. */
     private val libraryBacked = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())

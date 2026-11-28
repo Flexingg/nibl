@@ -4,7 +4,10 @@ package com.bytelog.app.widget
 sealed class WidgetDestination {
     object Diary : WidgetDestination()
     object Family : WidgetDestination()
-    data class Search(val meal: String) : WidgetDestination()
+    /** Fast Search for [meal], with [query] typed in (from a launcher command). */
+    data class Search(val meal: String, val query: String = "") : WidgetDestination()
+    /** The chat with [draft] typed in, not sent. */
+    data class Chat(val draft: String = "") : WidgetDestination()
     data class Scan(val meal: String) : WidgetDestination()
     data class Share(val meal: String) : WidgetDestination()
 }
@@ -17,7 +20,8 @@ object WidgetLinks {
     fun encode(d: WidgetDestination): String = when (d) {
         WidgetDestination.Diary -> "diary"
         WidgetDestination.Family -> "family"
-        is WidgetDestination.Search -> "search:${d.meal}"
+        is WidgetDestination.Search -> "search:${d.meal}" + if (d.query.isNotBlank()) "\n${d.query}" else ""
+        is WidgetDestination.Chat -> "chat:${d.draft}"
         is WidgetDestination.Scan -> "scan:${d.meal}"
         is WidgetDestination.Share -> "share:${d.meal}"
     }
@@ -25,11 +29,13 @@ object WidgetLinks {
     fun parse(raw: String?): WidgetDestination? {
         if (raw.isNullOrBlank()) return null
         val kind = raw.substringBefore(':')
-        val meal = raw.substringAfter(':', "").trim()
+        val rest = raw.substringAfter(':', "")
+        val meal = rest.substringBefore('\n').trim()
         return when (kind) {
             "diary" -> WidgetDestination.Diary
             "family" -> WidgetDestination.Family
-            "search" -> meal.takeIf { it.isNotEmpty() }?.let { WidgetDestination.Search(it) }
+            "search" -> meal.takeIf { it.isNotEmpty() }?.let { WidgetDestination.Search(it, rest.substringAfter('\n', "").trim()) }
+            "chat" -> WidgetDestination.Chat(rest.trim())
             "scan" -> meal.takeIf { it.isNotEmpty() }?.let { WidgetDestination.Scan(it) }
             "share" -> meal.takeIf { it.isNotEmpty() }?.let { WidgetDestination.Share(it) }
             else -> null

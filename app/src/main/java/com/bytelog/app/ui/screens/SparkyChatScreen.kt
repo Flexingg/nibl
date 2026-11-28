@@ -123,6 +123,12 @@ fun SparkyChatScreen(
     val isLoading by viewModel.isLoading.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
+    // A question from a launcher command, typed in for you to send
+    LaunchedEffect(Unit) {
+        com.bytelog.app.quick.ChatDraft.pending.collect { draft ->
+            if (!draft.isNullOrBlank()) { inputText = draft; com.bytelog.app.quick.ChatDraft.pending.value = null }
+        }
+    }
     var attachedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
 
