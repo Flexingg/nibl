@@ -42,13 +42,18 @@ class QuickCommandActivity : Activity() {
         } ?: return
 
         val app = application as ByteLogApplication
-        // Only an ask checks the key; reading it is a quick look at the settings file
-        val expected = if (request.command is QuickCommand.Ask) runBlocking { withTimeoutOrNull(2_000) { app.settingsRepository.quickCommandKey.first() } } else null
+        // Only commands that change something check the key; reading it is a quick look at the settings file
+        val expected = if (request.command.changesData) runBlocking { withTimeoutOrNull(2_000) { app.settingsRepository.quickCommandKey.first() } } else null
+        if (QuickCommands.needsConfirm(request, expected)) {
+            QuickTasks.confirm(this, request.command)
+            return
+        }
         when (val cmd = QuickCommands.authorize(request, expected)) {
             is QuickCommand.Ask -> QuickCommandService.ask(this, cmd.text, cmd.web)
             is QuickCommand.FindFood -> QuickCommandService.findFood(this, cmd.query)
             is QuickCommand.OpenSearch -> open(WidgetDestination.Search(runBlocking { QuickFoodActions.mealNow(app.foodRepository).name }, cmd.query))
             is QuickCommand.OpenChat -> open(WidgetDestination.Chat(cmd.draft))
+            else -> QuickCommandService.run(this, cmd)
         }
     }
 

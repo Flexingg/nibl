@@ -28,6 +28,14 @@ class QuickCommandService : Service() {
         const val ACTION_ASK = "com.bytelog.app.quick.ASK"
         const val ACTION_REPLY = "com.bytelog.app.quick.REPLY"
         const val ACTION_FIND_FOOD = "com.bytelog.app.quick.FIND_FOOD"
+        /** Runs a water, weight, fasting, caffeine or today command (see [QuickTasks]). */
+        const val ACTION_RUN = "com.bytelog.app.quick.RUN"
+        const val EXTRA_COMMAND = "command"
+
+        fun run(context: Context, cmd: QuickCommand) = start(context, Intent(context, QuickCommandService::class.java).apply {
+            action = ACTION_RUN
+            putExtra(EXTRA_COMMAND, QuickTasks.encode(cmd))
+        })
 
         fun ask(context: Context, text: String, web: Boolean) = start(context, Intent(context, QuickCommandService::class.java).apply {
             action = ACTION_ASK
@@ -57,6 +65,7 @@ class QuickCommandService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val label = when (intent?.action) {
             ACTION_FIND_FOOD -> "Finding foods…"
+            ACTION_RUN -> "Working…"
             else -> "Asking Sparky…"
         }
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE else 0
@@ -79,6 +88,13 @@ class QuickCommandService : Service() {
                         ?.let { QuickCommands.clean(it) }?.takeIf { it.isNotEmpty() }
                         ?.let { ask(app, it, intent.getBooleanExtra(QuickCommands.EXTRA_WEB, false), fromReply = true) }
                     ACTION_FIND_FOOD -> intent.getStringExtra(QuickCommands.EXTRA_QUERY)?.let { findFood(app, it) }
+                    ACTION_RUN -> QuickTasks.decode(intent.getStringExtra(EXTRA_COMMAND))?.let { cmd ->
+                        // A confirmation answered: its notification goes once the command runs
+                        QuickNotifications.cancel(applicationContext, QuickTasks.ID_CONFIRM)
+                        runCatching { QuickTasks.run(app, cmd) }.onFailure {
+                            QuickNotifications.simple(applicationContext, QuickTasks.ID_UNCLEAR, "That didn't work", it.message ?: "Open Nibl to try again.", timeoutMs = 15_000)
+                        }
+                    }
                 }
             } finally {
                 withContext(Dispatchers.Main) { finishOne() }

@@ -51,39 +51,65 @@ fun QuickCommandsCard(settings: SettingsRepository, modifier: Modifier = Modifie
     }
 
     CollapsibleCard("Search bar & launcher", Icons.Default.Search, modifier,
-        summary = if (key != null) "Sparky on" else "Food search on") {
+        summary = if (key != null) "Key on · all commands" else "Commands confirm first") {
         Text(
             "Use Nibl from your launcher's search bar or a gesture app without opening it. Add these as custom " +
-                "searches; %s is where your text goes. Results come back as a notification.",
+                "searches; %s is where your text goes. Results come back as a notification, with buttons to undo or carry on.",
             color = ByteCreamMuted, fontSize = 12.sp
         )
 
-        Command("Find a food", "Matches with a Log button on each", "nibl://food?q=%s") { copy(it) }
-        Command("Open Fast Search", "Opens Nibl with the search typed in", "nibl://search?q=%s") { copy(it) }
-
         val k = key
+        // Commands that change your data carry the key; without one they ask you to confirm on a notification
+        fun link(cmd: String, writes: Boolean, q: String = "%s") =
+            "nibl://$cmd?" + (if (writes && k != null) "key=$k&" else "") + "q=$q"
+
+        Section("Food")
+        Command("Find a food", "Matches with a Log button on each", link("food", false)) { copy(it) }
+        Command("Open Fast Search", "Opens Nibl with the search typed in", link("search", false)) { copy(it) }
+
+        Section("Your day")
+        Command("Today", "Calories left, macros, water, your fast and weight", "nibl://today") { copy(it) }
+        Command("Water", "\"16\", \"500 ml\", \"2 cups\"; nothing for your usual bottle; \"undo\" takes the last one back",
+            link("water", true)) { copy(it) }
+        Command("Weight", "\"182.4\", \"82.5 kg\", \"182 18%\" (with body fat)", link("weight", true)) { copy(it) }
+        Command("Fasting", "\"start\", \"start 18:6\", \"stop\", or nothing for how it's going", link("fast", true)) { copy(it) }
+        Command("Caffeine", "\"coffee 95\", \"energy drink 160\"", link("caffeine", true)) { copy(it) }
+        if (k == null) {
+            Text(
+                "Without a key, water, weight, fasting and caffeine ask you to confirm on a notification first.",
+                color = ByteCreamMuted, fontSize = 12.sp
+            )
+        }
+
+        Section("Sparky")
         if (k == null) {
             Text(
                 "Asking Sparky in the background needs a key, since Sparky can change your diary. Without one, " +
-                    "nibl://ask opens the chat with your question typed in.",
+                    "nibl://ask opens the chat with your question typed in. The key also lets the other commands run " +
+                    "without asking.",
                 color = ByteCreamMuted, fontSize = 12.sp
             )
-            Pill("Turn on Ask Sparky", ByteTomato, filled = true) { scope.launch { settings.newQuickCommandKey() } }
+            Pill("Turn on the key", ByteTomato, filled = true) { scope.launch { settings.newQuickCommandKey() } }
         } else {
             Command("Ask Sparky", "The answer arrives as a notification you can reply to", "nibl://ask?key=$k&q=%s") { copy(it) }
             Command("Ask with web research", "Uses your web research assistant", "nibl://ask?key=$k&web=1&q=%s") { copy(it) }
             Command(
                 "Shell / Shizuku",
-                "For apps that run commands rather than open links",
+                "For apps that run commands rather than open links. Also WATER, WEIGHT, FAST, CAFFEINE, TODAY, FIND_FOOD",
                 "am start -a com.bytelog.app.action.ASK --es key $k --es q \"%s\""
             ) { copy(it) }
-            Text("Anyone with the key can ask Sparky to change your diary. Make a new one if it gets out.", color = ByteCreamMuted, fontSize = 11.sp)
+            Text("Anyone with the key can change your diary through Nibl. Make a new one if it gets out.", color = ByteCreamMuted, fontSize = 11.sp)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Pill("New key", MacroProtein) { scope.launch { settings.newQuickCommandKey() } }
                 Pill("Turn off", MacroCarbs) { scope.launch { settings.clearQuickCommandKey() } }
             }
         }
     }
+}
+
+@Composable
+private fun Section(title: String) {
+    Text(title.uppercase(), color = ByteCreamMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
 }
 
 @Composable
