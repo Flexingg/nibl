@@ -31,6 +31,16 @@ object Portions {
         HouseholdServings.usualPortion(food)?.let { (q, u) -> Portion(q, u) }
             ?: Portion(food.servingSize, food.servingUnit.ifBlank { "g" })
 
+    /** What a tap logs: [last] (the amount last logged of this food) when its unit still fits, else [defaultFor]. */
+    fun repeatOrDefault(food: FoodItem, last: Portion?): Portion {
+        if (last == null) return defaultFor(food)
+        // "100 g" logged back when that was all a tap offered: a household serving reads better now
+        val reference = last.quantity == food.servingSize && last.unit.equals(food.servingUnit, ignoreCase = true)
+        if (reference && HouseholdServings.isPer100(food)) defaultFor(food).let { if (it != last) return it }
+        val fits = unitOptions(food).any { it.equals(last.unit, ignoreCase = true) } || last.unit.equals(food.servingUnit, ignoreCase = true)
+        return if (fits && last.quantity > 0f) last else defaultFor(food)
+    }
+
     /** The portion with its weight when that helps: "2 cookies (28 g)", "1 medium (118 g)"; plain otherwise. */
     fun describe(food: FoodItem, p: Portion): String {
         if (UnitConverter.canonical(p.unit) != null || p.unit.equals(SERVING, ignoreCase = true)) return p.label

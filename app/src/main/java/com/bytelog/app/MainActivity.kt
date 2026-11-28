@@ -221,17 +221,22 @@ fun ByteLogNavHost(
         val dest = com.bytelog.app.widget.WidgetLinks.parse(widgetDestination) ?: return@LaunchedEffect
         onWidgetDestinationConsumed()
         val date = java.time.LocalDate.now().toString()
-        suspend fun mealRoute(base: String, meal: String) {
+        suspend fun mealRoute(base: String, meal: String, query: String = "") {
             val types = foodRepo.getAllMealTypes().first()
             val type = types.firstOrNull { it.name.trim().equals(meal, ignoreCase = true) } ?: types.firstOrNull()
             val id = type?.id ?: meal.lowercase()
             val name = type?.name ?: meal
-            navController.navigate("$base/${android.net.Uri.encode(id)}/${android.net.Uri.encode(name)}/$date") { launchSingleTop = true }
+            val q = if (query.isNotBlank()) "?q=${android.net.Uri.encode(query)}" else ""
+            navController.navigate("$base/${android.net.Uri.encode(id)}/${android.net.Uri.encode(name)}/$date$q") { launchSingleTop = true }
         }
         when (dest) {
             com.bytelog.app.widget.WidgetDestination.Diary -> navController.popBackStack("diary", false)
             com.bytelog.app.widget.WidgetDestination.Family -> navController.navigate("family") { launchSingleTop = true }
-            is com.bytelog.app.widget.WidgetDestination.Search -> mealRoute("search", dest.meal)
+            is com.bytelog.app.widget.WidgetDestination.Search -> mealRoute("search", dest.meal, dest.query)
+            is com.bytelog.app.widget.WidgetDestination.Chat -> {
+                if (dest.draft.isNotBlank()) com.bytelog.app.quick.ChatDraft.pending.value = dest.draft
+                navController.navigate(NavMotion.CHAT) { launchSingleTop = true }
+            }
             is com.bytelog.app.widget.WidgetDestination.Scan -> mealRoute("barcode", dest.meal)
             is com.bytelog.app.widget.WidgetDestination.Share -> { shareRequest = dest.meal; navController.popBackStack("diary", false) }
         }
@@ -418,9 +423,12 @@ fun ByteLogNavHost(
                 navArgument("date") { type = NavType.StringType },
                 navArgument("photo") { type = NavType.BoolType; defaultValue = false },
                 // From the meal planner: plan on the day (even today) instead of logging
-                navArgument("plan") { type = NavType.BoolType; defaultValue = false }
+                navArgument("plan") { type = NavType.BoolType; defaultValue = false },
+                // From a launcher command: the search typed in
+                navArgument("q") { type = NavType.StringType; nullable = true; defaultValue = null }
             )
         ) { backStackEntry ->
+            val initialQuery = backStackEntry.arguments?.getString("q")
             val startWithPhoto = backStackEntry.arguments?.getBoolean("photo") ?: false
             val planOnly = backStackEntry.arguments?.getBoolean("plan") ?: false
             val mealTypeId = backStackEntry.arguments?.getString("mealTypeId") ?: "breakfast"
@@ -431,6 +439,7 @@ fun ByteLogNavHost(
                 FastSearchViewModel(foodRepo, app.mealTemplateRepository.templates, app.planRepository, app.sparkyExternalProviders).apply {
                     initContext(mealTypeId, mealName, date)
                     if (planOnly && date.isNotBlank()) setPlanDays(setOf(date))
+                    if (!initialQuery.isNullOrBlank()) setSearchQuery(initialQuery)
                 }
             }
 

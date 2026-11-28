@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Answering a launcher command (ask Sparky, find a food) in the background, for a minute or so -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <!-- Health Connect: write the diary's food and water; read them to avoid doubling up with the SparkyFitness app -->
     <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />
@@ -86,6 +88,43 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!--
+            Launcher and search bar commands (OmniPrompt, XGesture, Tasker, `am start` over Shizuku): nibl://ask, food,
+            search and chat links, or the com.bytelog.app.action.* intents. No window: the work happens in the
+            background and comes back as a notification. In its own task so Nibl doesn't come to the front.
+        -->
+        <activity
+            android:name=".quick.QuickCommandActivity"
+            android:exported="true"
+            android:label="Nibl"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nibl" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.bytelog.app.action.ASK" />
+                <action android:name="com.bytelog.app.action.FIND_FOOD" />
+                <action android:name="com.bytelog.app.action.SEARCH" />
+                <action android:name="com.bytelog.app.action.CHAT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".quick.QuickCommandService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+
+        <receiver
+            android:name=".quick.QuickActionReceiver"
+            android:exported="false" />
 
         <!-- The same link on Android 14 and up -->
         <activity-alias
