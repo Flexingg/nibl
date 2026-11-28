@@ -133,7 +133,10 @@ class ResearchScreensRenderTest {
                 }
             }
         }
-        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("WEB RESEARCH ASSISTANT"), true).fetchSemanticsNodes().isNotEmpty() }
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Web research assistant"), true).fetchSemanticsNodes().isNotEmpty() }
+        // Both cards start tucked away
+        compose.onNodeWithText("Web research assistant").performClick()
+        compose.onNodeWithText("Sparky AI tools").performClick()
         // DeepSeek has no search of its own; with a Gemini key saved, searches go through Google
         waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("via your Gemini key", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
         shot("08-settings-research")
@@ -149,6 +152,8 @@ class ResearchScreensRenderTest {
                 }
             }
         }
+        compose.onNodeWithText("Appearance").performClick()
+        compose.onNodeWithText("Sparky AI tools").performClick()
         compose.onNodeWithText("Dark", substring = true).performClick()
         assertTrue(mode == com.bytelog.app.ui.theme.ThemeMode.DARK)
         shot("24-settings-light")
@@ -234,7 +239,7 @@ class ResearchScreensRenderTest {
 
         runBlocking { chat.sendMessage("How many calories are in a Chipotle chicken bowl, and how does it compare to my usual lunch?", webResearch = true) }
         waitFor { chat.messages.value.any { it.viaWeb } }
-        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Chipotle Nutrition Calculator", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("chipotle.com", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
         shot("09-chat-web-answer")
 
         // A change the assistant wants to make asks first
@@ -247,7 +252,7 @@ class ResearchScreensRenderTest {
         compose.onNodeWithText("Allow", useUnmergedTree = true).performClick()
         runBlocking { sending.await() }
         assertTrue(chat.messages.value.last().content.startsWith("Done. Sparky AI logged"))
-        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Sparky AI · manage food", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
+        waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText("Sparky AI · logged food", substring = true), true).fetchSemanticsNodes().isNotEmpty() }
         shot("11-chat-handoff-logged")
     }
 }

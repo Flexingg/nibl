@@ -385,7 +385,7 @@ class WebResearchChatTest {
         assertTrue(mcpCalls.last().contains("log_food"))
         assertTrue("Sparky's AI wasn't needed", sparkyAiRequests.isEmpty())
         assertEquals("Logged 2 servings of rice.", chat.messages.value.last().content)
-        assertTrue(chat.messages.value.last().executedTools.contains("sparky_manage_food"))
+        assertTrue(chat.messages.value.last().executedTools.contains("sparky_manage_food#log_food"))
     }
 
     @Test fun aFollowUpSeesWhatTheAssistantDidAndTheUsersDay() = runBlocking {

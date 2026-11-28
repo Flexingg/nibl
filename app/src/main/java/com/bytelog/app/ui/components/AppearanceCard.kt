@@ -1,5 +1,6 @@
 package com.bytelog.app.ui.components
 
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,11 +44,12 @@ fun AppearanceCard(
     onUiSize: (com.bytelog.app.ui.theme.UiSize) -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
-    Column(
-        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("APPEARANCE", color = cs.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+    val summary = listOfNotNull(
+        when (mode) { ThemeMode.SYSTEM -> "System theme"; ThemeMode.LIGHT -> "Light"; ThemeMode.DARK -> "Dark" },
+        if (deviceColors) "device colours" else null,
+        uiSize.label.takeIf { uiSize != com.bytelog.app.ui.theme.UiSize.DEFAULT }
+    ).joinToString(" · ")
+    CollapsibleCard("Appearance", androidx.compose.material.icons.Icons.Default.Palette, modifier, summary = summary, spacing = 12.dp) {
         // Connected segmented choice
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             val options = listOf(ThemeMode.SYSTEM to "System", ThemeMode.LIGHT to "Light", ThemeMode.DARK to "Dark")
