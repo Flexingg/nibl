@@ -65,9 +65,9 @@ interface LlmProvider {
 
     /**
      * One question about one or more photos ([images] are base64 data with their media type), answered as JSON that
-     * matches [schema]. Returns the model's JSON text. Only called when [readsImages] is true.
+     * matches [schema]. [ask] is the request sent with the photos. Returns the model's JSON text. Only called when [readsImages] is true.
      */
-    suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject): String =
+    suspend fun lookAt(instructions: String, images: List<Pair<String, String>>, schema: JsonObject, ask: String = "Estimate this meal.", maxTokens: Int = 8000): String =
         throw ProviderException("${id.label} can't read photos.")
 }
 

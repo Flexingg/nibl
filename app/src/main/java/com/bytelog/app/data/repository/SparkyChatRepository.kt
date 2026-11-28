@@ -134,8 +134,13 @@ class SparkyChatRepository(
         _isLoading.value = true
         _error.value = null
 
-        if (webResearch && imageBase64.isNullOrBlank()) {
-            runWebResearch(trimmed, priorMessages = currentList.dropLast(1))
+        if (webResearch) {
+            // A photo goes to the assistant's food tools (read a nutrition table, use it as a food's picture). Without
+            // one, the latest photo in the conversation stays available, so "yes, add them all" can still use it.
+            val photo = imageBase64?.takeIf { it.isNotBlank() }
+                ?: currentList.dropLast(1).takeLast(RECENT_PHOTO_MESSAGES).lastOrNull { it.role == "user" && !it.imageBase64.isNullOrBlank() }?.imageBase64
+            runWebResearch(trimmed.ifBlank { "(The user sent this photo.)" }, priorMessages = currentList.dropLast(1),
+                images = listOfNotNull(photo?.let { it to "image/jpeg" }))
             return
         }
 
@@ -207,7 +212,7 @@ class SparkyChatRepository(
      * Answers with the web research assistant: the user's chosen model (their own API key) searches the web and
      * can use their Sparky tools. Changes to their data need approval unless they turned that off.
      */
-    private suspend fun runWebResearch(question: String, priorMessages: List<ChatMessageOutput>) {
+    private suspend fun runWebResearch(question: String, priorMessages: List<ChatMessageOutput>, images: List<Pair<String, String>> = emptyList()) {
         val settings = settingsRepository
         val config = settings?.researchConfig?.first() ?: com.bytelog.app.research.ResearchConfig()
         val provider = com.bytelog.app.research.ResearchFactory.provider(config, providerHttp, providerBaseUrl)
@@ -231,7 +236,8 @@ class SparkyChatRepository(
             sparkyAi = sparkyAiBackend ?: com.bytelog.app.research.ChatSparkyAiBackend(sparkyApiClient),
             planReader = planRepository?.let { repo -> { repo.upcoming(today()) } },
             userContext = { researchContext() },
-            onText = { _streamingText.value = it.ifEmpty { null } }
+            onText = { _streamingText.value = it.ifEmpty { null } },
+            foodTools = com.bytelog.app.research.FoodLibraryTools(sparkyApiClient, images, provider.takeIf { it.readsImages })
         )
         val history = researchHistory(priorMessages)
 
@@ -412,6 +418,8 @@ class SparkyChatRepository(
     companion object {
         /** How many recent messages the web assistant sees as history. */
         const val HISTORY_MESSAGES = 16
+        /** How far back a photo still counts as "the photo" for the assistant's food tools. */
+        const val RECENT_PHOTO_MESSAGES = 6
 
         /** The meal that usually fits [time]. */
         fun mealAt(time: java.time.LocalTime): String = when {
